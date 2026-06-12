@@ -208,6 +208,8 @@ async function pullAll(session, since) {
     bookmarkRows, mangaCategoryRows, prefRows, updateRows,
   }, since !== INITIAL_SYNC ? library.exportData() : null);
   library.importData(merged);
+  // Collapse any duplicate-title categories that arrived from legacy per-device seeds.
+  try { library.dedupeCategories(); } catch { /* ignore */ }
 
   // The user's installed/pinned sources follow their account too.
   const sourcePrefsPulled = await select(session, 'nyora_source_prefs', since);
@@ -275,13 +277,14 @@ function toRemoteRows(data, uid, nowIso) {
     });
   }
 
+  // Include soft-deleted categories so deletions (e.g. duplicate cleanup) propagate.
   const categories = Object.values(data.categories || {}).map((c, index) => ({
     user_id: uid,
     id: String(c.id),
     title: c.title || '',
     sort_key: index,
     updated_at: iso(c.createdAt || Date.now()),
-    deleted_at: null,
+    deleted_at: c.deletedAt ? iso(c.deletedAt) : null,
   }));
 
   const mangaCategories = [];
@@ -347,8 +350,15 @@ function fromRemoteRows(rows, baseData) {
 
   for (const row of rows.categoryRows || []) {
     if (row.deleted_at) {
-      delete data.categories[row.id];
-      delete data.categoryMembers[row.id];
+      // Soft-delete: keep the record (stamped) so the deletion re-propagates and
+      // dedupeCategories below can still see/skip it. Members are left in place.
+      const existing = data.categories[row.id];
+      data.categories[row.id] = {
+        id: String(row.id),
+        title: (existing && existing.title) || row.title || '',
+        createdAt: (existing && existing.createdAt) || ms(row.updated_at),
+        deletedAt: ms(row.deleted_at),
+      };
     } else {
       data.categories[row.id] = {
         id: String(row.id),

@@ -380,6 +380,7 @@ export const library = {
 
   categories() {
     const categories = Object.values(_data.categories)
+      .filter((c) => !c.deletedAt) // skip soft-deleted (kept around so the deletion can sync)
       .slice()
       .sort((a, b) => (Number(a.createdAt) || 0) - (Number(b.createdAt) || 0))
       .map((c) => ({
@@ -431,17 +432,58 @@ export const library = {
     save();
   },
 
+  // Soft-delete: stamp deletedAt and KEEP the record (and its categoryMembers)
+  // so the deletion propagates on the next sync push. The categories() getter
+  // and the display/assignment helpers skip records that carry a deletedAt.
   deleteCategory(id) {
-    delete _data.categories[id];
-    delete _data.categoryMembers[id];
+    const cat = _data.categories[id];
+    if (!cat) return;
+    cat.deletedAt = now();
     save();
+  },
+
+  // Collapse duplicate same-title categories that accumulate across synced
+  // devices (legacy per-device "Read later" seeds, etc.). Among the non-deleted
+  // categories, group by title; the canonical one is the member with the
+  // smallest id (string comparison). Each duplicate's members are merged into
+  // the canonical's map, then the duplicate is soft-deleted so the merge syncs.
+  // Mirrors the Android repointDuplicateFavourites + softDeleteDuplicateCategories.
+  dedupeCategories() {
+    const byTitle = new Map(); // title -> canonical id (smallest)
+    for (const cat of Object.values(_data.categories)) {
+      if (!cat || cat.deletedAt) continue;
+      const title = cat.title || '';
+      const prev = byTitle.get(title);
+      if (prev == null || String(cat.id) < String(prev)) byTitle.set(title, cat.id);
+    }
+
+    let changed = false;
+    for (const cat of Object.values(_data.categories)) {
+      if (!cat || cat.deletedAt) continue;
+      const canonicalId = byTitle.get(cat.title || '');
+      if (canonicalId == null || String(cat.id) === String(canonicalId)) continue;
+
+      // Merge this duplicate's members into the canonical category.
+      const dupMembers = _data.categoryMembers[cat.id];
+      if (dupMembers) {
+        if (!_data.categoryMembers[canonicalId]) _data.categoryMembers[canonicalId] = {};
+        for (const mangaId of Object.keys(dupMembers)) {
+          if (dupMembers[mangaId]) _data.categoryMembers[canonicalId][mangaId] = true;
+        }
+      }
+      cat.deletedAt = now();
+      changed = true;
+    }
+
+    if (changed) save();
   },
 
   addToCategory(body) {
     if (!body) return;
     const mangaId = asMangaId(body.mangaId);
     const categoryId = body.categoryId;
-    if (!mangaId || categoryId == null || !_data.categories[categoryId]) return;
+    const cat = _data.categories[categoryId];
+    if (!mangaId || categoryId == null || !cat || cat.deletedAt) return;
     if (!_data.categoryMembers[categoryId]) _data.categoryMembers[categoryId] = {};
     _data.categoryMembers[categoryId][mangaId] = true;
     save();
@@ -463,7 +505,7 @@ export const library = {
     const categories = [];
     for (const catId of Object.keys(_data.categoryMembers)) {
       const cat = _data.categories[catId];
-      if (cat && _data.categoryMembers[catId] && _data.categoryMembers[catId][id]) {
+      if (cat && !cat.deletedAt && _data.categoryMembers[catId] && _data.categoryMembers[catId][id]) {
         categories.push({ id: cat.id, title: cat.title });
       }
     }
@@ -706,6 +748,10 @@ export const library = {
     save();
   },
 };
+
+// Collapse duplicate same-title categories on boot (legacy per-device seeds
+// accumulate across synced devices). Runs once against the freshly-loaded data.
+try { library.dedupeCategories(); } catch { /* ignore */ }
 
 // ---- chapter/source extraction helpers ---------------------------------
 
