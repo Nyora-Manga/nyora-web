@@ -4,6 +4,16 @@ A **100% client-side** browser build of the **Nyora** manga reader. There is no
 backend: catalog/search/details/page parsing all runs **in the browser**, and
 the app deploys as plain static files.
 
+## Features
+
+- **Read in any browser** — no install; works on desktop and mobile browsers, installable as a PWA with an offline app shell (service worker).
+- **Huge source catalogue** — browse, search and filter hundreds of online manga/manhwa/manhua sources, parsed entirely client-side (parser bundles loaded over-the-air, SHA-256 verified, with bundled fallbacks).
+- **Standard & Webtoon reader** — paged (LTR/RTL) and vertical webtoon modes with per-title settings.
+- **Library that stays organized** — favourites in custom categories and reading history.
+- **AniList tracking** — connect AniList (talks to its GraphQL API directly from the browser) to keep progress in sync.
+- **Cloud sync** — sign in with Google; your library **and source preferences** (installed/pinned) sync per-row across devices via Supabase (last-write-wins).
+- **Self-hostable** — deploys as static files to any host; the only server-side piece is a tiny Cloudflare Worker that proxies CORS/images.
+
 ## Architecture
 
 ```
