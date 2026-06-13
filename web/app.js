@@ -98,13 +98,14 @@ function continueReading() {
   router.navigate('reader', { sid, url: h.manga.url, chapterUrl: h.chapterUrl || h.chapterId });
 }
 
+const BASE_TITLE = 'Nyora — Free Online Manga Reader in Your Browser';
 const view = $('#view');
 
 function dispatch(route) {
   const name = routes[route.name] ? route.name : 'explore';
   const fn = routes[name];
   document.body.dataset.route = name;
-  document.title = (metas[name] && metas[name].title) ? metas[name].title + ' · Nyora' : 'Nyora';
+  document.title = name === 'explore' ? BASE_TITLE : ((metas[name] && metas[name].title) ? metas[name].title + ' · Nyora' : BASE_TITLE);
 
   // Leaving the reader for any other screen: run its teardown so the immersive
   // body classes (reader-active / reader-immersive) and its key/scroll listeners

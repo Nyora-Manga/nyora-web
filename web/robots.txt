@@ -1,0 +1,16 @@
+User-agent: *
+Allow: /
+
+# The single indexable URL is the app root. Hash routes (#/explore, #/library,
+# #/suggestions) are client-side only and are NOT separate crawlable pages.
+
+# Internal debug/smoke-test fragments — not for the index.
+Disallow: /_ch.html
+Disallow: /_check.html
+Disallow: /_d.html
+Disallow: /_e.html
+Disallow: /_f.html
+Disallow: /_s.html
+Disallow: /_v.html
+
+Sitemap: https://nyoraweb.pages.dev/sitemap.xml

@@ -5,7 +5,7 @@ import {
   el, toast, btn, sectionHeader, confirmDialog, icon, googleMark,
 } from '../core/ui.js';
 import {
-  store, ACCENT_PALETTE, resolveAccent, detectBrowserAccent,
+  store, COLOR_SCHEMES, resolveAccent, detectBrowserAccent,
 } from '../core/store.js';
 import { otaStatus, resetRuntime } from '../core/parser-runtime.js';
 import sync from '../core/sync.js';
@@ -58,19 +58,46 @@ function switchToggle(checked, onToggle) {
   return el('label', { class: 'switch' }, input, el('span', { class: 'slider' }));
 }
 
-function swatch(background, { active, title, glyph, onChoose } = {}) {
-  const sw = el('div', {
-    class: active ? 'swatch active' : 'swatch',
-    style: { background }, title: title || '', role: 'button', tabindex: '0',
-  });
-  if (glyph) {
-    Object.assign(sw.style, { display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '11px', fontWeight: '700', color: 'var(--on-accent)' });
-    sw.textContent = glyph;
-  }
-  const choose = () => onChoose && onChoose(sw);
-  sw.addEventListener('click', choose);
-  sw.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); choose(); } });
-  return sw;
+// --- colour-scheme preview card (mirrors android item_color_scheme.xml) -----
+// Each card paints a mini surface with an "Abc" label, two secondary-tone bars,
+// a primary swatch, an optional check, and the scheme name beneath.
+
+/** Resolve a card's primary tone for the active appearance. */
+function cardPrimary(scheme, appearance) {
+  if (scheme.wallpaper) return detectBrowserAccent() || resolveAccent('wallpaper', appearance);
+  return appearance === 'LIGHT' ? scheme.light : scheme.dark;
+}
+
+/** Resolve a card's secondary tone (used for the two preview bars). */
+function cardSecondary(scheme, appearance) {
+  if (scheme.wallpaper) return cardPrimary(scheme, appearance);
+  return scheme.sec || scheme.dark;
+}
+
+function schemeCard(scheme, { active, appearance, onChoose } = {}) {
+  const primary = cardPrimary(scheme, appearance);
+  const secondary = cardSecondary(scheme, appearance);
+  const check = icon('check');
+  check.classList.add('scheme-check');
+  const surface = el('div', { class: 'scheme-card-surface' },
+    el('span', { class: 'scheme-abc' }, 'Abc'),
+    el('span', { class: 'scheme-bar', style: { background: secondary, width: '40%' } }),
+    el('span', { class: 'scheme-bar', style: { background: secondary, width: '70%' } }),
+    el('span', { class: 'scheme-primary', style: { background: primary } }),
+    check,
+  );
+  const card = el('div', {
+    class: active ? 'scheme-card active' : 'scheme-card',
+    role: 'button', tabindex: '0', title: scheme.name,
+    style: { '--card-primary': primary },
+  },
+    surface,
+    el('span', { class: 'scheme-name' }, scheme.name),
+  );
+  const choose = () => onChoose && onChoose(card);
+  card.addEventListener('click', choose);
+  card.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); choose(); } });
+  return card;
 }
 
 export function render(view, _params) {
@@ -91,16 +118,20 @@ function buildAppearance() {
   const section = el('section', { class: 'settings-section' });
   section.append(el('h2', null, 'Appearance'));
   section.append(settingRow('Theme', null, segControl([['DARK', 'Dark'], ['LIGHT', 'Light']], prefs.appearance === 'LIGHT' ? 'LIGHT' : 'DARK', (v) => store.set({ appearance: v }))));
-  const swatches = el('div', { class: 'swatches' });
-  const currentAccent = prefs.accent;
-  const clearActive = () => { for (const child of Array.from(swatches.children)) child.classList.remove('active'); };
-  const wallpaperPreview = detectBrowserAccent() || resolveAccent('wallpaper');
-  const wallpaperActive = currentAccent === 'wallpaper' || currentAccent === 'auto';
-  swatches.appendChild(swatch(wallpaperPreview, { active: wallpaperActive, title: 'Wallpaper', glyph: 'W', onChoose: (node) => { store.set({ accent: 'wallpaper' }); clearActive(); node.classList.add('active'); } }));
-  for (const hex of ACCENT_PALETTE) {
-    swatches.appendChild(swatch(hex, { active: currentAccent === hex, title: hex, onChoose: (node) => { store.set({ accent: hex }); clearActive(); node.classList.add('active'); } }));
+  const appearance = prefs.appearance === 'LIGHT' ? 'LIGHT' : 'DARK';
+  const cards = el('div', { class: 'scheme-cards' });
+  // Any unknown/legacy stored value (old raw hex, 'auto') highlights Dynamic.
+  const knownIds = new Set(COLOR_SCHEMES.map((s) => s.id));
+  const selectedId = knownIds.has(prefs.accent) ? prefs.accent : 'wallpaper';
+  const clearActive = () => { for (const child of Array.from(cards.children)) child.classList.remove('active'); };
+  for (const scheme of COLOR_SCHEMES) {
+    cards.appendChild(schemeCard(scheme, {
+      active: scheme.id === selectedId,
+      appearance,
+      onChoose: (node) => { store.set({ accent: scheme.id }); clearActive(); node.classList.add('active'); },
+    }));
   }
-  section.append(field('Accent', swatches, 'Wallpaper follows your browser or OS accent colour by default.'));
+  section.append(field('Color scheme', cards, 'Dynamic follows your browser or OS accent colour by default.'));
   return section;
 }
 
@@ -266,19 +297,26 @@ function buildAbout() {
 
   const credits = el('div', { class: 'credits' },
     el('div', { style: { fontWeight: '800', fontSize: '18px', letterSpacing: '0.08em', marginBottom: '6px', color: 'var(--text)' } }, 'NYORA WEB 1.0'),
-    el('div', { style: { color: 'var(--text-faint)', fontSize: '13px', marginBottom: '24px' } }, 'Made by Md Hasan Raza'),
+    el('div', { style: { color: 'var(--text-faint)', fontSize: '13px', marginBottom: '24px' } }, 'Md Hasan Raza · Creator of Nyora'),
     el('div', { class: 'row', style: { justifyContent: 'center' } },
       socialLink('instagram', 'https://www.instagram.com/md_hasan_raza____?igsh=MXZ6eTk2Y3FsNGs3aQ==', 'Instagram'),
       socialLink('linkedin', 'https://www.linkedin.com/in/md-hasan-raza-8817372a7/', 'LinkedIn'),
       socialLink('github', 'https://github.com/Hasan72341', 'GitHub'),
       socialLink('mail', 'mailto:hasanraza96@outlook.com', 'Email'),
     ),
-    el('div', { style: { marginTop: '18px' } },
+    el('div', { style: { marginTop: '18px', display: 'flex', justifyContent: 'center', gap: '20px', flexWrap: 'wrap' } },
       el('a', {
         href: 'https://nyora.pages.dev', target: '_blank', rel: 'noopener',
         style: { color: 'var(--accent)', fontSize: '13px', textDecoration: 'none', fontWeight: '600' },
       }, 'Official website ↗'),
-    )
+      el('a', {
+        href: 'https://github.com/Hasan72341/nyora-web', target: '_blank', rel: 'noopener',
+        style: { color: 'var(--accent)', fontSize: '13px', textDecoration: 'none', fontWeight: '600' },
+      }, 'Source code ↗'),
+    ),
+    el('div', {
+      style: { color: 'var(--text-faint)', fontSize: '12px', marginTop: '20px', maxWidth: '420px', marginLeft: 'auto', marginRight: 'auto', lineHeight: '1.5' },
+    }, 'Nyora — your manga library, everywhere. Available on Android, Windows, macOS, Linux, iOS and the web.')
   );
 
   section.append(credits);

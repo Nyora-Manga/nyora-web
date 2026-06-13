@@ -8,29 +8,33 @@
 
 const STORAGE_KEY = 'nyora.prefs';
 
-// Accent palette offered by Settings.
-export const ACCENT_PALETTE = [
-  '#ffffff', // White
-  '#88ce02', // GSAP Green
-  '#ff0040', // Anime Red
-  '#ef4444', // Red
-  '#f97316', // Orange
-  '#f59e0b', // Amber
-  '#84cc16', // Lime
-  '#10b981', // Emerald
-  '#14b8a6', // Teal
-  '#06b6d4', // Cyan
-  '#0ea5e9', // Sky
-  '#3b82f6', // Blue
-  '#6366f1', // Indigo
-  '#8b5cf6', // Violet
-  '#7c3aed', // Deep Purple
-  '#ec4899', // Pink
-  '#f43f5e', // Rose
-];
-
 const WALLPAPER_ACCENT = 'wallpaper';
 const LEGACY_AUTO_ACCENT = 'auto';
+
+// Shared named colour-scheme set (ported from nyora-android). Dynamic first =
+// default; each scheme carries both a light and a dark primary — the active
+// appearance (LIGHT/DARK) selects which one is used as the Material accent. The
+// `sec` (dark secondary) tone draws the two preview bars on each card.
+//   'wallpaper' (= Dynamic) has no fixed pair — it resolves to the OS/browser
+//   AccentColor, so its preview tones are derived from the detected accent.
+export const COLOR_SCHEMES = [
+  { id: WALLPAPER_ACCENT, name: 'Dynamic', wallpaper: true },
+  { id: 'totoro', name: 'Totoro', light: '#3C6090', dark: '#A6C8FF', sec: '#BCC7DC' },
+  { id: 'miku', name: 'Miku', light: '#00696D', dark: '#6FDDE2', sec: '#A6CECF' },
+  { id: 'asuka', name: 'Asuka', light: '#904A40', dark: '#FFB4A8', sec: '#E7BDB6' },
+  { id: 'mion', name: 'Mion', light: '#3B693A', dark: '#A1D39A', sec: '#EEBF6D' },
+  { id: 'rikka', name: 'Rikka', light: '#68548D', dark: '#D3BBFD', sec: '#CDC2DB' },
+  { id: 'sakura', name: 'Sakura', light: '#8C4A60', dark: '#FFB1C8', sec: '#E3BDC6' },
+  { id: 'mamimi', name: 'Mamimi', light: '#465D91', dark: '#AFC6FF', sec: '#BFC6DC' },
+  { id: 'kanade', name: 'Kanade', light: '#353543', dark: '#FFFFFF', sec: '#DDDCDC' },
+  { id: 'itsuka', name: 'Itsuka', light: '#974800', dark: '#FFBA8F', sec: '#F7B993' },
+  { id: 'yuki', name: 'Yuki', light: '#43474A', dark: '#FFFFFF', sec: '#C6C6C9' },
+];
+
+/** Look up a scheme by id. Unknown/legacy values fall back to Dynamic (wallpaper). */
+export function schemeById(id) {
+  return COLOR_SCHEMES.find((s) => s.id === id) || COLOR_SCHEMES[0];
+}
 const FALLBACK_ACCENT = '#88ce02'; // Used only when the OS/browser exposes no accent.
 
 const DEFAULT_PREFS = {
@@ -76,13 +80,26 @@ export function detectBrowserAccent() {
   return _browserAccent;
 }
 
-/** Resolve the effective accent hex from a pref value ('wallpaper', legacy 'auto', or a hex). */
-export function resolveAccent(pref) {
-  if (pref && pref !== 'auto' && /^#[0-9a-fA-F]{6}$/.test(pref)) return pref;
+/**
+ * Resolve the effective accent hex from a pref value, appearance-aware.
+ *   - a known scheme id  -> its light/dark primary per `theme`
+ *   - 'wallpaper'/'auto' -> the OS/browser accent (single-valued, no L/D split)
+ *   - a legacy raw hex   -> returned as-is (backward compatible)
+ *   - anything unknown   -> Dynamic/wallpaper fallback
+ * `theme` is 'LIGHT' | 'DARK' (defaults to 'DARK').
+ */
+export function resolveAccent(pref, theme) {
   if (pref === WALLPAPER_ACCENT || pref === LEGACY_AUTO_ACCENT) {
     return detectBrowserAccent() || FALLBACK_ACCENT;
   }
-  return pref || FALLBACK_ACCENT;
+  const scheme = COLOR_SCHEMES.find((s) => s.id === pref);
+  if (scheme && !scheme.wallpaper) {
+    return theme === 'LIGHT' ? scheme.light : scheme.dark;
+  }
+  // Legacy raw hex saved by an older build — keep honouring it.
+  if (pref && /^#[0-9a-fA-F]{6}$/.test(pref)) return pref;
+  // Unknown -> Dynamic/wallpaper fallback.
+  return detectBrowserAccent() || FALLBACK_ACCENT;
 }
 
 // ---- deep helpers ------------------------------------------------------
@@ -205,7 +222,7 @@ function createStore() {
     const theme = prefs.appearance === 'LIGHT' ? 'LIGHT' : 'DARK';
     root.setAttribute('data-theme', theme);
     if (document.body) document.body.setAttribute('data-theme', theme);
-    const accent = resolveAccent(prefs.accent);
+    const accent = resolveAccent(prefs.accent, theme);
     root.style.setProperty('--accent', accent);
     
     // Calculate contrast for --on-accent
@@ -347,4 +364,4 @@ function createRouter() {
 
 export const router = createRouter();
 
-export default { store, router, applyTheme, ACCENT_PALETTE };
+export default { store, router, applyTheme, COLOR_SCHEMES };

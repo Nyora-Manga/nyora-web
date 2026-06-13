@@ -1087,6 +1087,24 @@ body.reader-active .view {
 .swatch:hover { transform: scale(1.12); }
 .swatch.active { border-color: var(--text); box-shadow: 0 0 0 3px var(--accent-soft); }
 
+/* ---- colour-scheme preview cards (android item_color_scheme) ---------- */
+.scheme-cards { display: flex; gap: 12px; overflow-x: auto; padding: 4px 2px 8px; scroll-snap-type: x proximity; -webkit-overflow-scrolling: touch; }
+.scheme-cards::-webkit-scrollbar { height: 6px; }
+.scheme-cards::-webkit-scrollbar-thumb { background: var(--border); border-radius: 999px; }
+.scheme-card { flex: 0 0 auto; cursor: pointer; scroll-snap-align: start; display: flex; flex-direction: column; align-items: center; gap: 6px; outline: none; }
+.scheme-card-surface { position: relative; width: 84px; height: 116px; border-radius: 14px; background: var(--surface2); border: 1px solid var(--border); padding: 10px; box-sizing: border-box; display: flex; flex-direction: column; transition: box-shadow 0.15s var(--ease), border-color 0.15s var(--ease); }
+.scheme-card:hover .scheme-card-surface { border-color: var(--card-primary); }
+.scheme-card:focus-visible .scheme-card-surface { box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--card-primary); }
+.scheme-card.active .scheme-card-surface { border-color: var(--card-primary); box-shadow: 0 0 0 2px var(--card-primary); }
+.scheme-abc { font-size: 13px; font-weight: 700; color: var(--text); line-height: 1; margin-bottom: auto; }
+.scheme-bar { display: block; height: 6px; border-radius: 4px; margin-top: 6px; }
+.scheme-primary { position: absolute; right: 10px; bottom: 10px; width: 18px; height: 18px; border-radius: 6px; }
+.scheme-check { position: absolute; top: 8px; right: 8px; color: var(--card-primary); opacity: 0; transform: scale(0.6); transition: opacity 0.15s var(--ease), transform 0.15s var(--ease-spring); }
+.scheme-check svg { width: 18px; height: 18px; }
+.scheme-card.active .scheme-check { opacity: 1; transform: scale(1); }
+.scheme-name { font-size: 12px; font-weight: 600; color: var(--text-dim); }
+.scheme-card.active .scheme-name { color: var(--text); }
+
 /* ---- switch ---------------------------------------------------------- */
 .switch { position: relative; display: inline-block; width: 46px; height: 27px; flex: 0 0 46px; }
 .switch input { opacity: 0; width: 0; height: 0; }
@@ -1473,6 +1491,8 @@ body.reader-active .view {
   .swatch { width: 34px; height: 34px; }
   .swatch:hover { transform: scale(1.1); }
   .swatch.active { box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--accent); }
+  .scheme-cards { gap: 10px; margin: 0 -2px; padding-left: 2px; padding-right: 2px; }
+  .scheme-card-surface { width: 76px; height: 106px; }
   .switch { width: 48px; height: 28px; flex-basis: 48px; }
   .switch .slider::before { width: 22px; height: 22px; }
   .switch input:checked + .slider::before { transform: translateX(20px); }

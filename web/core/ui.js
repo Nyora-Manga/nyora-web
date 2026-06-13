@@ -39,7 +39,13 @@ export function el(tag, props, ...children) {
       } else if (key === 'html') {
         node.innerHTML = value;
       } else if (key === 'style' && typeof value === 'object') {
-        Object.assign(node.style, value);
+        // Object.assign can't set CSS custom properties (--foo) on a style
+        // declaration, so route those through setProperty; plain props as-is.
+        for (const [k, v] of Object.entries(value)) {
+          if (v === null || v === undefined) continue;
+          if (k.startsWith('--')) node.style.setProperty(k, v);
+          else node.style[k] = v;
+        }
       } else if (key === 'dataset' && typeof value === 'object') {
         Object.assign(node.dataset, value);
       } else if (key.startsWith('on') && typeof value === 'function') {

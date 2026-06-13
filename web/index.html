@@ -5,9 +5,101 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=5" />
   <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#000000" />
   <meta name="theme-color" media="(prefers-color-scheme: light)" content="#ececf2" />
-  <meta name="description" content="Read manga from hundreds of sources — anywhere, offline-capable." />
   <meta name="color-scheme" content="dark light" />
-  <title>Nyora</title>
+
+<!-- SEO / Social / Structured Data block -->
+<!-- Primary meta -->
+<title>Nyora — Free Online Manga Reader in Your Browser</title>
+<meta name="description" content="Read manga online free in your browser — no install. Nyora is an installable, offline-capable PWA with hundreds of sources, favourites, history & AniList sync." />
+<meta name="author" content="Nyora" />
+<meta name="keywords" content="free online manga reader, read manga in browser, online manga reader no install, manga reader PWA, webtoon reader, offline manga reader, installable manga reader, AniList tracking, read manga online free, manga library" />
+<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1" />
+
+<!-- Canonical: single indexable URL is the app root -->
+<link rel="canonical" href="https://nyoraweb.pages.dev/" />
+
+<!-- Open Graph -->
+<meta property="og:type" content="website" />
+<meta property="og:site_name" content="Nyora" />
+<meta property="og:title" content="Nyora — Free Online Manga Reader in Your Browser" />
+<meta property="og:description" content="Read manga online free in your browser — no install. An installable, offline-capable PWA with hundreds of sources, favourites, history & AniList sync." />
+<meta property="og:url" content="https://nyoraweb.pages.dev/" />
+<meta property="og:locale" content="en_US" />
+<meta property="og:image" content="https://nyoraweb.pages.dev/icon.png" />
+<meta property="og:image:type" content="image/png" />
+<meta property="og:image:width" content="192" />
+<meta property="og:image:height" content="192" />
+<meta property="og:image:alt" content="Nyora — free online manga reader" />
+
+<!-- X (Twitter Card markup) -->
+<!-- NOTE: using summary (square) because the only image is the square icon. -->
+<!-- Switch to summary_large_image once a real 1200x630 og-image.png exists. -->
+<meta name="twitter:card" content="summary" />
+<meta name="twitter:site" content="@hasanraza___" />
+<meta name="twitter:creator" content="@hasanraza___" />
+<meta name="twitter:title" content="Nyora — Free Online Manga Reader in Your Browser" />
+<meta name="twitter:description" content="Read manga online free in your browser — no install. Installable, offline-capable PWA, also on Android, Windows, macOS, Linux & iOS." />
+<meta name="twitter:image" content="https://nyoraweb.pages.dev/icon.png" />
+<meta name="twitter:image:alt" content="Nyora — free online manga reader" />
+
+<!-- Structured data: cross-linked WebApplication + Organization + Person + WebSite. -->
+<!-- No SearchAction: Nyora's search is client-side hash-based, not a crawlable URL. -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "WebApplication",
+      "@id": "https://nyoraweb.pages.dev/#webapp",
+      "name": "Nyora",
+      "alternateName": "Nyora Web",
+      "url": "https://nyoraweb.pages.dev/",
+      "description": "Free online manga reader that runs entirely in your browser — no install required. Read manga from hundreds of sources parsed client-side, with a standard and webtoon reader (LTR, RTL, vertical), favourites, reading history, AniList tracking and Google cloud sync. Installable as an offline-capable PWA.",
+      "applicationCategory": "EntertainmentApplication",
+      "applicationSubCategory": "BookApplication",
+      "operatingSystem": "Any (web browser); also Android, Windows, macOS, Linux, iOS",
+      "browserRequirements": "Requires JavaScript. Requires a modern web browser.",
+      "image": "https://nyoraweb.pages.dev/icon.png",
+      "screenshot": "https://nyoraweb.pages.dev/icon.png",
+      "inLanguage": "en",
+      "isAccessibleForFree": true,
+      "keywords": "free online manga reader, read manga in browser, no install manga reader, installable PWA, offline-capable, webtoon reader, manga library, AniList tracking",
+      "offers": {
+        "@type": "Offer",
+        "price": "0",
+        "priceCurrency": "USD"
+      },
+      "author": { "@id": "https://nyoraweb.pages.dev/#author" },
+      "publisher": { "@id": "https://nyoraweb.pages.dev/#org" },
+      "isPartOf": { "@id": "https://nyoraweb.pages.dev/#website" }
+    },
+    {
+      "@type": "Organization",
+      "@id": "https://nyoraweb.pages.dev/#org",
+      "name": "Nyora",
+      "url": "https://nyora.pages.dev",
+      "logo": "https://nyoraweb.pages.dev/icon.png",
+      "founder": { "@id": "https://nyoraweb.pages.dev/#author" }
+    },
+    {
+      "@type": "Person",
+      "@id": "https://nyoraweb.pages.dev/#author",
+      "name": "Md Hasan Raza",
+      "sameAs": ["https://x.com/hasanraza___"]
+    },
+    {
+      "@type": "WebSite",
+      "@id": "https://nyoraweb.pages.dev/#website",
+      "name": "Nyora",
+      "url": "https://nyoraweb.pages.dev/",
+      "description": "Free, client-side, installable manga reader for the browser.",
+      "inLanguage": "en",
+      "publisher": { "@id": "https://nyoraweb.pages.dev/#org" }
+    }
+  ]
+}
+</script>
+
   <link rel="icon" href="/icon.png" />
   <link rel="apple-touch-icon" href="/icon.png" />
   <link rel="manifest" href="/manifest.webmanifest" />
@@ -39,7 +131,29 @@
         <span class="visit-site-label">Official website</span>
       </a>
     </header>
-    <main class="view" id="view"></main>
+    <main class="view" id="view">
+<section id="seo-intro" data-static-seo>
+  <h1>Nyora — Free Online Manga Reader in Your Browser</h1>
+  <p>Nyora is a free online manga reader that runs entirely in your browser — no download, no sign-up, no install. Open a tab and start reading manga from hundreds of sources parsed client-side, with a standard and webtoon reader supporting left-to-right, right-to-left and continuous vertical modes.</p>
+  <h2>Read manga online, free, with no install</h2>
+  <p>Keep favourites and reading history, track series with AniList, and sync your library to the cloud with Google. Everything runs locally in your browser, so there is nothing to install and nothing to set up.</p>
+  <h2>An installable, offline-capable PWA</h2>
+  <p>Install Nyora as a PWA for an app-like, offline-capable experience, or just use it in the browser. Nyora is cross-platform — also available on Android, Windows, macOS, Linux and iOS.</p>
+  <ul>
+    <li>Read manga online free, with no install</li>
+    <li>Installable PWA with an offline-capable app shell</li>
+    <li>Hundreds of sources parsed client-side</li>
+    <li>Standard &amp; webtoon reader — LTR, RTL and vertical</li>
+    <li>Favourites and reading history</li>
+    <li>AniList tracking &amp; Google cloud sync</li>
+    <li>Works in any modern browser, plus Android, Windows, macOS, Linux &amp; iOS</li>
+  </ul>
+  <h2>Get the app</h2>
+  <ul>
+    <li><a href="https://nyora.pages.dev" rel="noopener">Official website &amp; downloads</a></li>
+  </ul>
+</section>
+    </main>
   </div>
   <nav class="tabbar" id="tabbar"></nav>
   <div class="toast hidden" id="toast"></div>
