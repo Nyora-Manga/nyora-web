@@ -205,6 +205,26 @@ button { cursor: pointer; }
   border-bottom: 1px solid var(--border);
 }
 .topbar .spacer { flex: 1 1 auto; }
+
+/* "Official website" pill — always visible in the header, links to the marketing site. */
+.visit-site {
+  flex: 0 0 auto;
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 8px 15px; border-radius: 999px;
+  font-size: 13px; font-weight: 600; line-height: 1; text-decoration: none;
+  white-space: nowrap; transform: translateY(-2px);
+  color: color-mix(in srgb, var(--accent) 90%, #fff);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 32%, transparent);
+  transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
+}
+.visit-site:hover { color: #fff; background: var(--accent); border-color: var(--accent); }
+.visit-site svg { flex: 0 0 auto; }
+@media (max-width: 760px) {
+  .visit-site-label { display: none; }   /* icon-only on phones to save space */
+  .visit-site { padding: 9px; }
+}
+
 .search-form { flex: 1 1 440px; max-width: 560px; position: relative; display: flex; align-items: center; transform: translateY(-2px); }
 /* Search bar hidden only on the manga detail page + reader (app.js toggles
    body.hide-search per route, so it always reappears on other screens). */
