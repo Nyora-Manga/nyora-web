@@ -8,8 +8,8 @@
   "display": "standalone",
   "display_override": ["standalone", "window-controls-overlay", "minimal-ui"],
   "orientation": "any",
-  "background_color": "#000000",
-  "theme_color": "#000000",
+  "background_color": "#060810",
+  "theme_color": "#060810",
   "categories": ["entertainment", "books"],
   "icons": [
     { "src": "/icon.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
