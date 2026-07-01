@@ -9,6 +9,7 @@ import { el, icon, $, toast } from './core/ui.js';
 import library from './core/library.js';
 import { revealView } from './core/motion.js';
 
+import { meta as discoverMeta, render as discoverRender } from './screens/discover.js';
 import { meta as exploreMeta, render as exploreRender } from './screens/explore.js';
 import { meta as libraryMeta, render as libraryRender } from './screens/library.js';
 import { meta as historyMeta, render as historyRender } from './screens/history.js';
@@ -27,6 +28,7 @@ import { meta as browserMeta, render as browserRender } from './screens/browser.
 import { shouldShowWelcome, showWelcome } from './screens/welcome.js';
 
 const routes = {
+  discover: discoverRender,
   explore: exploreRender,
   library: libraryRender,
   history: historyRender,
@@ -45,6 +47,7 @@ const routes = {
 };
 
 const metas = {
+  discover: discoverMeta,
   explore: exploreMeta,
   library: libraryMeta,
   history: historyMeta,
@@ -74,6 +77,7 @@ const NAV_GROUPS = [
     { key: 'downloads', label: 'Downloads', icon: 'download' },
   ] },
   { label: 'Discover', items: [
+    { key: 'discover', label: 'Discover', icon: 'home' },
     { key: 'explore', label: 'Explore', icon: 'compass' },
     { key: 'suggestions', label: 'Discover', icon: 'trending' },
     { key: 'updates', label: 'Updates', icon: 'bell' },

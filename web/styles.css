@@ -797,6 +797,72 @@ body.hide-search .search-form { display: none; }
   min-height: 400px;
 }
 
+/* ---- discover home (android-style) ---------------------------------- */
+.discover { display: flex; flex-direction: column; gap: 22px; }
+.discover-body { display: flex; flex-direction: column; gap: 26px; }
+
+/* Persistent search bar — quiet rounded surface, leading glyph. */
+.discover-search {
+  display: flex; align-items: center; gap: 10px;
+  padding: 0 16px; height: 48px;
+  background: var(--surface1); border: 1px solid var(--border);
+  border-radius: 999px;
+}
+.discover-search .icon { color: var(--text-dim); flex: 0 0 auto; }
+.discover-search-input {
+  flex: 1 1 auto; min-width: 0; border: none; background: transparent;
+  color: var(--text); font-size: 15px; outline: none;
+}
+.discover-search-input::placeholder { color: var(--text-faint); }
+
+/* Hero card — blurred cover backdrop, real cover + title/genres/Read. */
+.discover-hero {
+  position: relative; overflow: hidden; cursor: pointer;
+  border-radius: var(--radius-lg); border: 1px solid var(--border);
+  background: var(--bg-elev); box-shadow: var(--shadow);
+}
+.discover-hero-bg {
+  position: absolute; inset: 0; background-size: cover; background-position: center;
+  filter: blur(36px) saturate(160%); transform: scale(1.25); opacity: 0.42; pointer-events: none;
+}
+.discover-hero-bg::after {
+  content: ""; position: absolute; inset: 0;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--bg) 40%, transparent), var(--bg-elev) 82%);
+}
+.discover-hero-content {
+  position: relative; z-index: 1;
+  display: flex; gap: 20px; align-items: center; padding: 22px;
+}
+.discover-hero-cover {
+  flex: 0 0 auto; width: 128px; aspect-ratio: 2/3; border-radius: var(--radius);
+  overflow: hidden; background: var(--surface1); border: 1px solid var(--border);
+  box-shadow: var(--shadow);
+}
+.discover-hero-cover img { width: 100%; height: 100%; object-fit: cover; }
+.discover-hero-info { min-width: 0; display: flex; flex-direction: column; gap: 10px; }
+.discover-hero-eyebrow {
+  text-transform: uppercase; letter-spacing: 0.08em; font-size: 12px; font-weight: 600;
+  color: var(--accent);
+}
+.discover-hero-title { margin: 0; font-size: 26px; line-height: 1.15; letter-spacing: -0.02em; }
+.discover-hero-actions { display: flex; gap: 10px; margin-top: 4px; }
+
+/* Horizontal rails — snap-scrolling track of fixed-width cover cards. */
+.discover-rail { display: flex; flex-direction: column; gap: 12px; }
+.discover-rail .section-header { margin: 0; }
+.discover-rail-track {
+  display: flex; gap: 14px; overflow-x: auto; padding-bottom: 6px;
+  scroll-snap-type: x proximity; -webkit-overflow-scrolling: touch;
+}
+.discover-rail-track::-webkit-scrollbar { height: 6px; }
+.discover-rail-card { flex: 0 0 138px; width: 138px; scroll-snap-align: start; }
+
+@media (max-width: 760px) {
+  .discover-hero-cover { width: 104px; }
+  .discover-hero-title { font-size: 21px; }
+  .discover-rail-card { flex-basis: 122px; width: 122px; }
+}
+
 /* ---- explore: browse body states ------------------------------------- */
 /* Search-mode input row in the browse pane. */
 .browse-searchbar { display: flex; gap: 10px; align-items: stretch; margin: 0 0 18px; }
