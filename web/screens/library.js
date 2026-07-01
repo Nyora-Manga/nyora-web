@@ -1,8 +1,9 @@
-// screens/library.js — Library: the favourites collection.
+// screens/library.js — Library: Favourites + Downloads.
 //
-// History and Stats are their own sidebar destinations; Library is purely the
-// favourites grid, filterable by title, sortable, and organised into
-// categories. All state lives in the browser (see core/library.js).
+// Android-style Library: a two-way subsection toggle at the top switches
+// between Favourites (favourite categories, filterable/sortable grid) and
+// Downloads (the offline download queue). History and Stats remain their own
+// sidebar destinations. All state lives in the browser (see core/library.js).
 
 import {
   el, card, toast, skeletonCard, icon, btn, chip, emptyState,
@@ -11,6 +12,7 @@ import {
 import library from '../core/library.js';
 import { api } from '../core/api.js';
 import { router } from '../core/store.js';
+import { render as downloadsRender } from './downloads.js';
 
 export const meta = { title: 'Library', nav: true, icon: 'library', order: 10 };
 
@@ -72,7 +74,7 @@ function sortEntries(entries, sort) {
 
 // ---- render --------------------------------------------------------------
 
-export function render(view, _params) {
+export function render(view, params) {
   view.replaceChildren();
 
   const state = {
@@ -80,6 +82,8 @@ export function render(view, _params) {
     activeCategoryId: null, // null = "All"
     sources: [],
     sort: 'recent',
+    tab: (params && params.tab === 'downloads') ? 'downloads' : 'favourites',
+    dlLoaded: false,
   };
 
   // --- header: title + subtle count -------------------------------------
@@ -91,20 +95,52 @@ export function render(view, _params) {
     el('div', { class: 'section-actions' }, countEl),
   );
 
-  // --- sort row ---------------------------------------------------------
+  // --- subsection toggle: Favourites | Downloads ------------------------
+  const tabSeg = segmented(
+    [{ label: 'Favourites', value: 'favourites' }, { label: 'Downloads', value: 'downloads' }],
+    state.tab,
+    (v) => selectTab(v),
+  );
+  const tabRow = el('div', { class: 'row library-tab-row', style: { marginBottom: '18px' } }, tabSeg);
+
+  // --- Favourites subsection --------------------------------------------
   const sortSeg = segmented(SORTS, state.sort, (v) => {
     state.sort = v;
     renderGrid();
   });
   const sortRow = el('div', { class: 'row library-sort-row', style: { marginBottom: '14px' } }, sortSeg);
 
-  // --- category chips ---------------------------------------------------
   const chipsEl = el('div', { class: 'chips library-filter-row', style: { marginBottom: '20px' } });
-
-  // --- grid -------------------------------------------------------------
   const gridHost = el('div');
 
-  view.append(header, sortRow, chipsEl, gridHost);
+  const favSection = el('div', { class: 'library-favourites' }, sortRow, chipsEl, gridHost);
+
+  // --- Downloads subsection (lazy: mounted on first visit) --------------
+  const dlSection = el('div', { class: 'library-downloads' });
+
+  view.append(header, tabRow, favSection, dlSection);
+
+  // ---- subsection switching ------------------------------------------
+
+  function selectTab(tab) {
+    if (state.tab === tab) return;
+    state.tab = tab;
+    applyTab();
+  }
+
+  function applyTab() {
+    const onFav = state.tab === 'favourites';
+    favSection.style.display = onFav ? '' : 'none';
+    dlSection.style.display = onFav ? 'none' : '';
+    countEl.style.display = onFav ? '' : 'none';
+    if (!onFav && !state.dlLoaded) {
+      state.dlLoaded = true;
+      // downloads.render() owns the host it is given; bridge its teardown up
+      // to the library view so app.js drops the subscription on navigate-away.
+      downloadsRender(dlSection);
+      view.__downloadsTeardown = dlSection.__downloadsTeardown;
+    }
+  }
 
   // ---- data helpers --------------------------------------------------
 
@@ -171,7 +207,7 @@ export function render(view, _params) {
       );
       return wrap;
     }
-    const wrap = emptyState('Your library is empty.', 'inbox');
+    const wrap = emptyState("It's kind of empty here…", 'inbox');
     wrap.appendChild(
       btn('Explore', { variant: 'accent', icon: 'compass', onClick: () => router.navigate('explore') }),
     );
@@ -334,6 +370,7 @@ export function render(view, _params) {
   updateCount();
   renderChips();
   renderGrid();
+  applyTab();
 
   // Resolve sources in the background; a card tap before this lands still
   // falls back to the raw source ref name.
