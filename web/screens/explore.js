@@ -1,14 +1,14 @@
-// screens/explore.js — HOME. Browse a source's catalog.
+// screens/explore.js — android-style Explore.
 //
-// Flow:  Explore  ->  Source sheet  ->  Extensions sheet.
-//   • Desktop (>760px): a persistent two-pane layout — a left source-list pane
-//     and the right browse pane. The browse-header source pill highlights the
-//     left pane.
-//   • Mobile (<=760px): the left pane is hidden; tapping the source pill opens
-//     a BOTTOM SHEET (modal()) that renders the SAME source list. Picking a
-//     source closes the sheet and loads its Popular grid.
-//   • Extensions live INSIDE the source list: a "Manage extensions" row at the
-//     top opens the Extensions sheet (search + Install/Remove rows).
+// Landing (default): a universal search field, a 2x2 quick-actions card
+// (Local storage / Bookmarks / Random / Downloads), then a "Manga sources"
+// grid of installed-source tiles with a "Catalog" action (Manage extensions).
+// This mirrors the nyora-android Explore screen.
+//
+// Tapping a source tile switches the screen into BROWSE mode — the classic
+// per-source Popular/Latest/Search grid — with a Back affordance returning to
+// the landing. On mobile the browse-header source pill opens a bottom SHEET
+// (modal()) with the full source list so the reader can switch sources.
 //
 // The browse body is a strict state machine (loading / error / empty / grid)
 // guarded by an async token, so a stale response can never paint and the area
@@ -42,11 +42,12 @@ function medallion(src, cls) {
   return el('div', { class: cls }, langCode(src).slice(0, 2) || '??');
 }
 
-export function render(view, params) {
+export function render(view, _params) {
   const prefs = store.get();
   view.replaceChildren();
 
   const state = {
+    screen: 'landing', // 'landing' | 'browse'
     sources: [],
     sourcesLoading: true,
     sourcesError: null,
@@ -62,23 +63,19 @@ export function render(view, params) {
     browseToken: 0,
   };
 
-  // A live registry of mounted source-list containers (the desktop pane plus
-  // any open mobile sheet). One renderSourceList() refresh repaints them all.
+  // Single root; the screen swaps landing <-> browse in place.
+  const root = el('div', { class: 'explore-screen' });
+  view.appendChild(root);
+
+  // browsePane is (re)created whenever we enter browse mode.
+  let browsePane = null;
+
+  // A live registry of mounted source-list containers (any open mobile sheet).
+  // One renderSourceLists() refresh repaints them all.
   const sourceListMounts = new Set();
   let closeSourceSheet = null; // close() of an open mobile source sheet, if any.
 
-  // ---- shell: desktop two-pane (source pane hidden on mobile via CSS) -----
-
-  const desktopList = el('div', { class: 'source-list' });
-  const sourcePane = el('div', { class: 'source-pane' },
-    sectionHeader('Sources'),
-    desktopList,
-  );
-
-  const browsePane = el('div', { class: 'browse-pane' });
-  view.appendChild(el('div', { class: 'explore' }, sourcePane, browsePane));
-
-  // ---- source list (shared by desktop pane + mobile sheet) ----------------
+  // ---- helpers ------------------------------------------------------------
 
   function installedVisible() {
     return state.sources.filter((s) => s.isInstalled && (state.showNsfw || !s.isNsfw));
@@ -93,6 +90,141 @@ export function render(view, params) {
     }
     return list;
   }
+
+  // ---- screen swap --------------------------------------------------------
+
+  function renderScreen() {
+    if (state.screen === 'browse' && store.source) renderBrowseView();
+    else renderLanding();
+  }
+
+  // ======================= LANDING ========================================
+
+  function renderLanding() {
+    state.screen = 'landing';
+    root.replaceChildren();
+
+    const home = el('div', { class: 'explore-home' });
+    root.appendChild(home);
+
+    home.appendChild(landingSearch());
+    home.appendChild(quickActions());
+    home.appendChild(sourcesSection());
+  }
+
+  function landingSearch() {
+    const input = el('input', {
+      type: 'search', class: 'discover-search-input',
+      placeholder: 'Search all sources', autocomplete: 'off', enterkeyhint: 'search',
+      'aria-label': 'Search all sources',
+    });
+    return el('form', {
+      class: 'discover-search', role: 'search',
+      onSubmit: (e) => {
+        e.preventDefault();
+        const q = input.value.trim();
+        router.navigate('search', q ? { q } : {});
+      },
+    }, icon('search'), input);
+  }
+
+  function quickAction(label, iconName, onClick) {
+    return el('button', {
+      class: 'quick-action', type: 'button', onClick,
+    },
+      el('span', { class: 'qa-icon' }, icon(iconName)),
+      el('span', { class: 'qa-label' }, label),
+    );
+  }
+
+  function quickActions() {
+    return el('div', { class: 'quick-actions' },
+      quickAction('Local storage', 'folder', () => router.navigate('local')),
+      quickAction('Bookmarks', 'bookmark', () => router.navigate('bookmarks')),
+      quickAction('Random', 'refresh', () => openRandom()),
+      quickAction('Downloads', 'download', () => router.navigate('downloads')),
+    );
+  }
+
+  function sourcesSection() {
+    const wrap = el('div', { class: 'explore-sources' });
+    wrap.appendChild(sectionHeader('Manga sources',
+      btn('Catalog', { variant: 'ghost', icon: 'download', onClick: openExtensions })));
+
+    const body = el('div', { class: 'explore-sources-body' });
+    wrap.appendChild(body);
+
+    if (state.sourcesLoading) {
+      body.appendChild(el('div', { class: 'center', style: { padding: '32px 0' } }, spinner()));
+      return wrap;
+    }
+    if (state.sourcesError) {
+      body.appendChild(errorBox(state.sourcesError));
+      body.appendChild(el('div', { class: 'center', style: { padding: '8px 0 0' } },
+        btn('Retry', { variant: 'ghost', icon: 'refresh', onClick: () => loadSources() })));
+      return wrap;
+    }
+
+    const installed = installedVisible();
+    if (!installed.length) {
+      body.appendChild(emptyState('No sources installed yet.', 'compass'));
+      body.appendChild(el('div', { class: 'center', style: { padding: '4px 0 0' } },
+        btn('Open catalog', { variant: 'accent', icon: 'download', onClick: openExtensions })));
+      return wrap;
+    }
+
+    const byName = (a, b) => (a.name || '').toLowerCase().localeCompare((b.name || '').toLowerCase());
+    const ordered = installed.slice().sort((a, b) => {
+      const p = (b.isPinned ? 1 : 0) - (a.isPinned ? 1 : 0);
+      return p !== 0 ? p : byName(a, b);
+    });
+
+    const grid = el('div', { class: 'source-grid' });
+    for (const s of ordered) grid.appendChild(sourceTile(s));
+    body.appendChild(grid);
+    return wrap;
+  }
+
+  function sourceTile(src) {
+    return el('button', {
+      class: 'source-tile', type: 'button',
+      title: src.name || 'Source',
+      onClick: () => selectSource(src),
+    },
+      medallion(src, 'source-tile-badge' + (src.isPinned ? ' pinned' : '')),
+      el('span', { class: 'source-tile-name' }, src.name || 'Source'),
+      el('span', { class: 'source-tile-sub' }, langLabel(src)),
+    );
+  }
+
+  // ---- Random -------------------------------------------------------------
+  // Pick a random installed source and open a random popular title from it.
+
+  async function openRandom() {
+    const installed = installedVisible();
+    if (!installed.length) {
+      toast('Install a source first — open the catalog.');
+      return;
+    }
+    const src = installed[Math.floor(Math.random() * installed.length)];
+    toast('Finding something to read…');
+    try {
+      const page = 1 + Math.floor(Math.random() * 3);
+      let res = await api.popular(src.id, page);
+      let entries = (res && res.entries) || [];
+      if (!entries.length && page !== 1) {
+        res = await api.popular(src.id, 1);
+        entries = (res && res.entries) || [];
+      }
+      if (!entries.length) { toast('Nothing found — try again.'); return; }
+      const m = entries[Math.floor(Math.random() * entries.length)];
+      router.navigate('details', { sid: src.id, url: m.url });
+    } catch (e) {
+      toast(`Error: ${e.message}`);
+    }
+  }
+
+  // ======================= SOURCE LIST (mobile sheet) =====================
 
   function sourceRow(src, onSelect) {
     const active = store.source && store.source.id === src.id;
@@ -176,15 +308,10 @@ export function render(view, params) {
     }
   }
 
-  // Repaint every mounted source list (desktop pane + open sheet).
+  // Repaint every mounted source list (open sheet).
   function renderSourceLists() {
     for (const m of sourceListMounts) fillSourceList(m.container, m.onSelect);
   }
-
-  // Register the persistent desktop pane as a permanent mount.
-  sourceListMounts.add({ container: desktopList, onSelect: (s) => selectSource(s) });
-
-  // ---- source sheet (mobile bottom sheet) ---------------------------------
 
   function openSourceSheet() {
     const container = el('div', { class: 'source-list source-sheet-list' });
@@ -197,8 +324,8 @@ export function render(view, params) {
     const close = modal({ title: 'Choose source', body: container });
     closeSourceSheet = () => { close(); };
     // When the sheet's backdrop is removed, stop refreshing its (dead) list.
-    const root = $('#modalRoot');
-    if (root) {
+    const rootEl = $('#modalRoot');
+    if (rootEl) {
       const observer = new MutationObserver(() => {
         if (!container.isConnected) {
           observer.disconnect();
@@ -206,7 +333,7 @@ export function render(view, params) {
           if (closeSourceSheet) closeSourceSheet = null;
         }
       });
-      observer.observe(root, { childList: true, subtree: true });
+      observer.observe(rootEl, { childList: true, subtree: true });
     }
   }
 
@@ -217,7 +344,7 @@ export function render(view, params) {
     const searchInput = el('input', {
       class: 'field ext-search', type: 'search', placeholder: 'Search extensions…',
     });
-    modal({ title: 'Extensions', body: el('div', { class: 'ext-sheet' }, searchInput, listWrap) });
+    modal({ title: 'Catalog', body: el('div', { class: 'ext-sheet' }, searchInput, listWrap) });
 
     let entries = [];
     let extToken = 0;
@@ -316,26 +443,29 @@ export function render(view, params) {
       state.query = '';
       state.entries = [];
     }
-    renderSourceLists();
-    renderBrowse();
+    state.screen = 'browse';
+    renderScreen();
     if (!already || !state.entries.length) loadBrowse(1);
   }
 
-  // ---- browse pane --------------------------------------------------------
+  // ======================= BROWSE =========================================
+
+  function renderBrowseView() {
+    state.screen = 'browse';
+    root.replaceChildren();
+    browsePane = el('div', { class: 'browse-pane explore-browse' });
+    root.appendChild(browsePane);
+    renderBrowse();
+  }
+
+  function backToLanding() {
+    state.screen = 'landing';
+    renderLanding();
+  }
 
   function renderBrowse() {
+    if (!browsePane) return;
     browsePane.replaceChildren();
-
-    // No sources at all -> onboarding CTA (never a void).
-    if (!state.sourcesLoading && !state.sourcesError && !store.source && !installedVisible().length) {
-      browsePane.appendChild(el('div', { class: 'browse-onboarding' },
-        emptyState('Add a source to start browsing.', 'compass'),
-        el('div', { class: 'center', style: { padding: '0 0 8px' } },
-          btn('Add a source', { variant: 'accent', icon: 'download', onClick: openExtensions })),
-      ));
-      return;
-    }
-
     browsePane.appendChild(browseHeader());
 
     if (state.mode === 'SEARCH') {
@@ -375,10 +505,11 @@ export function render(view, params) {
     const pill = el('button', {
       class: 'source-select', type: 'button',
       title: src ? `Source: ${src.name}` : 'Choose a source',
-      onClick: () => { if (isMobile()) openSourceSheet(); else openSourceSheet(); },
+      onClick: () => openSourceSheet(),
     }, ...pillKids);
 
     return el('div', { class: 'browse-head' },
+      iconBtn('back', backToLanding, 'Back to Explore'),
       pill,
       el('div', { class: 'browse-head-actions' },
         segmented(
@@ -445,34 +576,20 @@ export function render(view, params) {
   // ---- data ---------------------------------------------------------------
 
   async function loadSources(opts = {}) {
-    if (!opts.keepBrowse) { state.sourcesLoading = true; state.sourcesError = null; renderSourceLists(); }
+    if (!opts.keepBrowse) { state.sourcesLoading = true; state.sourcesError = null; }
     try {
       const res = await api.listSources();
       state.sources = (res && res.sources) || [];
       state.sourcesLoading = false;
       state.sourcesError = null;
-      if (!opts.keepBrowse && !store.source) {
-        const def = pickDefaultSource();
-        if (def) { store.source = def; lsSet(LAST_SOURCE_KEY, def.id); loadBrowse(1); }
-      }
       renderSourceLists();
-      renderBrowse();
+      if (state.screen === 'landing') renderLanding();
     } catch (e) {
       state.sourcesLoading = false;
       state.sourcesError = e.message;
       renderSourceLists();
-      renderBrowse();
+      if (state.screen === 'landing') renderLanding();
     }
-  }
-
-  function pickDefaultSource() {
-    const installed = installedVisible();
-    const lastId = lsGet(LAST_SOURCE_KEY, null);
-    if (lastId) {
-      const last = installed.find((s) => s.id === lastId);
-      if (last) return last;
-    }
-    return installed.find((s) => s.isPinned) || installed[0] || null;
   }
 
   async function loadBrowse(page, force = false) {
@@ -506,14 +623,13 @@ export function render(view, params) {
 
   // ---- boot ---------------------------------------------------------------
 
-  renderSourceLists();
-  renderBrowse();
+  renderScreen();
   loadSources();
 
   // When a cloud sync brings in the user's installed/pinned sources (from
-  // another device), refresh the source list without disturbing the browse pane.
-  // #view is persistent and there's no per-screen teardown hook, so swap a
-  // single module-level handler each render instead of stacking listeners.
+  // another device), refresh the source list/grid. #view is persistent and
+  // there's no per-screen teardown hook, so swap a single module-level handler
+  // each render instead of stacking listeners.
   if (_onSourcesSynced) window.removeEventListener('nyora:sources-synced', _onSourcesSynced);
   _onSourcesSynced = () => { if (view.isConnected) loadSources({ keepBrowse: true }); };
   window.addEventListener('nyora:sources-synced', _onSourcesSynced);
