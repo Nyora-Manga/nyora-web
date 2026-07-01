@@ -214,7 +214,7 @@ function buildMobileNav() {
       class: 'mobile-brand',
       type: 'button',
       'aria-label': 'Go to Discover',
-      onClick: () => router.navigate('suggestions'),
+      onClick: () => router.navigate('discover'),
     },
       el('img', { src: '/icon.png', alt: '', class: 'mobile-brand-logo' }),
       el('span', { class: 'mobile-brand-text' }, 'NYORA'),
@@ -307,13 +307,16 @@ function buildMobileSearchPanel() {
   });
 }
 
-// Mobile bottom tab bar (app-like). Mirrors the 5 primary destinations; the
-// rest live in the drawer. Shown only at the phone breakpoint (CSS-gated).
-const TABBAR_KEYS = ['suggestions', 'explore', 'library', 'updates', 'settings'];
+// Mobile bottom tab bar (app-like), styled as a floating rounded pill to match
+// the android app. Four primary destinations — Discover / Library / Explore /
+// History — with a detached circular "continue reading" reader FAB to the
+// right. The rest of the destinations live in the drawer. Shown only at the
+// phone breakpoint (CSS-gated).
+const TABBAR_KEYS = ['discover', 'library', 'explore', 'history'];
 function buildTabbar() {
   const bar = $('#tabbar');
   if (!bar) return;
-  bar.replaceChildren(
+  const pill = el('div', { class: 'tabbar-pill' },
     ...TABBAR_KEYS.filter((k) => metas[k]).map((key) =>
       el('a', { 'data-tab': key, href: `#/${key}`, onClick: () => { document.body.classList.remove('nav-open'); } },
         icon(metas[key].icon),
@@ -321,6 +324,15 @@ function buildTabbar() {
       ),
     ),
   );
+  const fab = el('button', {
+    id: 'readerFab',
+    class: 'tabbar-fab',
+    type: 'button',
+    'aria-label': 'Continue reading',
+    title: 'Continue reading',
+    onClick: () => { document.body.classList.remove('nav-open'); continueReading(); },
+  }, icon('book'));
+  bar.replaceChildren(pill, fab);
 }
 function syncTabbar(name) {
   for (const a of document.querySelectorAll('#tabbar [data-tab]')) {
@@ -365,7 +377,7 @@ router.onChange(dispatch);
 // never flashes behind it; only start routing — which renders the first screen
 // into #view — once the user proceeds.
 if (shouldShowWelcome()) {
-  showWelcome(() => router.start(routes, 'suggestions'));
+  showWelcome(() => router.start(routes, 'discover'));
 } else {
-  router.start(routes, 'suggestions');
+  router.start(routes, 'discover');
 }

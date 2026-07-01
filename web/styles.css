@@ -1604,30 +1604,53 @@ body.reader-active .view {
   .modal-actions { flex-wrap: wrap; }
   .modal-actions .btn { flex: 1 1 auto; }
 
-  /* ---- bottom tab bar: flat, full-width, hairline top, accent active - */
+  /* ---- bottom nav: floating rounded pill + detached reader FAB -------- */
+  /* Matches the android app: the 4 primary destinations live inside a
+     centred, floating rounded pill; a circular "continue reading" FAB
+     floats detached to its right. */
   .tabbar {
-    display: flex; position: fixed; left: 0; right: 0; bottom: 0; z-index: 50;
-    min-height: calc(var(--mobile-tabbar-h) + env(safe-area-inset-bottom));
-    background: var(--bg);
-    backdrop-filter: none; -webkit-backdrop-filter: none;
-    border: 0; border-top: 1px solid var(--hairline);
-    border-radius: 0; box-shadow: none;
-    padding: 6px 6px max(6px, env(safe-area-inset-bottom));
-    justify-content: space-around;
+    display: flex; position: fixed; left: 0; right: 0; z-index: 50;
+    bottom: max(14px, env(safe-area-inset-bottom));
+    align-items: center; justify-content: center; gap: 12px;
+    padding: 0 16px;
+    background: transparent; border: 0; box-shadow: none;
+    pointer-events: none; /* only the pill + fab are interactive */
   }
-  .tabbar a {
-    flex: 1 1 0; display: flex; flex-direction: column; align-items: center; gap: 4px;
-    min-width: 0; min-height: 50px; justify-content: center; padding: 6px 2px;
-    color: var(--text-faint); font-size: 10.5px; font-weight: 500;
-    border: 0; border-radius: 0; background: transparent;
-    transition: color 0.18s var(--ease);
+  .tabbar-pill {
+    pointer-events: auto;
+    display: flex; align-items: stretch; justify-content: space-around;
+    flex: 1 1 auto; max-width: 420px; min-width: 0;
+    background: var(--surface1, var(--bg));
+    border: 1px solid var(--hairline);
+    border-radius: 999px;
+    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.28), 0 2px 8px rgba(0, 0, 0, 0.16);
+    padding: 8px 6px;
+    backdrop-filter: saturate(1.2) blur(12px); -webkit-backdrop-filter: saturate(1.2) blur(12px);
   }
-  .tabbar a .icon { width: 23px; height: 23px; transition: transform 0.18s var(--ease); }
-  .tabbar a span:not(.icon) { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .tabbar a:active .icon { transform: scale(0.9); }
-  .tabbar a:hover { color: var(--text-dim); }
-  .tabbar a.active { color: var(--accent); background: transparent; border: 0; transform: none; box-shadow: none; }
-  .tabbar a.active .icon { color: var(--accent); }
+  .tabbar-pill a {
+    flex: 1 1 0; display: flex; flex-direction: column; align-items: center; gap: 3px;
+    min-width: 0; justify-content: center; padding: 4px 2px;
+    color: var(--text-faint); font-size: 10px; font-weight: 500;
+    border: 0; border-radius: 14px; background: transparent;
+    transition: color 0.18s var(--ease), background 0.18s var(--ease);
+  }
+  .tabbar-pill a .icon { width: 22px; height: 22px; transition: transform 0.18s var(--ease); }
+  .tabbar-pill a span:not(.icon) { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tabbar-pill a:active .icon { transform: scale(0.9); }
+  .tabbar-pill a:hover { color: var(--text-dim); }
+  .tabbar-pill a.active { color: var(--accent); }
+  .tabbar-pill a.active .icon { color: var(--accent); }
+  .tabbar-fab {
+    pointer-events: auto;
+    flex: 0 0 auto; display: flex; align-items: center; justify-content: center;
+    width: 56px; height: 56px; border-radius: 999px; border: 0;
+    background: var(--accent); color: #fff; cursor: pointer;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3), 0 2px 6px rgba(0, 0, 0, 0.18);
+    transition: transform 0.18s var(--ease), filter 0.18s var(--ease);
+  }
+  .tabbar-fab .icon { width: 26px; height: 26px; }
+  .tabbar-fab:active { transform: scale(0.92); }
+  .tabbar-fab:hover { filter: brightness(1.06); }
 }
 
 @media (max-width: 380px) {
