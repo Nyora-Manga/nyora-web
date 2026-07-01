@@ -3,23 +3,14 @@
 // A cinematic, anime-inspired night-rain landing shown once on first launch
 // when the user isn't signed in and hasn't chosen to continue as a guest.
 // Animated rain + atmospheric glow/mist + the occasional lightning flash, over
-// a glass auth card. Desktop-first but responsive. Keeps the robust GIS sign-in
-// (One-Tap → account-chooser button fallback), guest, and restore actions.
+// a glass auth card. Desktop-first but responsive. Email/password sign-in
+// against the self-hosted sync server, plus guest and restore actions.
 
 import { el, toast } from '../core/ui.js';
 import sync from '../core/sync.js';
 import api from '../core/api.js';
 
 const ONBOARD_KEY = 'nyora.web.onboarded.v1';
-
-// Multicolour Google "G" — the recognizable, consumer-grade mark.
-const GOOGLE_G = `
-<svg viewBox="0 0 48 48" width="20" height="20" aria-hidden="true" focusable="false">
-  <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
-  <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
-  <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
-  <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
-</svg>`;
 
 const ICON_GUEST = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/></svg>';
 const ICON_RESTORE = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m8 11 4 4 4-4"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>';
@@ -64,9 +55,19 @@ export function showWelcome(onDone) {
 
   const statusLine = el('div', { class: 'wlc-status' }, '');
 
+  const emailInput = el('input', {
+    class: 'wlc-input', type: 'email', autocomplete: 'email',
+    placeholder: 'Email', 'aria-label': 'Email',
+  });
+  const passwordInput = el('input', {
+    class: 'wlc-input', type: 'password', autocomplete: 'current-password',
+    placeholder: 'Password', 'aria-label': 'Password',
+  });
+
   const signInBtn = el('button', { class: 'wlc-google', type: 'button' },
-    el('span', { class: 'wlc-google-g', html: GOOGLE_G }),
-    el('span', null, 'Sign in with Google'));
+    el('span', null, 'Sign in'));
+  const createBtn = el('button', { class: 'wlc-ghost', type: 'button' },
+    el('span', null, 'Create account'));
 
   const guestBtn = el('button', { class: 'wlc-ghost', type: 'button' },
     el('span', { class: 'wlc-ghost-ic', html: ICON_GUEST }), el('span', null, 'Continue as guest'));
@@ -74,17 +75,27 @@ export function showWelcome(onDone) {
     el('span', { class: 'wlc-ghost-ic', html: ICON_RESTORE }), el('span', null, 'Restore backup'));
 
   const setBusy = (busy) => {
-    signInBtn.disabled = guestBtn.disabled = restoreBtn.disabled = busy;
+    signInBtn.disabled = createBtn.disabled = guestBtn.disabled = restoreBtn.disabled = busy;
+    emailInput.disabled = passwordInput.disabled = busy;
     signInBtn.classList.toggle('is-busy', busy);
   };
 
-  async function doSignIn() {
+  async function doAuth(register) {
     if (signInBtn.disabled) return;
+    const email = emailInput.value.trim();
+    const password = passwordInput.value;
+    if (!email || !password) {
+      statusLine.className = 'wlc-status is-error';
+      statusLine.textContent = 'Enter your email and password.';
+      return;
+    }
     setBusy(true);
     statusLine.className = 'wlc-status is-info';
-    statusLine.textContent = 'Opening Google sign-in…';
+    statusLine.textContent = register ? 'Creating your account…' : 'Signing in…';
     try {
-      const st = await sync.signInWithGoogle();
+      const st = register
+        ? await sync.register(email, password)
+        : await sync.signIn(email, password);
       if (st && st.isAuthenticated) {
         statusLine.textContent = 'Signed in. Syncing your library…';
         try {
@@ -100,7 +111,7 @@ export function showWelcome(onDone) {
       }
     } catch (e) {
       statusLine.className = 'wlc-status is-error';
-      statusLine.textContent = 'Sign-in failed: ' + ((e && e.message) || e);
+      statusLine.textContent = (register ? 'Sign-up failed: ' : 'Sign-in failed: ') + ((e && e.message) || e);
       setBusy(false);
     }
   }
@@ -127,7 +138,9 @@ export function showWelcome(onDone) {
     }
   });
 
-  signInBtn.addEventListener('click', doSignIn);
+  signInBtn.addEventListener('click', () => doAuth(false));
+  createBtn.addEventListener('click', () => doAuth(true));
+  passwordInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') doAuth(false); });
   guestBtn.addEventListener('click', () => { markOnboarded(); finish(); });
   restoreBtn.addEventListener('click', () => { if (!restoreBtn.disabled) fileInput.click(); });
 
@@ -157,7 +170,9 @@ export function showWelcome(onDone) {
   // ── Right: auth panel ───────────────────────────────────────────────────
   const auth = el('div', { class: 'wlc-auth' },
     el('div', { class: 'wlc-auth-head' }, 'Start reading'),
+    el('div', { class: 'wlc-fields' }, emailInput, passwordInput),
     signInBtn,
+    createBtn,
     el('div', { class: 'wlc-or' }, el('span', null, 'or')),
     el('div', { class: 'wlc-secondary' }, guestBtn, restoreBtn),
     statusLine,

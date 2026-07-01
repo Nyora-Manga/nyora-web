@@ -1071,7 +1071,7 @@ body.reader-active .view {
 .field > label { font-weight: 650; font-size: 13px; }
 .field .hint { color: var(--text-faint); font-size: 12px; }
 .field input[type="text"], .field input[type="number"], .field input[type="password"],
-.field input[type="url"], .field input[type="search"], .field input:not([type]),
+.field input[type="email"], .field input[type="url"], .field input[type="search"], .field input:not([type]),
 .field select, .field textarea, input.field, select.field {
   height: 40px; padding: 0 14px; border-radius: var(--radius-sm);
   background: var(--bg-elev); border: 1px solid var(--border); color: var(--text); width: 100%;
@@ -1486,7 +1486,7 @@ body.reader-active .view {
   .setting-row .row-main .name { font-size: 15px; font-weight: 550; }
   .setting-row .row-main .sub { font-size: 12px; }
   .field input[type="text"], .field input[type="number"], .field input[type="password"],
-  .field input[type="url"], .field input[type="search"], .field input:not([type]),
+  .field input[type="email"], .field input[type="url"], .field input[type="search"], .field input:not([type]),
   .field select, input.field, select.field { height: 44px; }
   .swatch { width: 34px; height: 34px; }
   .swatch:hover { transform: scale(1.1); }
@@ -2076,8 +2076,28 @@ body.reader-active .view {
   color: var(--wlc-head); margin: 2px 0 18px;
 }
 
+.wlc-fields { display: flex; flex-direction: column; gap: 10px; margin-bottom: 14px; }
+.wlc-input {
+  width: 100%; height: 50px;
+  padding: 0 15px;
+  border: 1px solid var(--wlc-ghost-border);
+  border-radius: 12px;
+  background: var(--wlc-ghost-bg);
+  color: var(--wlc-ghost-text);
+  font-size: 15px; font-weight: 500;
+  transition: border-color 0.16s ease, box-shadow 0.16s ease;
+}
+.wlc-input::placeholder { color: var(--wlc-sub); opacity: 0.7; }
+.wlc-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-tint-strong);
+}
+.wlc-input:disabled { opacity: 0.6; }
+
 .wlc-google {
   width: 100%; height: 54px;
+  margin-bottom: 10px;
   display: flex; align-items: center; justify-content: center; gap: 12px;
   border: none; border-radius: 13px;
   background: var(--wlc-google-bg); color: var(--wlc-google-text);

@@ -1,22 +1,21 @@
-// core/sync.js — browser-only Supabase sync for Nyora Web.
+// core/sync.js — browser sync for Nyora Web against the self-hosted sync server.
 //
-// No client secret is used here. Google sign-in uses the public web client ID
-// to obtain an ID token in the browser; Supabase exchanges that ID token for a
-// user-scoped session, then all data moves through the nyora-sync edge function.
+// Auth is a standard OAuth2 password flow (email + password) against the FastAPI
+// sync backend at NYORA_SYNC_URL: POST /auth/register creates the account, POST
+// /auth/token (grant_type=password | refresh_token) mints JWTs. Access tokens
+// live ~1h and are auto-refreshed on a 401 from the sync endpoint. All library
+// data moves through POST /functions/v1/nyora-sync with a Bearer access token
+// (no apikey/anon header). Google sign-in has been removed.
 
 import library from './library.js';
 import { sourcePrefRows, applySourcePrefRows } from './parser-runtime.js';
 
 export const SYNC_CONFIG = {
-  supabaseUrl: globalThis.NYORA_SUPABASE_URL || 'https://fqguzcoytnbnjwaddakn.supabase.co',
-  supabaseAnonKey: globalThis.NYORA_SUPABASE_ANON_KEY || 'sb_publishable_RZTcdZZlzb_UhYAxtB09AQ_URTEftE4',
-  googleWebClientId: globalThis.NYORA_GOOGLE_WEB_CLIENT_ID || '181067068545-k123p818q8qp0b1ppiee7h6ud8h54ei6.apps.googleusercontent.com',
+  syncUrl: String(globalThis.NYORA_SYNC_URL || 'https://stream.hasanraza.tech').replace(/\/+$/, ''),
 };
 
-const SESSION_KEY = 'nyora.supabase.session.v1';
+const SESSION_KEY = 'nyora.sync.session.v1';
 const INITIAL_SYNC = '1970-01-01T00:00:00Z';
-
-let _gisPromise = null;
 
 function loadSession() {
   try {
@@ -31,6 +30,7 @@ function saveSession(session) {
     access_token: session.access_token || '',
     refresh_token: session.refresh_token || '',
     user_id: session.user_id || parseJwtSub(session.access_token || ''),
+    email: session.email || '',
     last_sync_timestamp: session.last_sync_timestamp || INITIAL_SYNC,
   }));
 }
@@ -53,11 +53,11 @@ function parseJwtSub(token) {
 export function status() {
   const session = loadSession();
   return {
-    isConfigured: !!(SYNC_CONFIG.supabaseUrl && SYNC_CONFIG.supabaseAnonKey && SYNC_CONFIG.googleWebClientId),
+    isConfigured: !!SYNC_CONFIG.syncUrl,
     isAuthenticated: !!(session.access_token && (session.user_id || parseJwtSub(session.access_token))),
     userId: session.user_id || parseJwtSub(session.access_token || ''),
+    email: session.email || '',
     lastSyncTimestamp: session.last_sync_timestamp || INITIAL_SYNC,
-    googleWebClientId: SYNC_CONFIG.googleWebClientId,
   };
 }
 
@@ -72,16 +72,29 @@ export function hasLocalData() {
   );
 }
 
-export async function signInWithGoogle() {
-  await loadGoogleIdentityServices();
-  const idToken = await requestGoogleIdToken();
-  const session = await supabaseAuth('token?grant_type=id_token', {
-    provider: 'google',
-    id_token: idToken,
+export async function register(email, password) {
+  const res = await fetch(`${SYNC_CONFIG.syncUrl}/auth/register`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email: String(email || '').trim(), password: password || '' }),
+  });
+  const data = await parseJson(res);
+  if (!res.ok) throw new Error(authError(data, res.status));
+  // The server returns the created user; a token still has to be minted.
+  return signIn(email, password);
+}
+
+export async function signIn(email, password) {
+  const cleanEmail = String(email || '').trim();
+  const token = await authToken({
+    grant_type: 'password',
+    username: cleanEmail,
+    password: password || '',
   });
   saveSession({
-    ...session,
-    user_id: parseJwtSub(session.access_token || ''),
+    ...token,
+    email: cleanEmail,
+    user_id: token.user_id || parseJwtSub(token.access_token || ''),
     last_sync_timestamp: loadSession().last_sync_timestamp || INITIAL_SYNC,
   });
   return status();
@@ -110,54 +123,78 @@ export async function restoreFromCloud() {
 }
 
 async function ensureSession() {
-  let session = loadSession();
+  const session = loadSession();
   if (!session.access_token) throw new Error('Sign in first.');
-  if (session.refresh_token) {
-    try {
-      const refreshed = await supabaseAuth('token?grant_type=refresh_token', {
-        refresh_token: session.refresh_token,
-      });
-      session = {
-        ...session,
-        access_token: refreshed.access_token || session.access_token,
-        refresh_token: refreshed.refresh_token || session.refresh_token,
-        user_id: parseJwtSub(refreshed.access_token || session.access_token) || session.user_id,
-      };
-      saveSession(session);
-    } catch {
-      // If refresh fails, try the current token; the edge function will return
-      // 401 if it has actually expired.
-    }
-  }
+  // Access tokens live ~1h. Rather than proactively refreshing (and burning
+  // refresh tokens) on every sync, the edge() wrapper below transparently
+  // refreshes and retries once on a 401.
   return session;
 }
 
-async function supabaseAuth(path, body) {
-  const res = await fetch(`${SYNC_CONFIG.supabaseUrl}/auth/v1/${path}`, {
+// POST /auth/token — OAuth2 form flow (grant_type=password | refresh_token).
+async function authToken(fields) {
+  const form = new URLSearchParams();
+  for (const [k, v] of Object.entries(fields || {})) {
+    if (v !== null && v !== undefined) form.set(k, String(v));
+  }
+  const res = await fetch(`${SYNC_CONFIG.syncUrl}/auth/token`, {
     method: 'POST',
-    headers: {
-      apikey: SYNC_CONFIG.supabaseAnonKey,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(body || {}),
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: form.toString(),
   });
   const data = await parseJson(res);
-  if (!res.ok || data.error) throw new Error(data.error_description || data.error || `Auth failed ${res.status}`);
+  if (!res.ok || !data.access_token) throw new Error(authError(data, res.status));
   return data;
 }
 
-async function edge(session, body) {
-  const res = await fetch(`${SYNC_CONFIG.supabaseUrl}/functions/v1/nyora-sync`, {
+// Refresh the access token in-place (mutates + persists the passed session so
+// later edge() calls in the same push/pull batch reuse the fresh token).
+async function refreshSession(session) {
+  if (!session.refresh_token) return null;
+  try {
+    const token = await authToken({
+      grant_type: 'refresh_token',
+      refresh_token: session.refresh_token,
+    });
+    session.access_token = token.access_token || session.access_token;
+    session.refresh_token = token.refresh_token || session.refresh_token;
+    session.user_id = token.user_id || parseJwtSub(session.access_token) || session.user_id;
+    saveSession(session);
+    return session;
+  } catch {
+    return null;
+  }
+}
+
+// Turn FastAPI / OAuth2 error payloads into a readable message.
+function authError(data, statusCode) {
+  const detail = data && data.detail;
+  if (typeof detail === 'string' && detail) return detail;
+  if (Array.isArray(detail) && detail.length) {
+    return detail.map((e) => (e && e.msg) || String(e)).join(', ');
+  }
+  return (data && (data.error_description || data.error || data.message)) || `Auth failed ${statusCode}`;
+}
+
+async function edge(session, body, retried) {
+  const res = await fetch(`${SYNC_CONFIG.syncUrl}/functions/v1/nyora-sync`, {
     method: 'POST',
     headers: {
-      apikey: SYNC_CONFIG.supabaseAnonKey,
       Authorization: `Bearer ${session.access_token}`,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify(body || {}),
   });
+  if (res.status === 401 && !retried) {
+    const refreshed = await refreshSession(session);
+    if (refreshed) return edge(refreshed, body, true);
+    clearSession();
+    throw new Error('Session expired. Please sign in again.');
+  }
   const data = await parseJson(res);
-  if (!res.ok || data.error) throw new Error(data.error || `Sync failed ${res.status}`);
+  if (!res.ok || data.error) {
+    throw new Error((data && (data.error || data.detail)) || `Sync failed ${res.status}`);
+  }
   return data;
 }
 
@@ -585,118 +622,11 @@ function ms(value) {
   return Number.isFinite(n) ? n : Date.now();
 }
 
-function loadGoogleIdentityServices() {
-  if (globalThis.google && globalThis.google.accounts && globalThis.google.accounts.id) return Promise.resolve();
-  if (_gisPromise) return _gisPromise;
-  _gisPromise = new Promise((resolve, reject) => {
-    const existing = document.querySelector('script[data-nyora-google-identity]');
-    if (existing) {
-      existing.addEventListener('load', () => resolve(), { once: true });
-      existing.addEventListener('error', () => reject(new Error('Google Identity Services failed to load.')), { once: true });
-      return;
-    }
-    const script = document.createElement('script');
-    script.src = 'https://accounts.google.com/gsi/client';
-    script.async = true;
-    script.defer = true;
-    script.dataset.nyoraGoogleIdentity = 'true';
-    script.onload = () => resolve();
-    script.onerror = () => reject(new Error('Google Identity Services failed to load.'));
-    document.head.appendChild(script);
-  });
-  // Don't cache a rejected promise — otherwise one failed script load would
-  // permanently break Google sign-in for the rest of the session. Reset so the
-  // next attempt can retry.
-  _gisPromise.catch(() => { _gisPromise = null; });
-  return _gisPromise;
-}
-
-function requestGoogleIdToken() {
-  return new Promise((resolve, reject) => {
-    const google = globalThis.google;
-    if (!google || !google.accounts || !google.accounts.id) {
-      reject(new Error('Google Identity Services is unavailable.'));
-      return;
-    }
-    let settled = false;
-    let modal = null;
-    const cleanup = () => { if (modal) { modal.remove(); modal = null; } };
-    const finish = (fn, value) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      cleanup();
-      fn(value);
-    };
-    const timer = setTimeout(() => finish(reject, new Error('Google sign-in timed out.')), 120000);
-
-    google.accounts.id.initialize({
-      client_id: SYNC_CONFIG.googleWebClientId,
-      callback: (response) => {
-        if (response && response.credential) finish(resolve, response.credential);
-        else finish(reject, new Error('Google did not return an ID token.'));
-      },
-      cancel_on_tap_outside: false,
-      itp_support: true,
-      use_fedcm_for_prompt: true,
-    });
-
-    // Robust fallback: One-Tap (prompt) is frequently suppressed — incognito,
-    // blocked third-party cookies, cooldown, or no existing session — and then
-    // returns a useless "unknown_reason". When that happens, render a real GIS
-    // account-chooser BUTTON in a modal; clicking it opens the chooser popup and
-    // returns the ID token via the same `callback`. This always works.
-    const showButtonModal = () => {
-      if (settled || modal) return;
-      const host = document.createElement('div');
-      host.className = 'gis-modal';
-      const card = document.createElement('div');
-      card.className = 'gis-modal-card';
-      const title = document.createElement('div');
-      title.className = 'gis-modal-title';
-      title.textContent = 'Choose a Google account';
-      const slot = document.createElement('div');
-      slot.className = 'gis-btn-slot';
-      const cancel = document.createElement('button');
-      cancel.className = 'gis-modal-cancel';
-      cancel.type = 'button';
-      cancel.textContent = 'Cancel';
-      cancel.addEventListener('click', () => finish(reject, new Error('Sign-in canceled')));
-      host.addEventListener('click', (e) => { if (e.target === host) finish(reject, new Error('Sign-in canceled')); });
-      card.append(title, slot, cancel);
-      host.append(card);
-      document.body.appendChild(host);
-      modal = host;
-      try {
-        google.accounts.id.renderButton(slot, {
-          theme: 'outline', size: 'large', shape: 'pill',
-          text: 'signin_with', logo_alignment: 'center',
-        });
-      } catch (_) { /* GIS not ready — safety timer / cancel still apply */ }
-    };
-
-    // Fast path: try One-Tap; fall back to the button modal if it can't display.
-    try {
-      google.accounts.id.prompt((notification) => {
-        if (!notification) return;
-        const notShown =
-          (notification.isNotDisplayed && notification.isNotDisplayed()) ||
-          (notification.isSkippedMoment && notification.isSkippedMoment());
-        if (notShown) showButtonModal();
-      });
-    } catch (_) {
-      showButtonModal();
-    }
-    // Safety net: some browsers never invoke the prompt callback under FedCM —
-    // show the button shortly after if nothing has resolved yet.
-    setTimeout(() => { if (!settled && !modal) showButtonModal(); }, 1400);
-  });
-}
-
 export default {
   status,
   hasLocalData,
-  signInWithGoogle,
+  signIn,
+  register,
   signOut,
   syncNow,
   restoreFromCloud,

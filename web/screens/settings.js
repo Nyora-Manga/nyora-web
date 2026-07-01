@@ -2,7 +2,7 @@
 
 import library from '../core/library.js';
 import {
-  el, toast, btn, sectionHeader, confirmDialog, icon, googleMark,
+  el, toast, btn, sectionHeader, confirmDialog, icon,
 } from '../core/ui.js';
 import {
   store, COLOR_SCHEMES, resolveAccent, detectBrowserAccent,
@@ -222,34 +222,57 @@ function buildSync() {
   section.append(el('h2', null, 'Cloud Sync'));
 
   const statusText = el('span', { class: 'hint' }, 'Checking...');
-  const actions = el('div', { class: 'row', style: { flexWrap: 'wrap' } });
-  section.append(settingRow('Status', 'Supabase edge function sync', statusText));
+  const actions = el('div', { class: 'col', style: { gap: '10px', width: '100%' } });
+  section.append(settingRow('Status', 'Self-hosted account sync', statusText));
   section.append(actions);
+
+  const authAndSync = async (register) => {
+    const email = emailInput.value.trim();
+    const password = passwordInput.value;
+    if (!email || !password) { toast('Enter your email and password'); return; }
+    await runSync(register ? 'Creating account...' : 'Signing in...', async () => {
+      if (register) await sync.register(email, password);
+      else await sync.signIn(email, password);
+      if (sync.hasLocalData()) await sync.syncNow();
+      else await sync.restoreFromCloud();
+    }, 'Cloud sync ready', paint, true);
+  };
+
+  const emailInput = el('input', {
+    class: 'input', type: 'email', autocomplete: 'email',
+    placeholder: 'Email', style: { width: '100%' },
+  });
+  const passwordInput = el('input', {
+    class: 'input', type: 'password', autocomplete: 'current-password',
+    placeholder: 'Password', style: { width: '100%' },
+  });
+  passwordInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') authAndSync(false); });
 
   const paint = () => {
     const st = sync.status();
     statusText.textContent = !st.isConfigured
       ? 'Not configured'
       : st.isAuthenticated
-        ? `Signed in (${st.userId.slice(0, 8)})`
+        ? `Signed in${st.email ? ` (${st.email})` : ` (${st.userId.slice(0, 8)})`}`
         : 'Signed out';
     actions.replaceChildren();
     if (st.isAuthenticated) {
-      actions.append(
+      actions.append(el('div', { class: 'row', style: { flexWrap: 'wrap', gap: '10px' } },
         btn('Sync Now', { icon: 'refresh', onClick: () => runSync('Syncing...', () => sync.syncNow(), 'Cloud sync complete', paint) }),
         btn('Restore', { icon: 'download', variant: 'ghost', onClick: () => runSync('Restoring...', () => sync.restoreFromCloud(), 'Cloud library restored', paint, true) }),
         btn('Sign Out', { variant: 'ghost', onClick: () => { sync.signOut(); paint(); toast('Signed out'); } }),
-      );
+      ));
     } else {
-      actions.append(el('button', {
-        class: 'btn',
-        type: 'button',
-        onClick: () => runSync('Opening Google...', async () => {
-          await sync.signInWithGoogle();
-          if (sync.hasLocalData()) await sync.syncNow();
-          else await sync.restoreFromCloud();
-        }, 'Cloud sync ready', paint, true),
-      }, googleMark(), el('span', null, 'Sign in with Google')));
+      emailInput.value = '';
+      passwordInput.value = '';
+      actions.append(
+        el('div', { class: 'field', style: { margin: 0 } }, emailInput),
+        el('div', { class: 'field', style: { margin: 0 } }, passwordInput),
+        el('div', { class: 'row', style: { flexWrap: 'wrap', gap: '10px' } },
+          btn('Sign In', { onClick: () => authAndSync(false) }),
+          btn('Create Account', { variant: 'ghost', onClick: () => authAndSync(true) }),
+        ),
+      );
     }
   };
 
