@@ -574,8 +574,8 @@ export async function handle(path, method = 'GET', body) {
   if (route === '/sources/popular') return sourceList(path, 'popular');
   if (route === '/sources/latest') return sourceList(path, 'latest');
   if (route === '/sources/search') return sourceList(path, 'search');
-  if (route === '/manga/details') return details(path);
-  if (route === '/manga/pages') return pages(path);
+  if (route === '/manga/details' || route === '/sources/details') return details(path);
+  if (route === '/manga/pages' || route === '/sources/pages') return pages(path);
   if (route === '/search/global') return globalSearch(path);
   if (route === '/suggestions') return { entries: [] };
   if (route === '/manga/alternatives') return { entries: [] };

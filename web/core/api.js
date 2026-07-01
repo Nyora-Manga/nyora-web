@@ -1,7 +1,11 @@
 // core/api.js — REST client for the Nyora web SPA.
 //
-// Same-origin as the Kotlin NyoraRestServer (no CORS concerns). Every method
-// returns parsed JSON and THROWS Error(data.error || status) on failure.
+// The shared, read-only catalog (catalog/popular/latest/search/details/pages
+// + the /image proxy) is served by the hosted parser helper at
+// NYORA_HELPER_URL (https://api.hasanraza.tech). Those calls hit the helper
+// FIRST and fall back to the in-browser web parsers (core/parser-runtime.js)
+// only when the helper is unreachable. Every method returns parsed JSON and
+// THROWS Error(data.error || status) on failure.
 //
 // Endpoint verbs/params verified against:
 //   nyora-mac/shared/src/jvmMain/kotlin/com/nyora/shared/proxy/NyoraRestServer.kt
@@ -100,7 +104,67 @@ function ensureOk(res, data) {
   return data;
 }
 
+// ---- hosted helper (api.hasanraza.tech) --------------------------------
+// Absolute base of the hosted parser helper, trailing slash trimmed.
+function helperBase() {
+  const u = globalThis.NYORA_HELPER_URL || 'https://api.hasanraza.tech';
+  return String(u).replace(/\/+$/, '');
+}
+
+// Map the SPA's internal route names onto the helper's route names. The helper
+// serves manga detail/page reads under /sources/details and /sources/pages.
+function helperPath(path) {
+  const idx = String(path).indexOf('?');
+  const route = idx === -1 ? String(path) : String(path).slice(0, idx);
+  const query = idx === -1 ? '' : String(path).slice(idx);
+  let r = route;
+  if (r === '/manga/details') r = '/sources/details';
+  else if (r === '/manga/pages') r = '/sources/pages';
+  return r + query;
+}
+
+// GET routes served by the hosted helper (the shared, read-only catalog).
+function helperGetRoute(path) {
+  const route = String(path || '').split('?')[0];
+  return route === '/sources/catalog' ||
+    route === '/sources/popular' ||
+    route === '/sources/latest' ||
+    route === '/sources/search' ||
+    route === '/sources/details' ||
+    route === '/sources/pages' ||
+    route === '/manga/details' ||
+    route === '/manga/pages';
+}
+
+async function helperGet(path) {
+  const res = await fetch(helperBase() + helperPath(path), { headers: { Accept: 'application/json' } });
+  const data = await parseBody(res);
+  return ensureOk(res, data);
+}
+
+async function helperPost(path, body) {
+  const init = { method: 'POST', headers: { Accept: 'application/json' } };
+  if (body !== undefined && body !== null) {
+    init.headers['Content-Type'] = 'application/json';
+    init.body = typeof body === 'string' ? body : JSON.stringify(body);
+  }
+  const res = await fetch(helperBase() + helperPath(path), init);
+  const data = await parseBody(res);
+  return ensureOk(res, data);
+}
+
 export async function get(path) {
+  // Prefer the hosted helper for the shared catalog; fall back to the
+  // in-browser web parsers, then to the same-origin backend.
+  if (helperGetRoute(path)) {
+    try {
+      return await helperGet(path);
+    } catch (e) {
+      const fallback = await parserGet(path);
+      if (fallback) return fallback;
+      throw e;
+    }
+  }
   const parserResult = await parserGet(path);
   if (parserResult) return parserResult;
   const res = await fetch(path, { headers: { Accept: 'application/json' } });
@@ -109,6 +173,11 @@ export async function get(path) {
 }
 
 export async function post(path, body) {
+  const route = String(path || '').split('?')[0];
+  // Source install: the local source prefs stay authoritative for the Explore
+  // UI + client-side parser fallback, so run the local mutation; also notify
+  // the hosted helper best-effort so a server-side install is registered.
+  if (route === '/sources/install') helperPost(path, body).catch(() => {});
   const parserResult = await parserPost(path, body);
   if (parserResult) return parserResult;
   const init = { method: 'POST', headers: { Accept: 'application/json' } };
@@ -225,20 +294,28 @@ export const api = {
   },
 
   // -- Manga ------------------------------------------------------------
+  // Served by the hosted helper as /sources/details and /sources/pages.
   details(sid, url) {
-    return get('/manga/details' + qs({ id: sid, url }));
+    return get('/sources/details' + qs({ id: sid, url }));
   },
   pages(sid, chapterUrl, refresh) {
-    return get('/manga/pages' + qs({ id: sid, url: chapterUrl, refresh: refresh ? 1 : undefined }));
+    return get('/sources/pages' + qs({ id: sid, url: chapterUrl, refresh: refresh ? 1 : undefined }));
   },
 
   // -- Image proxy ------------------------------------------------------
-  // Build a SAME-ORIGIN proxy URL "/image?u=<enc>&h=<enc k:v>...".
-  // Pass-through unchanged if `url` is already a same-origin path ("/...").
+  // Build a hosted-helper proxy URL "<helper>/image?u=<enc>&h=<enc k:v>...".
+  // Pass-through unchanged for same-origin ("/...") or inline (data:/blob:) URLs.
   imageUrl(url, headers) {
     if (!url) return '';
-    if (url.startsWith('/')) return url;
-    return parserRuntime.imageUrl(url, headers);
+    if (url.startsWith('/') || url.startsWith('data:') || url.startsWith('blob:')) return url;
+    const absUrl = url.startsWith('//') ? 'https:' + url : url;
+    let result = `${helperBase()}/image?u=${encodeURIComponent(absUrl)}`;
+    if (headers && typeof headers === 'object') {
+      for (const [k, v] of Object.entries(headers)) {
+        result += `&h=${encodeURIComponent(k + ':' + v)}`;
+      }
+    }
+    return result;
   },
 
   // -- History (PER-CLIENT via library.js) ------------------------------
@@ -467,7 +544,8 @@ export const api = {
       status: body && body.status,
     }, token);
   },
-  // (Account sync is handled entirely by core/sync.js against Supabase.)
+  // (Account sync is handled entirely by core/sync.js against the hosted
+  //  stream backend at NYORA_SYNC_URL.)
 };
 
 export default api;
