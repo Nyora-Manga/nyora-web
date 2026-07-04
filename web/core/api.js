@@ -154,19 +154,13 @@ async function helperPost(path, body) {
 }
 
 export async function get(path) {
-  // Prefer the hosted helper for the shared catalog; fall back to the
-  // in-browser web parsers, then to the same-origin backend.
+  // Content (catalog/browse/details/pages) is served ONLY by the hosted helper
+  // (api.hasanraza.tech). The old in-browser web-parsers are NOT used as a
+  // fallback anymore — that path hit a dead CORS-proxy worker and surfaced the
+  // wrong sources. A helper failure surfaces as a clean error to the UI.
   if (helperGetRoute(path)) {
-    try {
-      return await helperGet(path);
-    } catch (e) {
-      const fallback = await parserGet(path);
-      if (fallback) return fallback;
-      throw e;
-    }
+    return await helperGet(path);
   }
-  const parserResult = await parserGet(path);
-  if (parserResult) return parserResult;
   const res = await fetch(path, { headers: { Accept: 'application/json' } });
   const data = await parseBody(res);
   return ensureOk(res, data);
@@ -254,12 +248,12 @@ async function anilistGraphQL(query, variables, token) {
 // (api.hasanraza.tech /sources/catalog). This replaces the old client-side
 // web-parser list. Installing a source adds its id here AND registers it on
 // the helper so browse/search work.
-const INSTALLED_KEY = 'nyora.sources.installed.v1';
-// Seed a fresh visitor with a few known-working sources.
-const DEFAULT_INSTALLED_IDS = [
-  'parser:MANGADEX', 'parser:ASURASCANS', 'parser:FLAMECOMICS',
-  'parser:MANGAPILL', 'parser:WEEBCENTRAL',
-];
+// v2: bumped from v1 to DISCARD stale installed sets (old client-side parser
+// ids + broken/Cloudflare-blocked sources like MangaFire) — a clean slate.
+const INSTALLED_KEY = 'nyora.sources.installed.v2';
+// Start empty: the user installs sources from the Catalog. Explore shows an
+// empty state ("No sources installed yet — open catalog") until then.
+const DEFAULT_INSTALLED_IDS = [];
 
 function installedIds() {
   try {
@@ -316,12 +310,13 @@ export const api = {
     const ids = installedIds();
     if (!ids.includes(id)) { ids.push(id); saveInstalledIds(ids); }
     // Register on the helper so popular/latest/search/details work for it.
-    try { await post('/sources/install' + qs({ id })); } catch { /* helper best-effort */ }
+    // Direct helper call — never the old client-side parser path.
+    try { await helperPost('/sources/install' + qs({ id })); } catch { /* best-effort */ }
     return { ok: true };
   },
   async uninstallSource(id) {
     saveInstalledIds(installedIds().filter((x) => x !== id));
-    try { await post('/sources/uninstall' + qs({ id })); } catch { /* best-effort */ }
+    try { await helperPost('/sources/uninstall' + qs({ id })); } catch { /* best-effort */ }
     return { ok: true };
   },
   pinSource(id, pinned) {
