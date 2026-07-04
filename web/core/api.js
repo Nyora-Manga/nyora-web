@@ -371,6 +371,11 @@ export const api = {
   imageUrl(url, headers) {
     if (!url) return '';
     if (url.startsWith('/') || url.startsWith('data:') || url.startsWith('blob:')) return url;
+    // The helper emits cover/page URLs already proxied via its OWN loopback host
+    // (http://127.0.0.1:8788/image?u=…). Repoint those at the public helper host
+    // instead of double-wrapping them (which browsers can't load from localhost).
+    const px = url.indexOf('/image?u=');
+    if (px !== -1) return helperBase() + url.slice(px);
     const absUrl = url.startsWith('//') ? 'https:' + url : url;
     let result = `${helperBase()}/image?u=${encodeURIComponent(absUrl)}`;
     if (headers && typeof headers === 'object') {

@@ -104,6 +104,13 @@ export function applyImage(img, url, headers, onFail) {
   if (!u) { if (onFail) onFail(); return; }
   if (u.startsWith('data:') || u.startsWith('blob:') || u.startsWith('/')) { img.src = u; return; }
   const abs = u.startsWith('//') ? 'https:' + u : u;
+  // Already a helper /image proxy URL (often the loopback host from the helper) —
+  // go straight to the public proxy; the direct/loopback attempt would just fail.
+  if (abs.includes('/image?u=')) {
+    img.addEventListener('error', () => { if (onFail) onFail(); });
+    img.src = proxyImage(abs, headers); // imageUrl() repoints to the public host
+    return;
+  }
   const canDirect = abs.startsWith('http');
   let stage = canDirect ? 0 : 1; // 0 = direct, 1 = proxied, 2 = failed
   img.addEventListener('error', () => {
