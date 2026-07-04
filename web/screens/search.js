@@ -7,7 +7,7 @@ import { api } from '../core/api.js';
 import {
   el, card, btn, spinner, emptyState, errorBox, langLabel,
 } from '../core/ui.js';
-import { router } from '../core/store.js';
+import { router, store } from '../core/store.js';
 
 export const meta = { title: 'Search', nav: false, icon: 'search', order: 99 };
 
@@ -126,7 +126,9 @@ export function render(view, params) {
     try {
       const res = await api.listSources();
       if (token !== runState.token) return;
-      sources = (res && res.sources || []).filter((s) => s.isInstalled);
+      // Respect the "Show 18+ sources" setting — never search adult sources when off.
+      const showNsfw = !!store.get().showNsfw;
+      sources = (res && res.sources || []).filter((s) => s.isInstalled && (showNsfw || !s.isNsfw));
     } catch (e) {
       results.replaceChildren(errorBox(e.message));
       return;
