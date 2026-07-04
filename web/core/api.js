@@ -248,6 +248,40 @@ async function anilistGraphQL(query, variables, token) {
   return data;
 }
 
+// ---- installed sources (new-API model) ---------------------------------
+// The Explore grid + search operate on the user's OWN installed set (kept in
+// localStorage, per visitor), resolved against the hosted helper's catalog
+// (api.hasanraza.tech /sources/catalog). This replaces the old client-side
+// web-parser list. Installing a source adds its id here AND registers it on
+// the helper so browse/search work.
+const INSTALLED_KEY = 'nyora.sources.installed.v1';
+// Seed a fresh visitor with a few known-working sources.
+const DEFAULT_INSTALLED_IDS = [
+  'parser:MANGADEX', 'parser:ASURASCANS', 'parser:FLAMECOMICS',
+  'parser:MANGAPILL', 'parser:WEEBCENTRAL',
+];
+
+function installedIds() {
+  try {
+    const raw = localStorage.getItem(INSTALLED_KEY);
+    if (raw == null) return DEFAULT_INSTALLED_IDS.slice();
+    const arr = JSON.parse(raw);
+    return Array.isArray(arr) ? arr : DEFAULT_INSTALLED_IDS.slice();
+  } catch { return DEFAULT_INSTALLED_IDS.slice(); }
+}
+function saveInstalledIds(ids) {
+  try { localStorage.setItem(INSTALLED_KEY, JSON.stringify([...new Set(ids)])); } catch { /* ignore */ }
+}
+
+let _catalogCache = null;
+async function fetchCatalog() {
+  if (_catalogCache) return _catalogCache;
+  const res = await get('/sources/catalog'); // hosted helper (static snapshot)
+  const list = (res && (res.entries || res.sources)) || (Array.isArray(res) ? res : []);
+  _catalogCache = Array.isArray(list) ? list : [];
+  return _catalogCache;
+}
+
 // ---- the api surface ---------------------------------------------------
 
 export const api = {
@@ -257,20 +291,38 @@ export const api = {
   del,
 
   // -- Sources ----------------------------------------------------------
-  listSources() {
-    return get('/sources');
+  // The Explore grid: the user's installed sources, resolved from the hosted
+  // catalog (NOT the old client-side web-parsers).
+  async listSources() {
+    const [catalog, ids] = [await fetchCatalog(), installedIds()];
+    const byId = new Map(catalog.map((e) => [e.id, e]));
+    const sources = ids
+      .map((id) => byId.get(id))
+      .filter(Boolean)
+      .map((e) => ({ ...e, isInstalled: true }));
+    return { sources };
   },
   refreshSources() {
-    return post('/sources/refresh');
+    _catalogCache = null;
+    return Promise.resolve({ ok: true });
   },
-  catalog() {
-    return get('/sources/catalog');
+  // The catalog dialog: the full hosted catalog with isInstalled overlaid from
+  // the user's local set.
+  async catalog() {
+    const [catalog, ids] = [await fetchCatalog(), new Set(installedIds())];
+    return { entries: catalog.map((e) => ({ ...e, isInstalled: ids.has(e.id) })) };
   },
-  installSource(id) {
-    return post('/sources/install' + qs({ id }));
+  async installSource(id) {
+    const ids = installedIds();
+    if (!ids.includes(id)) { ids.push(id); saveInstalledIds(ids); }
+    // Register on the helper so popular/latest/search/details work for it.
+    try { await post('/sources/install' + qs({ id })); } catch { /* helper best-effort */ }
+    return { ok: true };
   },
-  uninstallSource(id) {
-    return post('/sources/uninstall' + qs({ id }));
+  async uninstallSource(id) {
+    saveInstalledIds(installedIds().filter((x) => x !== id));
+    try { await post('/sources/uninstall' + qs({ id })); } catch { /* best-effort */ }
+    return { ok: true };
   },
   pinSource(id, pinned) {
     // Server toggles by id; `pinned` is sent for forward-compat/intent.
