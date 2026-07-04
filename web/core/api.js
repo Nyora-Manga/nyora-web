@@ -248,23 +248,30 @@ async function anilistGraphQL(query, variables, token) {
 // (api.hasanraza.tech /sources/catalog). This replaces the old client-side
 // web-parser list. Installing a source adds its id here AND registers it on
 // the helper so browse/search work.
-// v2: bumped from v1 to DISCARD stale installed sets (old client-side parser
-// ids + broken/Cloudflare-blocked sources like MangaFire) — a clean slate.
-const INSTALLED_KEY = 'nyora.sources.installed.v2';
-// Start empty: the user installs sources from the Catalog. Explore shows an
-// empty state ("No sources installed yet — open catalog") until then.
-const DEFAULT_INSTALLED_IDS = [];
+// v3: default = ALL extensions enabled. When there is NO saved set, every catalog
+// source is treated as installed (Explore shows them all, no manual install step).
+// The saved set only exists once the user customizes it (install/uninstall), after
+// which their choices stick. Bumped v2→v3 so existing users pick up the new default.
+const INSTALLED_KEY = 'nyora.sources.installed.v3';
 
-function installedIds() {
+/** The user's explicit saved set, or null if they haven't customized (→ all enabled). */
+function savedInstalledIds() {
   try {
     const raw = localStorage.getItem(INSTALLED_KEY);
-    if (raw == null) return DEFAULT_INSTALLED_IDS.slice();
+    if (raw == null) return null;
     const arr = JSON.parse(raw);
-    return Array.isArray(arr) ? arr : DEFAULT_INSTALLED_IDS.slice();
-  } catch { return DEFAULT_INSTALLED_IDS.slice(); }
+    return Array.isArray(arr) ? arr : null;
+  } catch { return null; }
 }
 function saveInstalledIds(ids) {
   try { localStorage.setItem(INSTALLED_KEY, JSON.stringify([...new Set(ids)])); } catch { /* ignore */ }
+}
+
+/** Effective installed ids: the saved set, or ALL catalog ids by default. */
+async function currentInstalledIds() {
+  const saved = savedInstalledIds();
+  if (saved != null) return saved;
+  return (await fetchCatalog()).map((e) => e.id); // default: all enabled
 }
 
 let _catalogCache = null;
@@ -288,7 +295,7 @@ export const api = {
   // The Explore grid: the user's installed sources, resolved from the hosted
   // catalog (NOT the old client-side web-parsers).
   async listSources() {
-    const [catalog, ids] = [await fetchCatalog(), installedIds()];
+    const [catalog, ids] = [await fetchCatalog(), await currentInstalledIds()];
     const byId = new Map(catalog.map((e) => [e.id, e]));
     const sources = ids
       .map((id) => byId.get(id))
@@ -301,21 +308,22 @@ export const api = {
     return Promise.resolve({ ok: true });
   },
   // The catalog dialog: the full hosted catalog with isInstalled overlaid from
-  // the user's local set.
+  // the effective installed set (all by default).
   async catalog() {
-    const [catalog, ids] = [await fetchCatalog(), new Set(installedIds())];
+    const [catalog, ids] = [await fetchCatalog(), new Set(await currentInstalledIds())];
     return { entries: catalog.map((e) => ({ ...e, isInstalled: ids.has(e.id) })) };
   },
   async installSource(id) {
-    const ids = installedIds();
-    if (!ids.includes(id)) { ids.push(id); saveInstalledIds(ids); }
+    const ids = await currentInstalledIds(); // materialize (all-by-default) then add
+    if (!ids.includes(id)) ids.push(id);
+    saveInstalledIds(ids);
     // Register on the helper so popular/latest/search/details work for it.
-    // Direct helper call — never the old client-side parser path.
     try { await helperPost('/sources/install' + qs({ id })); } catch { /* best-effort */ }
     return { ok: true };
   },
   async uninstallSource(id) {
-    saveInstalledIds(installedIds().filter((x) => x !== id));
+    const ids = await currentInstalledIds(); // materialize (all-by-default) then remove
+    saveInstalledIds(ids.filter((x) => x !== id));
     try { await helperPost('/sources/uninstall' + qs({ id })); } catch { /* best-effort */ }
     return { ok: true };
   },
