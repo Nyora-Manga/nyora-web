@@ -220,7 +220,7 @@ export function render(view, _params) {
       const m = entries[Math.floor(Math.random() * entries.length)];
       router.navigate('details', { sid: src.id, url: m.url });
     } catch (e) {
-      toast(`Error: ${e.message}`);
+      toast(friendlyBrowseError(e && e.message));
     }
   }
 
@@ -616,9 +616,22 @@ export function render(view, _params) {
     } catch (e) {
       if (token !== state.browseToken) return;
       state.browseLoading = false;
-      state.browseError = e.message;
+      state.browseError = friendlyBrowseError(e && e.message);
       renderBrowse();
     }
+  }
+
+  // Map raw helper/upstream errors (e.g. ". Status=403, URL=[https://…]") to a
+  // clean, jargon-free message — never leak source URLs, status codes, or ids.
+  function friendlyBrowseError(msg) {
+    const m = String(msg || '');
+    if (/\b40[13]\b|cloudflare|just a moment|challenge|forbidden/i.test(m)) {
+      return "This source is blocked and can't be reached right now. Try another source.";
+    }
+    if (/timeout|timed out|unavailable|reset|econn|network/i.test(m)) {
+      return 'This source is currently unavailable. Please try again later.';
+    }
+    return "Couldn't load this source. Try another one.";
   }
 
   // ---- boot ---------------------------------------------------------------
