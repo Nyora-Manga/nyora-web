@@ -111,15 +111,17 @@ function helperBase() {
   return String(u).replace(/\/+$/, '');
 }
 
-// Map the SPA's internal route names onto the helper's route names. The helper
-// serves manga detail/page reads under /sources/details and /sources/pages.
+// Map the SPA's internal route names onto the helper's REAL route names. The
+// helper serves manga detail/page reads under /manga/details and /manga/pages
+// (NOT /sources/details — that prefix-matches the bare /sources context and
+// wrongly returns the source list, which broke "open manga").
 function helperPath(path) {
   const idx = String(path).indexOf('?');
   const route = idx === -1 ? String(path) : String(path).slice(0, idx);
   const query = idx === -1 ? '' : String(path).slice(idx);
   let r = route;
-  if (r === '/manga/details') r = '/sources/details';
-  else if (r === '/manga/pages') r = '/sources/pages';
+  if (r === '/sources/details' || r === '/manga/details') r = '/manga/details';
+  else if (r === '/sources/pages' || r === '/manga/pages') r = '/manga/pages';
   return r + query;
 }
 
