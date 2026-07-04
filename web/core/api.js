@@ -276,6 +276,12 @@ async function currentInstalledIds() {
   return (await fetchCatalog()).map((e) => e.id); // default: all enabled
 }
 
+// The catalog exposes contentType but not always an isNsfw flag; treat adult
+// (Hentai) content types as NSFW so the "Show 18+ sources" filter works.
+function isNsfwSource(e) {
+  return e.isNsfw === true || /hentai|adult|nsfw|18\+/i.test(String(e.contentType || ''));
+}
+
 let _catalogCache = null;
 async function fetchCatalog() {
   if (_catalogCache) return _catalogCache;
@@ -302,7 +308,7 @@ export const api = {
     const sources = ids
       .map((id) => byId.get(id))
       .filter(Boolean)
-      .map((e) => ({ ...e, isInstalled: true }));
+      .map((e) => ({ ...e, isInstalled: true, isNsfw: isNsfwSource(e) }));
     return { sources };
   },
   refreshSources() {
@@ -313,7 +319,7 @@ export const api = {
   // the effective installed set (all by default).
   async catalog() {
     const [catalog, ids] = [await fetchCatalog(), new Set(await currentInstalledIds())];
-    return { entries: catalog.map((e) => ({ ...e, isInstalled: ids.has(e.id) })) };
+    return { entries: catalog.map((e) => ({ ...e, isInstalled: ids.has(e.id), isNsfw: isNsfwSource(e) })) };
   },
   async installSource(id) {
     const ids = await currentInstalledIds(); // materialize (all-by-default) then add
