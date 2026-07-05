@@ -964,6 +964,42 @@ body.reader-active .view {
   -webkit-overflow-scrolling: touch;
 }
 
+/* ---- paged / paged-rtl reader — horizontal scroll-snap track ------------ */
+.reader-paged { position: relative; flex: 1; min-height: 0; overflow: hidden; }
+.reader-paged-track {
+  height: 100%;
+  display: flex;
+  overflow-x: auto; overflow-y: hidden;
+  scroll-snap-type: x mandatory;
+  scroll-behavior: smooth;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.reader-paged-track::-webkit-scrollbar { display: none; }
+.reader-slide {
+  flex: 0 0 100%; width: 100%; height: 100%;
+  scroll-snap-align: center; scroll-snap-stop: always;
+  display: flex; align-items: center; justify-content: center;
+}
+/* fit-height: whole page visible (contain). fit-width: fill width, tall pages
+   scroll vertically inside their own slide. */
+.reader-paged-track.fit-height .reader-slide img {
+  max-width: 100%; max-height: 100%; width: auto; height: auto; object-fit: contain;
+}
+.reader-paged-track.fit-width .reader-slide { align-items: flex-start; overflow-y: auto; }
+.reader-paged-track.fit-width .reader-slide::-webkit-scrollbar { display: none; }
+.reader-paged-track.fit-width .reader-slide img { width: 100%; height: auto; max-width: 100%; }
+.reader-slide img { display: block; }
+/* Tap zones for page-turn — DESKTOP ONLY (touch uses native swipe). */
+.reader-zone { display: none; }
+@media (hover: hover) and (pointer: fine) {
+  .reader-zone {
+    display: block; position: absolute; top: 0; bottom: 0; width: 30%; z-index: 4; cursor: pointer;
+  }
+  .reader-zone.left { left: 0; } .reader-zone.right { right: 0; }
+}
+
 .reader-view.controls-hidden .reader-bar,
 .reader-view.controls-hidden .reader-progress {
   opacity: 0;

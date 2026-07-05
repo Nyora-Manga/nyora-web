@@ -368,7 +368,7 @@ export function render(view, params) {
         if (img) img.scrollIntoView({ behavior: 'smooth', block: 'start' });
       }
     } else {
-      showPagedImage();
+      goToSlide(st.currentPage, scrollIntoView);
     }
   }
 
@@ -550,18 +550,32 @@ export function render(view, params) {
       view.replaceChildren(readerView);
       installScrollSpy();
     } else {
+      // Paged / Paged-RTL — a horizontal scroll-snap track: each page is a full
+      // viewport slide. Native swipe + momentum on touch; RTL handled by dir.
       const rtl = mode === 'PAGED_RTL';
-      const stage = el('div', { class: 'reader-paged' + (rtl ? ' rtl' : '') });
-      const left = el('div', { class: 'reader-zone left', title: rtl ? 'Next' : 'Prev' });
-      const right = el('div', { class: 'reader-zone right', title: rtl ? 'Prev' : 'Next' });
+      const track = el('div', {
+        class: 'reader-paged-track' + (fit === 'HEIGHT' ? ' fit-height' : ' fit-width'),
+      });
+      if (rtl) track.dir = 'rtl';
+      st.pages.forEach((p, i) => {
+        track.appendChild(el('div', { class: 'reader-slide', 'data-page': String(i) }, pageImg(p, i)));
+      });
+      // Tap zones (desktop / non-swipe): left = prev, right = next (flipped for RTL).
+      const left = el('div', { class: 'reader-zone left', title: rtl ? 'Next' : 'Previous' });
+      const right = el('div', { class: 'reader-zone right', title: rtl ? 'Previous' : 'Next' });
       left.addEventListener('click', (e) => { e.stopPropagation(); pageStep(rtl ? 1 : -1); });
       right.addEventListener('click', (e) => { e.stopPropagation(); pageStep(rtl ? -1 : 1); });
-      const holder = el('div', { class: 'reader-page-holder', style: { lineHeight: '0' } });
-      stage.append(left, holder, right);
-      const reader = el('div', { class: 'reader' + (fit === 'HEIGHT' ? ' fit-height' : '') }, stage);
-      readerView.append(progressBar(), bar('top'), reader, bar('bottom'));
+      const stage = el('div', { class: 'reader-paged' }, track, left, right);
+      // Update currentPage from whichever slide is snapped under the centre.
+      let raf = null;
+      track.addEventListener('scroll', () => {
+        if (raf) return;
+        raf = requestAnimationFrame(() => { raf = null; updatePagedCurrent(track); });
+      }, { passive: true });
+      readerView.append(progressBar(), bar('top'), stage, bar('bottom'));
       view.replaceChildren(readerView);
-      showPagedImage();
+      goToSlide(st.currentPage, false);
+      preloadAround(st.currentPage);
     }
     syncPosition();
   }
@@ -599,13 +613,46 @@ export function render(view, params) {
     window.addEventListener('scroll', scrollListener, { passive: true });
   }
 
-  function showPagedImage() {
-    const holder = $('.reader-page-holder', view);
-    if (!holder) return;
-    const p = st.pages[st.currentPage];
-    if (!p) { holder.replaceChildren(); return; }
-    holder.replaceChildren(pageImg(p, st.currentPage));
-    syncPosition();
+  // Paged: scroll the given slide to centre (browser handles RTL). `smooth` for
+  // user-driven page turns, instant for the initial paint / restore.
+  function goToSlide(i, smooth) {
+    const track = $('.reader-paged-track', view);
+    if (!track) return;
+    const slide = track.children[i];
+    if (!slide) return;
+    slide.scrollIntoView({ behavior: smooth ? 'smooth' : 'auto', inline: 'center', block: 'nearest' });
+    preloadAround(i);
+  }
+
+  // Eager-load the current page + its neighbours so a swipe never lands on blank.
+  function preloadAround(i) {
+    const track = $('.reader-paged-track', view);
+    if (!track) return;
+    for (let j = i - 1; j <= i + 1; j++) {
+      const img = track.children[j] && track.children[j].querySelector('img');
+      if (img) img.loading = 'eager';
+    }
+  }
+
+  // Which slide is centred → currentPage. getBoundingClientRect is physical so
+  // this works identically for LTR and RTL.
+  function updatePagedCurrent(track) {
+    const r = track.getBoundingClientRect();
+    const mid = r.left + r.width / 2;
+    let best = st.currentPage; let bestDist = Infinity;
+    for (const slide of track.children) {
+      const sr = slide.getBoundingClientRect();
+      const d = Math.abs((sr.left + sr.width / 2) - mid);
+      if (d < bestDist) { bestDist = d; best = Number(slide.dataset.page); }
+    }
+    if (best !== st.currentPage) {
+      st.currentPage = best;
+      syncPosition();
+      recordHistory(best);
+      checkBookmark();
+      preloadAround(best);
+      if (best >= st.pages.length - 2) maybePrefetch();
+    }
   }
 
   function openChapterList() {
