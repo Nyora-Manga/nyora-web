@@ -30,10 +30,35 @@ export const meta = {
   order: 5,
 };
 
-const ANILIST_ENDPOINT = 'https://graphql.anilist.co';
-const ANILIST_QUERY =
-  'query{Page(perPage:30){media(type:MANGA,sort:TRENDING_DESC){' +
-  'id title{romaji english} coverImage{large} averageScore genres}}}';
+// Backed by the MangaBaka database (search-first, permissive CORS). We fetch a
+// broad manga search and rank it client-side by popularity to build the grid.
+const MB_SEARCH = 'https://api.mangabaka.dev/v1/series/search';
+
+function mbPopularity(it) {
+  const p = it && it.popularity && it.popularity.global;
+  return (p && typeof p.current === 'number' ? p.current : 0) || 0;
+}
+function mbCover(it) {
+  const c = (it && it.cover) || {};
+  return (c.x350 && c.x350.x1) || (c.x250 && c.x250.x1) || (c.raw && c.raw.url) || '';
+}
+function prettyGenre(g) {
+  return String(g || '').split('_').map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+}
+function mbUsable(x) {
+  return x && x.state !== 'merged' && mbCover(x) && String(x.title || '').trim().length >= 3;
+}
+function normalizeMB(it) {
+  const title = it.title || it.romanized_title || it.native_title || 'Untitled';
+  const cover = mbCover(it);
+  return {
+    id: it.id,
+    title: { romaji: it.romanized_title || title, english: title },
+    coverImage: { large: cover },
+    averageScore: typeof it.rating === 'number' ? Math.round(it.rating) : null,
+    genres: (Array.isArray(it.genres) ? it.genres : []).map(prettyGenre),
+  };
+}
 
 // Bump on every render() so a slow fetch from a previous view can't overwrite
 // the section element after the user has navigated away and back.
@@ -52,7 +77,7 @@ async function load(section) {
   const token = ++renderToken;
 
   section.replaceChildren(
-    sectionHeader('Trending on AniList', icon('trending')),
+    sectionHeader('Popular now', icon('trending')),
     skeletonGrid(18),
   );
 
@@ -62,8 +87,8 @@ async function load(section) {
   } catch (err) {
     if (token !== renderToken) return;
     section.replaceChildren(
-      sectionHeader('Trending on AniList', icon('trending')),
-      errorBox(`Couldn't reach AniList: ${err.message || err}`),
+      sectionHeader('Popular now', icon('trending')),
+      errorBox(`Couldn't reach MangaBaka: ${err.message || err}`),
       el('div', { class: 'center', style: { marginTop: '14px' } },
         btn('Retry', { variant: 'ghost', icon: 'refresh', onClick: () => load(section) }),
       ),
@@ -75,8 +100,8 @@ async function load(section) {
 
   if (!media.length) {
     section.replaceChildren(
-      sectionHeader('Trending on AniList', icon('trending')),
-      emptyState('AniList has nothing trending right now — check back soon.'),
+      sectionHeader('Popular now', icon('trending')),
+      emptyState('MangaBaka has nothing to show right now — check back soon.'),
       el('div', { class: 'center', style: { marginTop: '14px' } },
         btn('Retry', { variant: 'ghost', icon: 'refresh', onClick: () => load(section) }),
       ),
@@ -87,26 +112,20 @@ async function load(section) {
   const grid = el('div', { class: 'grid' });
   for (const item of media) grid.appendChild(trendingCard(item));
   section.replaceChildren(
-    sectionHeader('Trending on AniList', icon('trending')),
+    sectionHeader('Popular now', icon('trending')),
     grid,
   );
 }
 
-// Direct GraphQL POST — AniList sends permissive CORS headers, so the browser
-// allows this cross-origin call (the sole exception in the SPA).
+// Broad MangaBaka search ranked client-side by popularity → a "popular" grid.
 async function fetchAnilistTrending() {
-  const res = await fetch(ANILIST_ENDPOINT, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Accept: 'application/json',
-    },
-    body: JSON.stringify({ query: ANILIST_QUERY }),
-  });
+  const p = new URLSearchParams({ q: 'a', type: 'manga', content_rating: 'safe', limit: '30' });
+  const res = await fetch(`${MB_SEARCH}?${p.toString()}`, { headers: { Accept: 'application/json' } });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const json = await res.json();
-  const list = json && json.data && json.data.Page && json.data.Page.media;
-  return Array.isArray(list) ? list : [];
+  const items = (Array.isArray(json && json.data) ? json.data : []).filter(mbUsable);
+  items.sort((a, b) => mbPopularity(b) - mbPopularity(a));
+  return items.slice(0, 24).map(normalizeMB);
 }
 
 function anilistTitle(item) {

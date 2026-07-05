@@ -34,26 +34,48 @@ export const meta = {
   order: 0,
 };
 
-const ANILIST_ENDPOINT = 'https://graphql.anilist.co';
+// Discover is backed by the MangaBaka database (https://mangabaka.org). Its API
+// is search-first (no trending endpoint) and sends permissive CORS, so we fetch
+// several filtered searches straight from the browser and sort them client-side
+// by popularity / rating to build the rails.
+const MB_SEARCH = 'https://api.mangabaka.dev/v1/series/search';
 
-// One POST, two aliased pages: trending + all-time popular. The hero pulls
-// banner/description/genres from the first trending entry.
-const HERO_FIELDS =
-  'id title{romaji english} coverImage{large extraLarge} bannerImage genres description(asHtml:false) averageScore';
-const CARD_FIELDS = 'id title{romaji english} coverImage{large extraLarge} genres averageScore';
-// One POST, many aliased pages → a full Discover feed. isAdult:false keeps it safe.
-const ANILIST_QUERY =
-  'query{' +
-  `trending:Page(perPage:20){media(type:MANGA,sort:TRENDING_DESC,isAdult:false){${HERO_FIELDS}}}` +
-  `popular:Page(perPage:18){media(type:MANGA,sort:POPULARITY_DESC,isAdult:false){${CARD_FIELDS}}}` +
-  `topRated:Page(perPage:18){media(type:MANGA,sort:SCORE_DESC,isAdult:false){${CARD_FIELDS}}}` +
-  `favourites:Page(perPage:18){media(type:MANGA,sort:FAVOURITES_DESC,isAdult:false){${CARD_FIELDS}}}` +
-  `manhwa:Page(perPage:18){media(type:MANGA,countryOfOrigin:"KR",sort:POPULARITY_DESC,isAdult:false){${CARD_FIELDS}}}` +
-  `action:Page(perPage:18){media(type:MANGA,genre_in:["Action"],sort:POPULARITY_DESC,isAdult:false){${CARD_FIELDS}}}` +
-  `romance:Page(perPage:18){media(type:MANGA,genre_in:["Romance"],sort:POPULARITY_DESC,isAdult:false){${CARD_FIELDS}}}` +
-  `fantasy:Page(perPage:18){media(type:MANGA,genre_in:["Fantasy"],sort:POPULARITY_DESC,isAdult:false){${CARD_FIELDS}}}` +
-  `comedy:Page(perPage:18){media(type:MANGA,genre_in:["Comedy"],sort:POPULARITY_DESC,isAdult:false){${CARD_FIELDS}}}` +
-  '}';
+// A broad query token — MangaBaka search requires `q`, so this matches the bulk
+// of the catalogue; we then sort the results ourselves.
+const MB_BROAD_Q = 'a';
+
+// Pull the sortable global-popularity number out of MangaBaka's nested shape.
+function mbPopularity(it) {
+  const p = it && it.popularity && it.popularity.global;
+  return (p && typeof p.current === 'number' ? p.current : 0) || 0;
+}
+
+// Best available cover: prefer the CDN thumbnails, fall back to the raw image.
+function mbCover(it) {
+  const c = (it && it.cover) || {};
+  return (c.x350 && c.x350.x1) || (c.x250 && c.x250.x1) || (c.raw && c.raw.url) || '';
+}
+
+// "school_life" -> "School Life"
+function prettyGenre(g) {
+  return String(g || '').split('_').map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+}
+
+// Map a MangaBaka series onto the shape the hero/rail renderers already expect
+// (an AniList-media-like object), so the rest of this screen is unchanged.
+function normalizeMB(it) {
+  const title = it.title || it.romanized_title || it.native_title || 'Untitled';
+  const cover = mbCover(it);
+  return {
+    id: it.id,
+    title: { romaji: it.romanized_title || title, english: title },
+    coverImage: { large: cover, extraLarge: cover },
+    bannerImage: null,
+    genres: (Array.isArray(it.genres) ? it.genres : []).map(prettyGenre).slice(0, 6),
+    averageScore: typeof it.rating === 'number' ? Math.round(it.rating) : null,
+    description: it.description || '',
+  };
+}
 
 // Bump on every render() so a slow fetch from a previous view can't overwrite
 // the screen after the user has navigated away and back.
@@ -115,7 +137,7 @@ async function load(body) {
   } catch (err) {
     if (token !== renderToken) return;
     body.replaceChildren(
-      errorBox(`Couldn't reach AniList: ${err.message || err}`),
+      errorBox(`Couldn't reach MangaBaka: ${err.message || err}`),
       el('div', { class: 'center', style: { marginTop: '14px' } },
         btn('Retry', { variant: 'ghost', icon: 'refresh', onClick: () => load(body) }),
       ),
@@ -129,7 +151,7 @@ async function load(body) {
   const anyContent = Object.values(feed).some((arr) => Array.isArray(arr) && arr.length);
   if (!anyContent) {
     body.replaceChildren(
-      emptyState('AniList has nothing to discover right now — check back soon.', 'trending'),
+      emptyState('MangaBaka has nothing to discover right now — check back soon.', 'trending'),
       el('div', { class: 'center', style: { marginTop: '14px' } },
         btn('Retry', { variant: 'ghost', icon: 'refresh', onClick: () => load(body) }),
       ),
@@ -157,34 +179,46 @@ async function load(body) {
   body.replaceChildren(...children);
 }
 
-// Direct GraphQL POST — AniList sends permissive CORS headers.
-async function fetchAnilistFeed() {
-  const res = await fetch(ANILIST_ENDPOINT, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Accept: 'application/json',
-    },
-    body: JSON.stringify({ query: ANILIST_QUERY }),
+// A MangaBaka series is worth showing only if it has a cover and a real title
+// (the DB is full of 1–2 char placeholder entries we don't want on the grid).
+function mbUsable(x) {
+  return x && x.state !== 'merged' && mbCover(x) && String(x.title || '').trim().length >= 3;
+}
+
+// One MangaBaka search → a normalized, quality-filtered, client-side-sorted rail.
+async function mbRail({ genre, type = 'manga', sortBy = 'popularity', limit = 30, take = 20 } = {}) {
+  const p = new URLSearchParams({
+    q: MB_BROAD_Q,
+    type,
+    content_rating: 'safe',
+    limit: String(limit),
   });
+  if (genre) p.set('genre', genre);
+  const res = await fetch(`${MB_SEARCH}?${p.toString()}`, { headers: { Accept: 'application/json' } });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const json = await res.json();
-  const data = (json && json.data) || {};
-  const list = (page) => {
-    const m = page && page.media;
-    return Array.isArray(m) ? m : [];
-  };
-  return {
-    trending: list(data.trending),
-    popular: list(data.popular),
-    topRated: list(data.topRated),
-    favourites: list(data.favourites),
-    manhwa: list(data.manhwa),
-    action: list(data.action),
-    romance: list(data.romance),
-    fantasy: list(data.fantasy),
-    comedy: list(data.comedy),
-  };
+  const items = (Array.isArray(json && json.data) ? json.data : []).filter(mbUsable);
+  items.sort((a, b) =>
+    sortBy === 'rating' ? (b.rating || 0) - (a.rating || 0) : mbPopularity(b) - mbPopularity(a),
+  );
+  return items.slice(0, take).map(normalizeMB);
+}
+
+// Build the whole Discover feed from parallel MangaBaka searches. A single rail
+// failing (network/rate) resolves to [] so the rest of the page still renders.
+async function fetchAnilistFeed() {
+  const safe = (promise) => promise.catch(() => []);
+  const [popular, topRated, manhwa, action, romance, fantasy, comedy] = await Promise.all([
+    safe(mbRail({ sortBy: 'popularity', limit: 30 })),
+    safe(mbRail({ sortBy: 'rating', limit: 30 })),
+    safe(mbRail({ type: 'manhwa', sortBy: 'popularity', limit: 30 })),
+    safe(mbRail({ genre: 'Action', sortBy: 'popularity', limit: 30 })),
+    safe(mbRail({ genre: 'Romance', sortBy: 'popularity', limit: 30 })),
+    safe(mbRail({ genre: 'Fantasy', sortBy: 'popularity', limit: 30 })),
+    safe(mbRail({ genre: 'Comedy', sortBy: 'popularity', limit: 30 })),
+  ]);
+  // `trending` drives the hero + first rail (popularity-ranked).
+  return { trending: popular, popular: [], topRated, favourites: [], manhwa, action, romance, fantasy, comedy };
 }
 
 function anilistTitle(item) {
