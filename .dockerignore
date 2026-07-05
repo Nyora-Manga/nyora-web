@@ -1,0 +1,28 @@
+# Keep the build context tiny — only the SPA build inputs + Docker files matter.
+.git
+.github
+.gitignore
+node_modules
+dist
+build
+.netlify
+docs
+cloudflare-worker
+
+# Secrets / local env — never ship into an image.
+.env
+.env.*
+
+# Docs / editor / OS cruft.
+*.md
+!DOCKER.md
+LICENSE
+NYORA_WEB_UPGRADE_BACKLOG.md
+.DS_Store
+.idea
+*.iml
+*.log
+
+# Root-level images / non-inputs (web/*.png icons ARE needed and are kept —
+# this only excludes stray PNGs at the context root).
+/*.png

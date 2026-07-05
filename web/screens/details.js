@@ -267,7 +267,11 @@ function buildDetails(view, sid, url, manga, chapters, params) {
     }
     const lastReadUrl = lastReadChapterUrl(mangaId, readingOrder);
     const lastReadIdx = readingOrder.findIndex((c) => c.url === lastReadUrl);
-    const ordered = newestFirst ? readingOrder.slice().reverse() : readingOrder.slice();
+    // Order the displayed chapters by chapter NUMBER so the label always matches
+    // the order — "Newest" = highest number first, "Oldest" = lowest first —
+    // regardless of the order the source returned the array in.
+    const asc = readingOrder.slice().sort((a, b) => (Number(a.number) || 0) - (Number(b.number) || 0));
+    const ordered = newestFirst ? asc.reverse() : asc;
     for (const c of ordered) {
       const idx = readingOrder.indexOf(c);
       const isRead = lastReadIdx >= 0 && idx <= lastReadIdx;

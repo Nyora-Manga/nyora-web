@@ -1,0 +1,79 @@
+# ============================================================================
+# Nyora Web — Caddy config. Single site on :8080.
+#
+#   /api/*  → parser helper on 127.0.0.1:8788  (prefix STRIPPED)
+#   /*      → static SPA in /srv with the /index.html fallback
+#
+# The helper is same-origin under /api, so there is no CORS boundary. Sync is
+# a remote absolute URL loaded from env.js in the browser — never proxied here.
+# ============================================================================
+{
+	admin off
+	# Keep Caddy's own data/config off /root (non-root runtime).
+	storage file_system {
+		root /config
+	}
+	# No automatic HTTPS: we serve plain :8080 and let an outer proxy (if any)
+	# terminate TLS. The site address below is a bare port for this reason.
+	auto_https off
+}
+
+:8080 {
+	log {
+		output stdout
+		format console
+		level INFO
+	}
+
+	# --- Parser helper (same-origin, /api prefix stripped) ---------------
+	# handle_path strips the matched "/api" prefix, so:
+	#   /api/sources/catalog  → helper GET /sources/catalog
+	#   /api/manga/details    → helper GET /manga/details
+	#   /api/image?u=...&h=... → helper GET /image?u=...&h=...   (query preserved)
+	#   /api/health           → helper GET /health              (healthcheck)
+	handle_path /api/* {
+		reverse_proxy 127.0.0.1:8788 {
+			# Images and search can be slow when FlareSolverr solves a challenge.
+			transport http {
+				dial_timeout 10s
+				response_header_timeout 90s
+				read_timeout 120s
+			}
+		}
+	}
+
+	# --- Static SPA ------------------------------------------------------
+	handle {
+		root * /srv
+		encode gzip zstd
+
+		# Immutable, content-hashed bundle chunks — cache forever.
+		@immutable path /chunk-*.js
+		header @immutable Cache-Control "public, max-age=31536000, immutable"
+
+		# env.js is rendered per-deploy and must never be cached hard.
+		@envjs path /env.js
+		header @envjs Cache-Control "no-cache, must-revalidate"
+
+		# The service worker must always revalidate.
+		@sw path /sw.js
+		header @sw Cache-Control "no-cache, must-revalidate"
+
+		# Baseline security headers (permissive: same-origin app, no framing).
+		header {
+			X-Content-Type-Options "nosniff"
+			X-Frame-Options "SAMEORIGIN"
+			Referrer-Policy "strict-origin-when-cross-origin"
+			-Server
+			# Defense-in-depth CSP: script-src strict 'self' (all scripts same-origin,
+			# zero inline handlers); img-src/connect-src stay HTTPS-broad for AniList
+			# cover CDNs + the remote AniList GraphQL and sync APIs.
+			Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; font-src 'self' data:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'"
+		}
+
+		# SPA fallback: real files served as-is; unknown named routes
+		# (discover/explore/library/details/reader/...) → index.html.
+		try_files {path} /index.html
+		file_server
+	}
+}
