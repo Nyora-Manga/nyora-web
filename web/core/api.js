@@ -111,6 +111,18 @@ function helperBase() {
   return String(u).replace(/\/+$/, '');
 }
 
+// Given a proxied "…/image?u=<encoded-cdn-url>" URL, derive a { Referer } of the
+// image's own origin. Hotlink/Cloudflare-protected CDNs (e.g. AnisaScans) 403 a
+// refererless fetch, which makes the helper's /image return 502 (blank cover).
+function refererFromProxied(proxyUrl) {
+  try {
+    const m = /[?&]u=([^&]+)/.exec(proxyUrl);
+    if (!m) return null;
+    const origin = new URL(decodeURIComponent(m[1])).origin;
+    return { Referer: origin + '/' };
+  } catch { return null; }
+}
+
 // Map the SPA's internal route names onto the helper's REAL route names. The
 // helper serves manga detail/page reads under /manga/details and /manga/pages
 // (NOT /sources/details — that prefix-matches the bare /sources context and
@@ -406,7 +418,23 @@ export const api = {
     // (http://127.0.0.1:8788/image?u=…). Repoint those at the public helper host
     // instead of double-wrapping them (which browsers can't load from localhost).
     const px = url.indexOf('/image?u=');
-    if (px !== -1) return helperBase() + url.slice(px);
+    if (px !== -1) {
+      let repointed = helperBase() + url.slice(px);
+      // The loopback proxy URL drops the source Referer that hotlink/Cloudflare-
+      // protected CDNs require — without it the helper's fetch 403s and /image
+      // returns 502 (blank cover). Re-add it: caller's header, else derive from
+      // the image's own origin.
+      if (!repointed.includes('&h=')) {
+        const hdrs = (headers && typeof headers === 'object' && Object.keys(headers).length)
+          ? headers : refererFromProxied(repointed);
+        if (hdrs) {
+          for (const [k, v] of Object.entries(hdrs)) {
+            repointed += `&h=${encodeURIComponent(k + ':' + v)}`;
+          }
+        }
+      }
+      return repointed;
+    }
     const absUrl = url.startsWith('//') ? 'https:' + url : url;
     let result = `${helperBase()}/image?u=${encodeURIComponent(absUrl)}`;
     if (headers && typeof headers === 'object') {
