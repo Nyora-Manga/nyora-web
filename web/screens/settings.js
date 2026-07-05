@@ -320,7 +320,7 @@ function buildAbout() {
   }, icon(iconName));
 
   const credits = el('div', { class: 'credits' },
-    el('div', { style: { fontWeight: '800', fontSize: '18px', letterSpacing: '0.08em', marginBottom: '6px', color: 'var(--text)' } }, 'NYORA WEB 1.0'),
+    el('div', { style: { fontWeight: '800', fontSize: '18px', letterSpacing: '0.08em', marginBottom: '6px', color: 'var(--text)' } }, 'NYORA WEB 2.0'),
     el('div', { style: { color: 'var(--text-faint)', fontSize: '13px', marginBottom: '24px' } }, 'Md Hasan Raza · Creator of Nyora'),
     el('div', { class: 'row', style: { justifyContent: 'center' } },
       socialLink('instagram', 'https://www.instagram.com/md_hasan_raza____?igsh=MXZ6eTk2Y3FsNGs3aQ==', 'Instagram'),

@@ -1,6 +1,7 @@
 {
   "name": "Nyora",
   "short_name": "Nyora",
+  "version": "2.0.0",
   "description": "Free online manga reader for your browser — read manga with no install. Installable, offline-capable PWA with hundreds of sources, favourites, history, AniList tracking and cloud sync.",
   "id": "/",
   "start_url": "/",
