@@ -115,7 +115,7 @@ export function render(view, params) {
   // Hide app-level UI
   document.body.classList.add('reader-active');
 
-  view.replaceChildren(loadingBlock('Loading chapter…'));
+  view.replaceChildren(el('div', { class: 'reader-loading-screen' }, loadingBlock('Loading chapter…')));
 
   if (!sid || !mangaUrl || !startChapterUrl) {
     view.replaceChildren(errorBox('Reader needs a source, manga and chapter.'));
@@ -275,7 +275,7 @@ export function render(view, params) {
     }
     st.currentPage = 0;
     if (scrollListener) { window.removeEventListener('scroll', scrollListener); scrollListener = null; }
-    view.replaceChildren(bar('top', true), loadingBlock('Loading pages…'));
+    view.replaceChildren(el('div', { class: 'reader-loading-screen' }, bar('top', true), loadingBlock('Loading pages…')));
     try {
       const data = await api.pages(st.sid, st.chapterUrl);
       if (st.destroyed) return;

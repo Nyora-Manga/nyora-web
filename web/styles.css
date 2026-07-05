@@ -1003,8 +1003,9 @@ body.reader-active .view {
 }
 
 /* ---- reader loading state — page-shaped shimmer + accent spinner -------- */
+.reader-loading-screen { height: 100dvh; display: flex; flex-direction: column; }
 .reader-loading {
-  position: relative; flex: 1; min-height: 100dvh;
+  position: relative; flex: 1; min-height: 0;
   display: grid; place-items: center; padding: 22px;
 }
 .reader-loading-page {
