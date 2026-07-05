@@ -21,20 +21,23 @@
   /* Cosmic-midnight palette mirrored from nyora-android (values-night):
      background #060810, surfaces are subtly indigo-tinted so the mobile-web
      reads like the android app rather than a flat neutral AMOLED shell. */
-  --bg: #060810;                /* android nyora_background — cosmic midnight */
-  --bg-elev: #0d1222;           /* android surfaceContainerLow */
-  --surface1: #131b32;          /* cards / panes / rows — android surfaceContainer */
-  --surface2: #1a2442;          /* hover — android surfaceContainerHigh */
-  --surface3: #26335c;          /* active / inset — android surfaceContainerHighest */
-  --surface-grad: linear-gradient(180deg, #16203c 0%, #0c1122 100%);
-  --border: rgba(170, 195, 255, 0.10);
-  --border-strong: rgba(170, 195, 255, 0.18);
-  --text: #ededf2;
-  --text-dim: #9a9aac;
-  --text-faint: #62626f;
-  --accent: #6366f1;            /* default; overridden by browser AccentColor */
+  /* Monochrome base — true neutral greys, zero hue. The ONLY colour in the UI
+     is --accent (the user's chosen scheme colour), applied deliberately. */
+  --bg: #0a0a0b;                /* near-black, neutral */
+  --bg-elev: #121213;          /* raised chrome (topbar, sidebar) */
+  --surface1: #171719;          /* cards / panes / rows */
+  --surface2: #202023;          /* hover */
+  --surface3: #2a2a2e;          /* active / inset */
+  --surface-grad: linear-gradient(180deg, #1a1a1d 0%, #0e0e10 100%);
+  --border: rgba(255, 255, 255, 0.10);
+  --border-strong: rgba(255, 255, 255, 0.20);
+  --text: #f5f5f6;
+  --text-dim: #a1a1a6;
+  --text-faint: #6c6c72;
+  --accent: #6366f1;            /* default; overridden by chosen scheme / AccentColor */
   --accent-soft: color-mix(in oklab, var(--accent) 16%, transparent);
-  --accent-2: color-mix(in oklab, var(--accent) 60%, #a855f7);
+  /* second accent stop = a deeper shade of the SAME hue (no second colour) */
+  --accent-2: color-mix(in oklab, var(--accent) 82%, #000000);
   --on-accent: #ffffff;
   /* Flat design: interactive accent fills are SOLID (no gradient). The
      linear-gradient lives only as a faint background tint (see body). */
@@ -48,9 +51,9 @@
      that washed the whole app grey. Bottom stays absolute black. */
   --bg-tint:
     linear-gradient(168deg,
-      color-mix(in srgb, var(--accent) 16%, #060810) 0%,
-      #060810 46%,
-      #060810 100%);
+      color-mix(in srgb, var(--accent) 9%, #0a0a0b) 0%,
+      #0a0a0b 44%,
+      #0a0a0b 100%);
   --danger: #ff5a65;
   --ok: #34d399;
   --warn: #fbbf24;
@@ -65,12 +68,12 @@
   --scrim-soft: rgba(0, 0, 0, 0.04);
   --scrim-deep: rgba(0, 0, 0, 0.66);
   --scrim-deeper: rgba(0, 0, 0, 0.68);
-  /* Hairlines / sheens (faint indigo-tinted white to match the android cast). */
-  --hairline: rgba(170, 195, 255, 0.08);
-  --hairline-sheen: rgba(170, 195, 255, 0.05);
-  --hairline-faint: rgba(170, 195, 255, 0.02);
-  --card-border: rgba(170, 195, 255, 0.10);
-  --card-border-hover: rgba(170, 195, 255, 0.20);
+  /* Hairlines / sheens — neutral white, no hue. */
+  --hairline: rgba(255, 255, 255, 0.08);
+  --hairline-sheen: rgba(255, 255, 255, 0.05);
+  --hairline-faint: rgba(255, 255, 255, 0.02);
+  --card-border: rgba(255, 255, 255, 0.10);
+  --card-border-hover: rgba(255, 255, 255, 0.20);
   /* Text over arbitrary surfaces (semi-transparent white). */
   --text-on-surface-muted: rgba(255, 255, 255, 0.6);
   /* Pure-contrast literals for the rare extreme-contrast need. */
@@ -129,85 +132,84 @@
   --ease: cubic-bezier(0.4, 0, 0.2, 1);
   --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
 
-  /* ---- welcome / start screen (self-contained night-rain palette) ---- */
-  --wlc-text: #eef1fb;
-  --wlc-sky-1: #1b2745;
-  --wlc-sky-2: #0c1426;
-  --wlc-sky-3: #05070f;
-  --wlc-blue: #2b6cff;
-  --wlc-mist-1: rgba(130, 160, 230, 0.1);
-  --wlc-mist-2: rgba(90, 120, 210, 0.08);
-  --wlc-drop: rgba(188, 210, 255, 0.7);
-  --wlc-flash: rgba(214, 228, 255, 0.5);
-  --wlc-vignette: rgba(0, 0, 0, 0.6);
-  --wlc-wordmark: #dfe4f5;
-  --wlc-eyebrow: #8ea0cc;
-  --wlc-title: #f4f6fd;
-  --wlc-title-shadow: rgba(0, 0, 0, 0.45);
-  --wlc-sub: #aab7dc;
-  --wlc-feature: #93a2cb;
-  --wlc-card-top: rgba(22, 30, 52, 0.93);
-  --wlc-card-bottom: rgba(12, 18, 34, 0.9);
-  --wlc-card-border: rgba(170, 195, 255, 0.13);
-  --wlc-card-shadow: 0 30px 80px rgba(0, 0, 0, 0.5);
-  --wlc-card-inner: rgba(255, 255, 255, 0.07);
-  --wlc-head: #8294be;
+  /* ---- welcome / start screen (monochrome; accent applied deliberately) ---- */
+  --wlc-text: #f4f4f6;
+  --wlc-sky-1: #161617;
+  --wlc-sky-2: #0d0d0e;
+  --wlc-sky-3: #050506;
+  --wlc-blue: var(--accent);   /* the single accent — rain/flash pick it up */
+  --wlc-mist-1: rgba(255, 255, 255, 0.05);
+  --wlc-mist-2: rgba(255, 255, 255, 0.035);
+  --wlc-drop: rgba(255, 255, 255, 0.62);
+  --wlc-flash: rgba(255, 255, 255, 0.42);
+  --wlc-vignette: rgba(0, 0, 0, 0.62);
+  --wlc-wordmark: #e9e9ec;
+  --wlc-eyebrow: #9a9aa0;
+  --wlc-title: #fafafb;
+  --wlc-title-shadow: rgba(0, 0, 0, 0.5);
+  --wlc-sub: #b0b0b6;
+  --wlc-feature: #9a9aa0;
+  --wlc-card-top: rgba(26, 26, 28, 0.94);
+  --wlc-card-bottom: rgba(16, 16, 18, 0.92);
+  --wlc-card-border: rgba(255, 255, 255, 0.12);
+  --wlc-card-shadow: 0 30px 80px rgba(0, 0, 0, 0.55);
+  --wlc-card-inner: rgba(255, 255, 255, 0.06);
+  --wlc-head: #8c8c92;
   --wlc-google-bg: #ffffff;
-  --wlc-google-text: #1f1f29;
+  --wlc-google-text: #1a1a1c;
   --wlc-google-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
   --wlc-google-shadow-hover: 0 16px 42px rgba(0, 0, 0, 0.5);
   --wlc-google-spin-track: rgba(0, 0, 0, 0.25);
-  --wlc-or: #7e8eb6;
-  --wlc-ghost-border: rgba(170, 195, 255, 0.15);
-  --wlc-ghost-border-hover: rgba(170, 195, 255, 0.28);
-  --wlc-ghost-bg: rgba(160, 185, 255, 0.035);
-  --wlc-ghost-bg-hover: rgba(160, 185, 255, 0.09);
-  --wlc-ghost-text: #e7ecfb;
+  --wlc-or: #7c7c82;
+  --wlc-ghost-border: rgba(255, 255, 255, 0.14);
+  --wlc-ghost-border-hover: rgba(255, 255, 255, 0.26);
+  --wlc-ghost-bg: rgba(255, 255, 255, 0.03);
+  --wlc-ghost-bg-hover: rgba(255, 255, 255, 0.08);
+  --wlc-ghost-text: #ededf0;
   --wlc-status-error: #ff8b91;
-  --wlc-status-info: #9fb6ff;
-  --wlc-foot: #707fa6;
-  --wlc-feature-card-border: rgba(170, 195, 255, 0.11);
-  --wlc-feature-card-bg: rgba(160, 185, 255, 0.045);
+  --wlc-status-info: color-mix(in srgb, var(--accent) 85%, #ffffff);
+  --wlc-foot: #6f6f76;
+  --wlc-feature-card-border: rgba(255, 255, 255, 0.10);
+  --wlc-feature-card-bg: rgba(255, 255, 255, 0.04);
 }
 
 :root[data-theme="LIGHT"] {
-  /* Warm slate mirrored from nyora-android (values day): background #F8FAFC,
-     surface #FAFAFA, containers in the slate #E2E8F0 / #CBD5E1 family. */
-  --bg: #f1f5f9;
-  --bg-elev: #f8fafc;
+  /* Monochrome light — neutral greys, zero hue; --accent is the only colour. */
+  --bg: #f6f6f7;
+  --bg-elev: #fbfbfc;
   --surface1: #ffffff;
-  --surface2: #e2e8f0;
-  --surface3: #cbd5e1;
-  --surface-grad: linear-gradient(180deg, #ffffff 0%, #f1f5f9 100%);
-  --border: rgba(16, 18, 50, 0.15);
-  --border-strong: rgba(16, 18, 50, 0.28);
-  --text: #14141b;
-  --text-dim: #484856;
-  --text-faint: #7a7a88;
+  --surface2: #ededee;
+  --surface3: #dddde0;
+  --surface-grad: linear-gradient(180deg, #ffffff 0%, #f4f4f5 100%);
+  --border: rgba(0, 0, 0, 0.14);
+  --border-strong: rgba(0, 0, 0, 0.26);
+  --text: #0e0e10;
+  --text-dim: #52525a;
+  --text-faint: #8a8a90;
   --on-accent: #ffffff;
   --grad-sheen: linear-gradient(180deg, var(--text-on-surface-muted), transparent);
   --bg-tint:
-    linear-gradient(160deg, color-mix(in oklab, var(--accent) 8%, transparent) 0%, transparent 40%);
-  --danger: #e5484d;
+    linear-gradient(160deg, color-mix(in oklab, var(--accent) 7%, transparent) 0%, transparent 40%);
+  --danger: #d92d2d;
   --ok: #2f9e6f;
-  --overlay: rgba(16, 18, 50, 0.32);
-  --overlay-strong: rgba(16, 18, 50, 0.4);
-  --overlay-light: rgba(16, 18, 50, 0.18);
-  --hairline: rgba(16, 18, 50, 0.12);
-  --hairline-sheen: rgba(16, 18, 50, 0.05);
-  --hairline-faint: rgba(16, 18, 50, 0.03);
-  --card-border: rgba(16, 18, 50, 0.12);
-  --card-border-hover: rgba(16, 18, 50, 0.2);
-  --text-on-surface-muted: rgba(20, 20, 27, 0.6);
+  --overlay: rgba(0, 0, 0, 0.32);
+  --overlay-strong: rgba(0, 0, 0, 0.4);
+  --overlay-light: rgba(0, 0, 0, 0.18);
+  --hairline: rgba(0, 0, 0, 0.11);
+  --hairline-sheen: rgba(0, 0, 0, 0.05);
+  --hairline-faint: rgba(0, 0, 0, 0.03);
+  --card-border: rgba(0, 0, 0, 0.11);
+  --card-border-hover: rgba(0, 0, 0, 0.2);
+  --text-on-surface-muted: rgba(14, 14, 16, 0.6);
   --skeleton-shimmer: color-mix(in oklab, var(--accent) 8%, var(--surface2));
-  --shadow: 0 14px 40px rgba(20, 22, 50, 0.14);
-  --shadow-sm: 0 4px 14px rgba(20, 22, 50, 0.1);
-  --shadow-card: 0 14px 34px rgba(20, 22, 50, 0.12);
-  --shadow-card-hover: 0 22px 48px rgba(20, 22, 50, 0.16);
-  --shadow-cover: 0 14px 32px rgba(20, 22, 50, 0.14);
-  --shadow-cover-hover: 0 22px 46px rgba(20, 22, 50, 0.18);
-  --shadow-pop: 0 30px 80px rgba(20, 22, 50, 0.22);
-  --btn-hover: #e4e4f0;
+  --shadow: 0 14px 40px rgba(0, 0, 0, 0.12);
+  --shadow-sm: 0 4px 14px rgba(0, 0, 0, 0.08);
+  --shadow-card: 0 14px 34px rgba(0, 0, 0, 0.1);
+  --shadow-card-hover: 0 22px 48px rgba(0, 0, 0, 0.14);
+  --shadow-cover: 0 14px 32px rgba(0, 0, 0, 0.12);
+  --shadow-cover-hover: 0 22px 46px rgba(0, 0, 0, 0.16);
+  --shadow-pop: 0 30px 80px rgba(0, 0, 0, 0.2);
+  --btn-hover: #ebebed;
 }
 
 /* ---- reset ----------------------------------------------------------- */
