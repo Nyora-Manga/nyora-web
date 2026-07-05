@@ -283,11 +283,13 @@ function isNsfwSource(e) {
 }
 
 let _catalogCache = null;
+let _nsfwIds = null;   // Set of source ids flagged adult — for the history guard
 async function fetchCatalog() {
   if (_catalogCache) return _catalogCache;
   const res = await get('/sources/catalog'); // hosted helper (static snapshot)
   const list = (res && (res.entries || res.sources)) || (Array.isArray(res) ? res : []);
   _catalogCache = Array.isArray(list) ? list : [];
+  _nsfwIds = new Set(_catalogCache.filter(isNsfwSource).map((e) => e.id));
   return _catalogCache;
 }
 
@@ -313,7 +315,13 @@ export const api = {
   },
   refreshSources() {
     _catalogCache = null;
+    _nsfwIds = null;
     return Promise.resolve({ ok: true });
+  },
+  /** Sync: is this source flagged adult? Best-effort — populated once the catalog
+   *  has loaded (it has by the time you reach a reader from Explore/Discover). */
+  isSourceNsfw(id) {
+    return !!(_nsfwIds && _nsfwIds.has(id));
   },
   // The catalog dialog: the full hosted catalog with isInstalled overlaid from
   // the effective installed set (all by default).

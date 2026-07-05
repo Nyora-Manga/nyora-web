@@ -282,6 +282,7 @@ export function render(view, params) {
         library.recordHistory({
           manga: st.manga,
           sourceId: st.sid,
+          sourceNsfw: api.isSourceNsfw(st.sid),
           chapterUrl: st.chapterUrl,
           chapterId: st.chapterUrl,
           chapterTitle: chapter ? fmt.chapterTitle(chapter, st.index) : '',

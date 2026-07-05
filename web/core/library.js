@@ -255,8 +255,11 @@ export const library = {
     // Respect "Keep 18+ out of history" — never persist adult manga when enabled.
     try {
       const prefs = JSON.parse(localStorage.getItem('nyora.prefs') || '{}');
-      if (prefs.noNsfwHistory && manga &&
-          (manga.isNsfw === true || /adult|porn|erotic|hentai|nsfw/i.test(String(manga.contentRating || '')))) {
+      const mangaNsfw = manga &&
+        (manga.isNsfw === true || /adult|porn|erotic|hentai|nsfw/i.test(String(manga.contentRating || '')));
+      // body.sourceNsfw = the source itself is adult (airtight: catches titles
+      // from 18+ sources even without a per-title rating).
+      if (prefs.noNsfwHistory && (body.sourceNsfw === true || mangaNsfw)) {
         return;
       }
     } catch { /* ignore */ }
