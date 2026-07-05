@@ -440,21 +440,38 @@ export function render(view, params) {
     // many CDNs gate page images on it. Page-supplied headers win.
     const dom = st.manga && st.manga.source && st.manga.source.domain;
     const headers = Object.assign(dom ? { Referer: `https://${dom}/` } : {}, p.headers || {});
-    applyImage(img, p.url, headers, () => { img.replaceWith(brokenPage(i)); });
+    applyImage(img, p.url, headers, () => { img.replaceWith(brokenPage(p, i)); });
     const f = filterStr();
     if (f) img.style.filter = f;
     return img;
   }
 
-  function brokenPage(i) {
-    return el('div', {
-      class: 'reader-page', 'data-page': String(i),
+  // Append a cache-buster so a retry actually re-fetches instead of serving the
+  // browser's cached failure.
+  function bustPage(p) {
+    const url = p && p.url;
+    if (!url) return p;
+    const sep = url.includes('?') ? '&' : '?';
+    return Object.assign({}, p, { url: `${url}${sep}_r=${Date.now()}` });
+  }
+
+  function brokenPage(p, i) {
+    const node = el('div', {
+      class: 'reader-page reader-page-broken', 'data-page': String(i),
       style: {
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
         minHeight: '220px', width: '100%', maxWidth: 'var(--reader-width, 880px)',
-        color: 'var(--text-dim)', gap: '8px',
+        color: 'var(--text-dim)', gap: '12px', padding: '24px 12px',
       },
-    }, icon('close'), `Page ${i + 1} failed to load`);
+    },
+      el('div', { style: { display: 'flex', alignItems: 'center', gap: '8px' } },
+        icon('close'), `Page ${i + 1} failed to load`),
+      btn('Reload', {
+        variant: 'ghost', class: 'btn-sm', icon: 'refresh',
+        onClick: () => node.replaceWith(pageImg(bustPage(p), i)),
+      }),
+    );
+    return node;
   }
 
   // ── control bars ───────────────────────────────────────────────────────────
