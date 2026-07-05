@@ -94,7 +94,13 @@ self.addEventListener('fetch', (event) => {
   // Everything else (same-origin API) -> network-first.
   event.respondWith(
     fetch(request).then((res) => {
-      if (res && res.ok) caches.open(RUNTIME).then((c) => c.put(request, res.clone()));
+      // Clone SYNCHRONOUSLY (before returning), or the async caches.open() below
+      // runs after the browser has started consuming res.body → clone() throws
+      // "Response body is already used".
+      if (res && res.ok) {
+        const copy = res.clone();
+        caches.open(RUNTIME).then((c) => c.put(request, copy));
+      }
       return res;
     }).catch(() => caches.match(request)),
   );

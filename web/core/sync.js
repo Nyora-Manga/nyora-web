@@ -104,6 +104,37 @@ export function signOut() {
   clearSession();
 }
 
+// --- account lifecycle (explicit guest → cloud semantics) ---------------
+//
+// Guests accumulate their library + preferences locally (per-visitor
+// localStorage). Two ways to bind that to the cloud:
+//
+//   registerAndMigrate — CREATE a new account and MIGRATE this device's local
+//     (guest) data UP into it. A fresh account is empty in the cloud, so the
+//     push is a straight migration and the pull is a no-op.
+//
+//   signInAndFetch — sign into an EXISTING account and FETCH its library DOWN.
+//     If the device also has local guest data, merge it up first (syncNow) so
+//     nothing is lost; otherwise pull a clean copy from the cloud.
+//
+// Both are best-effort on the sync step: the auth itself must succeed, but a
+// transient sync failure never blocks the user from getting in.
+
+export async function registerAndMigrate(email, password) {
+  const st = await register(email, password); // creates the account + signs in
+  try { await syncNow(); } catch { /* account exists; migration is best-effort */ }
+  return st && st.isAuthenticated ? status() : st;
+}
+
+export async function signInAndFetch(email, password) {
+  const st = await signIn(email, password);
+  try {
+    if (hasLocalData()) await syncNow();      // merge local (guest) data up, then pull
+    else await restoreFromCloud();            // clean fetch/replace from the cloud
+  } catch { /* best-effort — proceed regardless */ }
+  return st && st.isAuthenticated ? status() : st;
+}
+
 export async function syncNow() {
   const session = await ensureSession();
   const cutoff = session.last_sync_timestamp || INITIAL_SYNC;
@@ -627,6 +658,8 @@ export default {
   hasLocalData,
   signIn,
   register,
+  registerAndMigrate,
+  signInAndFetch,
   signOut,
   syncNow,
   restoreFromCloud,

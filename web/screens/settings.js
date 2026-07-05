@@ -9,6 +9,7 @@ import {
 } from '../core/store.js';
 import { otaStatus, resetRuntime } from '../core/parser-runtime.js';
 import sync from '../core/sync.js';
+import { showPreferences } from './welcome.js';
 
 export const meta = {
   title: 'Settings',
@@ -151,6 +152,20 @@ function buildContent() {
   section.append(el('h2', null, 'Content'));
   section.append(settingRow('Show 18+ sources', 'Enable adult-only manga sources in Explore and search.', switchToggle(prefs.showNsfw, (v) => store.set({ showNsfw: v }))));
   section.append(settingRow('Keep 18+ out of history', 'Don’t save adult manga to your reading history.', switchToggle(prefs.noNsfwHistory, (v) => store.set({ noNsfwHistory: v }))));
+  section.append(settingRow(
+    'Languages & sources',
+    'Re-pick your languages and content preference; reseeds the installed sources.',
+    btn('Re-run setup', {
+      onClick: () => showPreferences({
+        // Push the reseeded sources to the cloud when signed in.
+        migrate: sync.status().isAuthenticated,
+        onDone: () => {
+          try { window.dispatchEvent(new CustomEvent('nyora:sources-synced')); } catch { /* no DOM */ }
+          toast('Sources updated');
+        },
+      }),
+    }),
+  ));
   return section;
 }
 
@@ -232,11 +247,11 @@ function buildSync() {
     const password = passwordInput.value;
     if (!email || !password) { toast('Enter your email and password'); return; }
     await runSync(register ? 'Creating account...' : 'Signing in...', async () => {
-      if (register) await sync.register(email, password);
-      else await sync.signIn(email, password);
-      if (sync.hasLocalData()) await sync.syncNow();
-      else await sync.restoreFromCloud();
-    }, 'Cloud sync ready', paint, true);
+      // Create Account → migrate this device's (guest) library up to the new
+      // cloud account. Sign In → fetch the account's library down from the cloud.
+      if (register) await sync.registerAndMigrate(email, password);
+      else await sync.signInAndFetch(email, password);
+    }, register ? 'Library migrated to your account' : 'Cloud library ready', paint, true);
   };
 
   const emailInput = el('input', {

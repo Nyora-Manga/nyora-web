@@ -68,7 +68,7 @@
 			# Defense-in-depth CSP: script-src strict 'self' (all scripts same-origin,
 			# zero inline handlers); img-src/connect-src stay HTTPS-broad for AniList
 			# cover CDNs + the remote AniList GraphQL and sync APIs.
-			Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; font-src 'self' data:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'"
+			Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https:; img-src 'self' data: https:; connect-src 'self' https:; font-src 'self' data: https:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'"
 		}
 
 		# SPA fallback: real files served as-is; unknown named routes

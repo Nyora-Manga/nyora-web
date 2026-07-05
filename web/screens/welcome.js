@@ -6,9 +6,10 @@
 // a glass auth card. Desktop-first but responsive. Email/password sign-in
 // against the self-hosted sync server, plus guest and restore actions.
 
-import { el, toast } from '../core/ui.js';
+import { el, toast, spinner, langCode, languageOptions } from '../core/ui.js';
 import sync from '../core/sync.js';
 import api from '../core/api.js';
+import { store } from '../core/store.js';
 
 const ONBOARD_KEY = 'nyora.web.onboarded.v1';
 
@@ -93,21 +94,32 @@ export function showWelcome(onDone) {
     statusLine.className = 'wlc-status is-info';
     statusLine.textContent = register ? 'Creating your account…' : 'Signing in…';
     try {
-      const st = register
-        ? await sync.register(email, password)
-        : await sync.signIn(email, password);
-      if (st && st.isAuthenticated) {
-        statusLine.textContent = 'Signed in. Syncing your library…';
-        try {
-          if (sync.hasLocalData()) await sync.syncNow();
-          else await sync.restoreFromCloud();
-        } catch { /* sync is best-effort; proceed regardless */ }
-        markOnboarded();
-        finish();
+      if (register) {
+        // NEW ACCOUNT → create + sign in, then onboard. Their local (guest) data
+        // plus the onboarding picks are MIGRATED up to the cloud when they finish
+        // (enterPreferences({ migrate: true }) → sync.syncNow after seeding).
+        const st = await sync.register(email, password);
+        if (st && st.isAuthenticated) {
+          enterPreferences({ migrate: true });
+        } else {
+          statusLine.className = 'wlc-status is-error';
+          statusLine.textContent = 'Could not create the account. Please try again.';
+          setBusy(false);
+        }
       } else {
-        statusLine.className = 'wlc-status is-error';
-        statusLine.textContent = 'Sign-in failed. Please try again.';
-        setBusy(false);
+        // EXISTING ACCOUNT → FETCH the library from the cloud and go straight in.
+        // Returning user: no onboarding. (Any local guest data is merged up first.)
+        statusLine.textContent = 'Signing in… fetching your library…';
+        const st = await sync.signInAndFetch(email, password);
+        if (st && st.isAuthenticated) {
+          statusLine.textContent = 'Welcome back.';
+          markOnboarded();
+          finish();
+        } else {
+          statusLine.className = 'wlc-status is-error';
+          statusLine.textContent = 'Sign-in failed. Please try again.';
+          setBusy(false);
+        }
       }
     } catch (e) {
       statusLine.className = 'wlc-status is-error';
@@ -141,7 +153,7 @@ export function showWelcome(onDone) {
   signInBtn.addEventListener('click', () => doAuth(false));
   createBtn.addEventListener('click', () => doAuth(true));
   passwordInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') doAuth(false); });
-  guestBtn.addEventListener('click', () => { markOnboarded(); finish(); });
+  guestBtn.addEventListener('click', () => { enterPreferences(); });
   restoreBtn.addEventListener('click', () => { if (!restoreBtn.disabled) fileInput.click(); });
 
   const logo = el('img', { class: 'wlc-logo', src: '/icon.png', alt: '' });
@@ -203,6 +215,18 @@ export function showWelcome(onDone) {
   document.documentElement.classList.add('wlc-open');
   document.body.appendChild(overlay);
 
+  // ── Preferences onboarding ──────────────────────────────────────────────
+  // After the user is in (sign-in / create / guest): swap the auth stage for the
+  // preferences card. On "Start reading" it sets showNsfw + seeds the matching
+  // sources; for a NEW account it then migrates everything up to the cloud.
+  function enterPreferences(opts) {
+    const migrate = !!(opts && opts.migrate);
+    markOnboarded();
+    const card = el('div', { class: 'wlc-prefs' });
+    stage.replaceWith(el('div', { class: 'wlc-prefs-stage' }, card));
+    populatePreferencesCard(card, { migrate, onDone: finish });
+  }
+
   // Awwwards-style staggered entrance for the welcome content (GSAP is loaded
   // globally; no-op when absent or under reduced-motion, so content never hides).
   try {
@@ -219,4 +243,170 @@ export function showWelcome(onDone) {
   } catch { /* motion is optional polish */ }
 }
 
-export default { shouldShowWelcome, showWelcome };
+// Build the preferences UI into `card` and wire the CTA to apply the choices
+// (showNsfw + seed the matching installed sources), optionally migrate to the
+// cloud, then call onDone(). Shared by first-run onboarding (welcome) and the
+// "Re-run setup" action in Settings.
+function populatePreferencesCard(card, opts = {}) {
+  const {
+    migrate = false,
+    kicker = 'You’re in',
+    title = 'Set up your shelf',
+    sub = 'Choose your languages and content preference — we’ll line up the matching sources. You can change any of this later in Settings.',
+    cta = 'Start reading',
+    onDone,
+  } = opts;
+
+  let show18 = !!store.get().showNsfw;   // reflect the current pref (matters on re-run)
+  const selected = new Set();            // empty ⇒ all languages
+
+  card.append(
+    el('div', { class: 'wlc-prefs-head' },
+      el('div', { class: 'wlc-prefs-kicker' }, kicker),
+      el('h2', { class: 'wlc-prefs-title' }, title),
+      el('p', { class: 'wlc-prefs-sub' }, sub)),
+    el('div', { class: 'wlc-prefs-loading' }, spinner()),
+  );
+
+  try {
+    const gsap = window.gsap;
+    if (gsap && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      gsap.fromTo(card, { y: 24, autoAlpha: 0 }, { y: 0, autoAlpha: 1, duration: 0.6, ease: 'power3.out' });
+    }
+  } catch { /* optional polish */ }
+
+  const matchIds = (entries) => entries
+    .filter((e) => (selected.size === 0 || selected.has(langCode(e))) && (show18 || !e.isNsfw))
+    .map((e) => e.id);
+
+  async function applyAndFinish(entries) {
+    try {
+      store.set({ showNsfw: show18 });
+      let ids = matchIds(entries);
+      // Never leave an empty shelf (e.g. a language with only adult sources while
+      // 18+ is off) — fall back to everything matching the 18+ rule.
+      if (!ids.length) ids = entries.filter((e) => show18 || !e.isNsfw).map((e) => e.id);
+      await api.setInstalledSources(ids);
+      // Signed-in / new account → push the freshly-seeded prefs + library up.
+      if (migrate) { try { await sync.syncNow(); } catch { /* best-effort */ } }
+    } catch { /* proceed regardless — defaults remain */ }
+    if (onDone) onDone();
+  }
+
+  function buildBody(entries) {
+    const loading = card.querySelector('.wlc-prefs-loading');
+    if (loading) loading.remove();
+
+    const nsfwInput = el('input', { type: 'checkbox' });
+    nsfwInput.checked = show18;
+    nsfwInput.addEventListener('change', () => { show18 = nsfwInput.checked; renderCount(); });
+    const nsfwRow = el('div', { class: 'wlc-pref-row' },
+      el('div', { class: 'wlc-pref-row-main' },
+        el('div', { class: 'wlc-pref-row-title' }, 'Show 18+ sources'),
+        el('div', { class: 'wlc-pref-row-sub' }, 'Include adult-only sources in Explore & search.')),
+      el('label', { class: 'switch' }, nsfwInput, el('span', { class: 'slider' })),
+    );
+
+    const chips = new Map();
+    const allChip = el('button', {
+      class: 'wlc-lang-chip', type: 'button',
+      onClick: () => { selected.clear(); paint(); renderCount(); },
+    }, 'All languages');
+    const grid = el('div', { class: 'wlc-lang-grid' }, allChip);
+    for (const o of languageOptions(entries)) {
+      const c = el('button', {
+        class: 'wlc-lang-chip', type: 'button',
+        onClick: () => {
+          if (selected.has(o.code)) selected.delete(o.code); else selected.add(o.code);
+          paint(); renderCount();
+        },
+      }, el('span', null, o.label), el('span', { class: 'wlc-lang-count' }, String(o.count)));
+      chips.set(o.code, c);
+      grid.appendChild(c);
+    }
+    function paint() {
+      allChip.classList.toggle('active', selected.size === 0);
+      for (const [code, c] of chips) c.classList.toggle('active', selected.has(code));
+    }
+    paint();
+
+    const countLine = el('div', { class: 'wlc-prefs-count' });
+    function renderCount() {
+      const n = matchIds(entries).length || entries.filter((e) => show18 || !e.isNsfw).length;
+      countLine.textContent = `${n} source${n === 1 ? '' : 's'} will be added`;
+    }
+    renderCount();
+
+    const startBtn = el('button', { class: 'wlc-google', type: 'button' }, el('span', null, cta));
+    startBtn.addEventListener('click', () => {
+      startBtn.disabled = true;
+      startBtn.classList.add('is-busy');
+      applyAndFinish(entries);
+    });
+
+    // Head fixed; sections scroll; foot (count + CTA) pinned so the CTA is always
+    // reachable even with a long language list.
+    const body = el('div', { class: 'wlc-prefs-body' },
+      el('div', { class: 'wlc-prefs-section' }, nsfwRow),
+      el('div', { class: 'wlc-prefs-section' },
+        el('div', { class: 'wlc-prefs-label' }, 'Languages'),
+        el('p', { class: 'wlc-prefs-hint' }, 'Pick the languages you read, or keep “All languages”.'),
+        grid),
+      el('div', { class: 'wlc-prefs-section' },
+        el('div', { class: 'wlc-prefs-label' }, 'Good to know'),
+        el('ul', { class: 'wlc-prefs-tips' },
+          el('li', null, 'Tap the heart to favourite a series'),
+          el('li', null, 'Pin your go-to sources to search them first'),
+          el('li', null, 'Sign in on any device to pick up where you left off'))),
+    );
+    card.append(body, el('div', { class: 'wlc-prefs-foot' }, countLine, startBtn));
+  }
+
+  api.catalog()
+    .then((res) => buildBody((res && res.entries) || []))
+    .catch(() => {
+      const loading = card.querySelector('.wlc-prefs-loading');
+      if (loading) loading.remove();
+      const startBtn = el('button', { class: 'wlc-google', type: 'button' }, el('span', null, cta));
+      startBtn.addEventListener('click', () => { if (onDone) onDone(); });
+      card.append(el('div', { class: 'wlc-prefs-foot' }, startBtn));
+    });
+}
+
+// Open the preferences step on its own — used by Settings' "Re-run setup" so the
+// user can re-pick languages / 18+ and reseed their sources without a fresh
+// onboarding. Mounts a lightweight overlay; onDone fires after apply + close.
+export function showPreferences(opts = {}) {
+  const card = el('div', { class: 'wlc-prefs' });
+  const overlay = el('div', {
+    class: 'wlc wlc-prefs-only', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Preferences',
+  },
+    el('div', { class: 'wlc-sky', 'aria-hidden': 'true' },
+      el('span', { class: 'wlc-glow wlc-glow-1' }),
+      el('span', { class: 'wlc-glow wlc-glow-2' }),
+      el('span', { class: 'wlc-vignette' })),
+    el('div', { class: 'wlc-prefs-stage' }, card),
+  );
+  document.documentElement.classList.add('wlc-open');
+  document.body.appendChild(overlay);
+  const onKey = (e) => { if (e.key === 'Escape') close(); };
+  const close = () => {
+    document.removeEventListener('keydown', onKey);
+    overlay.classList.add('is-leaving');
+    document.documentElement.classList.remove('wlc-open');
+    setTimeout(() => overlay.remove(), 380);
+  };
+  // Dismiss without applying: click the backdrop or press Esc.
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+  document.addEventListener('keydown', onKey);
+  populatePreferencesCard(card, {
+    kicker: 'Preferences',
+    title: 'Languages & sources',
+    sub: 'Re-pick the languages you read and your content preference — this reseeds your installed sources.',
+    cta: 'Save & apply',
+    ...opts,
+    onDone: () => { close(); if (opts.onDone) opts.onDone(); },
+  });
+}
+
+export default { shouldShowWelcome, showWelcome, showPreferences };

@@ -18,6 +18,7 @@ import { api } from '../core/api.js';
 import {
   el, $, proxyImage, toast, spinner, skeletonCard, icon, btn, iconBtn, chip,
   sectionHeader, emptyState, errorBox, card, modal, segmented, langLabel,
+  languageOptions,
 } from '../core/ui.js';
 import { store, router } from '../core/store.js';
 
@@ -52,6 +53,7 @@ export function render(view, _params) {
     sourcesLoading: true,
     sourcesError: null,
     filter: '',
+    lang: 'all',
     showNsfw: !!prefs.showNsfw,
     mode: 'POPULAR',
     query: '',
@@ -83,12 +85,33 @@ export function render(view, _params) {
 
   function filteredSources() {
     let list = installedVisible();
+    if (state.lang !== 'all') {
+      list = list.filter((s) => (s.lang || s.locale || '').toLowerCase() === state.lang);
+    }
     const q = state.filter.trim().toLowerCase();
     if (q) {
       list = list.filter((s) =>
         (s.name || '').toLowerCase().includes(q) || (s.lang || '').toLowerCase().includes(q));
     }
     return list;
+  }
+
+  // A language-filter <select> built from the installed set. `onChange` runs
+  // after state.lang is updated. Returns { el, langCount } so callers can hide
+  // it when there's only one language. Keeps a stale selection from sticking
+  // (falls back to 'all' if the chosen language is no longer available).
+  function buildLangSelect(onChange) {
+    const opts = languageOptions(installedVisible());
+    if (!new Set(['all', ...opts.map((o) => o.code || '')]).has(state.lang)) state.lang = 'all';
+    const sel = el('select', {
+      class: 'lang-select', 'aria-label': 'Filter sources by language',
+      onChange: (e) => { state.lang = e.target.value; onChange(); },
+    }, el('option', { value: 'all' }, `All languages (${installedVisible().length})`));
+    for (const o of opts) {
+      sel.appendChild(el('option', { value: o.code || '' }, `${o.label} (${o.count})`));
+    }
+    sel.value = state.lang;
+    return { el: sel, langCount: opts.length };
   }
 
   // ---- screen swap --------------------------------------------------------
@@ -148,8 +171,10 @@ export function render(view, _params) {
 
   function sourcesSection() {
     const wrap = el('div', { class: 'explore-sources' });
-    wrap.appendChild(sectionHeader('Manga sources',
-      btn('Catalog', { variant: 'ghost', icon: 'download', onClick: openExtensions })));
+    const { el: langSel, langCount } = buildLangSelect(renderLanding);
+    const actions = [btn('Catalog', { variant: 'ghost', icon: 'download', onClick: openExtensions })];
+    if (langCount > 1) actions.unshift(langSel);
+    wrap.appendChild(sectionHeader('Manga sources', ...actions));
 
     const body = el('div', { class: 'explore-sources-body' });
     wrap.appendChild(body);
@@ -173,8 +198,18 @@ export function render(view, _params) {
       return wrap;
     }
 
+    // Apply the language filter to the tiles (options/counts above stay built
+    // from the full installed set so every language remains selectable).
+    const shown = state.lang === 'all'
+      ? installed
+      : installed.filter((s) => (s.lang || s.locale || '').toLowerCase() === state.lang);
+    if (!shown.length) {
+      body.appendChild(emptyState(`No ${langLabel({ lang: state.lang })} sources installed.`, 'compass'));
+      return wrap;
+    }
+
     const byName = (a, b) => (a.name || '').toLowerCase().localeCompare((b.name || '').toLowerCase());
-    const ordered = installed.slice().sort((a, b) => {
+    const ordered = shown.slice().sort((a, b) => {
       const p = (b.isPinned ? 1 : 0) - (a.isPinned ? 1 : 0);
       return p !== 0 ? p : byName(a, b);
     });
@@ -264,7 +299,14 @@ export function render(view, _params) {
       class: 'src-search field', type: 'search', placeholder: 'Filter sources', value: state.filter,
       onInput: (e) => { state.filter = e.target.value; renderSourceLists(); },
     });
-    container.appendChild(filterInput);
+    // Language dropdown — narrows the list to one reader language. Hidden when
+    // there's only a single language among the installed sources.
+    const { el: langSelect, langCount } = buildLangSelect(renderSourceLists);
+    if (langCount > 1) {
+      container.appendChild(el('div', { class: 'src-filter-bar' }, filterInput, langSelect));
+    } else {
+      container.appendChild(filterInput);
+    }
 
     const manageRow = el('div', {
       class: 'source-row manage-row', role: 'button', tabindex: '0',

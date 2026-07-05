@@ -354,6 +354,14 @@ export const api = {
     try { await helperPost('/sources/uninstall' + qs({ id })); } catch { /* best-effort */ }
     return { ok: true };
   },
+  // Replace the whole installed set in one shot (used by onboarding to seed the
+  // sources that match the user's chosen languages / 18+ preference). No per-id
+  // helper POSTs — the helper serves any catalog id by id, so registering the
+  // local set is enough; this keeps onboarding from firing hundreds of requests.
+  setInstalledSources(ids) {
+    saveInstalledIds(Array.isArray(ids) ? ids : []);
+    return Promise.resolve({ ok: true });
+  },
   pinSource(id, pinned) {
     // Persist the pin locally (per-visitor); best-effort notify the helper.
     const set = new Set(pinnedIds());

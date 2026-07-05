@@ -13,11 +13,41 @@ const LANG_NAMES = {
   id: 'Indonesian', ar: 'Arabic', tr: 'Turkish', pl: 'Polish', vi: 'Vietnamese',
   th: 'Thai', ja: 'Japanese', ko: 'Korean', zh: 'Chinese', 'zh-hans': 'Chinese',
   'zh-hant': 'Chinese (Trad.)', uk: 'Ukrainian', fa: 'Persian', nl: 'Dutch', multi: 'Multi-language',
+  all: 'Multi-language',
+  // Long tail — so onboarding/search/explore show names, not ISO codes.
+  bg: 'Bulgarian', bn: 'Bengali', ca: 'Catalan', cs: 'Czech', da: 'Danish', el: 'Greek',
+  fi: 'Finnish', he: 'Hebrew', hi: 'Hindi', hr: 'Croatian', hu: 'Hungarian', is: 'Icelandic',
+  kn: 'Kannada', ml: 'Malayalam', ms: 'Malay', ne: 'Nepali', no: 'Norwegian', ro: 'Romanian',
+  sk: 'Slovak', sl: 'Slovenian', sq: 'Albanian', sr: 'Serbian', sv: 'Swedish', ta: 'Tamil',
+  ur: 'Urdu', fil: 'Filipino', ro_md: 'Romanian', mn: 'Mongolian', ka: 'Georgian',
 };
 export function langLabel(src) {
   const raw = (src && (src.lang || src.locale) ? String(src.lang || src.locale) : '').toLowerCase();
   if (!raw) return 'Manga';
   return LANG_NAMES[raw] || LANG_NAMES[raw.slice(0, 2)] || raw.toUpperCase();
+}
+
+// The lowercased language code a source reports (lang or locale), or '' if none.
+export function langCode(src) {
+  return (src && (src.lang || src.locale) ? String(src.lang || src.locale) : '').toLowerCase();
+}
+
+// Distinct languages present across a list of sources, as
+// [{ code, label, count }] sorted by count desc then name — for a language
+// filter dropdown. Sources with no language collapse under code '' (label
+// "Other"), so the option set always covers every source.
+export function languageOptions(sources) {
+  const map = new Map();
+  for (const s of sources || []) {
+    const code = langCode(s);
+    let entry = map.get(code);
+    if (!entry) {
+      entry = { code, label: code ? langLabel(s) : 'Other', count: 0 };
+      map.set(code, entry);
+    }
+    entry.count++;
+  }
+  return [...map.values()].sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
 }
 
 // ---- el() : tiny hyperscript ------------------------------------------
