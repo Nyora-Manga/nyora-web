@@ -801,7 +801,15 @@ function inlineRow(label, control) {
 }
 
 function loadingBlock(msg) {
-  return el('div', { class: 'center' }, spinner(), el('p', null, msg || 'Loading…'));
+  // A page-shaped shimmer so it reads as "the page is loading", with an accent
+  // ring spinner + label centred over it.
+  return el('div', { class: 'reader-loading' },
+    el('div', { class: 'reader-loading-page skeleton' }),
+    el('div', { class: 'reader-loading-badge' },
+      el('div', { class: 'reader-loading-ring', 'aria-hidden': 'true' }),
+      el('span', { class: 'reader-loading-label' }, msg || 'Loading…'),
+    ),
+  );
 }
 
 export default { meta, render };
