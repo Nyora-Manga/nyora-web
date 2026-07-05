@@ -38,12 +38,21 @@ const ANILIST_ENDPOINT = 'https://graphql.anilist.co';
 
 // One POST, two aliased pages: trending + all-time popular. The hero pulls
 // banner/description/genres from the first trending entry.
+const HERO_FIELDS =
+  'id title{romaji english} coverImage{large extraLarge} bannerImage genres description(asHtml:false) averageScore';
+const CARD_FIELDS = 'id title{romaji english} coverImage{large extraLarge} genres averageScore';
+// One POST, many aliased pages → a full Discover feed. isAdult:false keeps it safe.
 const ANILIST_QUERY =
   'query{' +
-  'trending:Page(perPage:20){media(type:MANGA,sort:TRENDING_DESC){' +
-  'id title{romaji english} coverImage{large extraLarge} bannerImage genres description(asHtml:false) averageScore}}' +
-  'popular:Page(perPage:20){media(type:MANGA,sort:POPULARITY_DESC){' +
-  'id title{romaji english} coverImage{large extraLarge} genres averageScore}}' +
+  `trending:Page(perPage:20){media(type:MANGA,sort:TRENDING_DESC,isAdult:false){${HERO_FIELDS}}}` +
+  `popular:Page(perPage:18){media(type:MANGA,sort:POPULARITY_DESC,isAdult:false){${CARD_FIELDS}}}` +
+  `topRated:Page(perPage:18){media(type:MANGA,sort:SCORE_DESC,isAdult:false){${CARD_FIELDS}}}` +
+  `favourites:Page(perPage:18){media(type:MANGA,sort:FAVOURITES_DESC,isAdult:false){${CARD_FIELDS}}}` +
+  `manhwa:Page(perPage:18){media(type:MANGA,countryOfOrigin:"KR",sort:POPULARITY_DESC,isAdult:false){${CARD_FIELDS}}}` +
+  `action:Page(perPage:18){media(type:MANGA,genre_in:["Action"],sort:POPULARITY_DESC,isAdult:false){${CARD_FIELDS}}}` +
+  `romance:Page(perPage:18){media(type:MANGA,genre_in:["Romance"],sort:POPULARITY_DESC,isAdult:false){${CARD_FIELDS}}}` +
+  `fantasy:Page(perPage:18){media(type:MANGA,genre_in:["Fantasy"],sort:POPULARITY_DESC,isAdult:false){${CARD_FIELDS}}}` +
+  `comedy:Page(perPage:18){media(type:MANGA,genre_in:["Comedy"],sort:POPULARITY_DESC,isAdult:false){${CARD_FIELDS}}}` +
   '}';
 
 // Bump on every render() so a slow fetch from a previous view can't overwrite
@@ -96,6 +105,8 @@ async function load(body) {
     heroSkeleton(),
     railSkeleton('Trending now'),
     railSkeleton('All-time popular'),
+    railSkeleton('Top rated'),
+    railSkeleton('Manhwa'),
   );
 
   let feed;
@@ -114,8 +125,9 @@ async function load(body) {
 
   if (token !== renderToken) return;
 
-  const { trending, popular } = feed;
-  if (!trending.length && !popular.length) {
+  const { trending } = feed;
+  const anyContent = Object.values(feed).some((arr) => Array.isArray(arr) && arr.length);
+  if (!anyContent) {
     body.replaceChildren(
       emptyState('AniList has nothing to discover right now — check back soon.', 'trending'),
       el('div', { class: 'center', style: { marginTop: '14px' } },
@@ -127,8 +139,21 @@ async function load(body) {
 
   const children = [];
   if (trending.length) children.push(heroCard(trending[0]));
-  if (trending.length) children.push(rail('Trending now', 'trending', trending.slice(1)));
-  if (popular.length) children.push(rail('All-time popular', 'stats', popular));
+  // Ordered rails — each is skipped if AniList returned nothing for it.
+  const rails = [
+    ['Trending now', 'trending', trending.slice(1)],
+    ['All-time popular', 'stats', feed.popular],
+    ['Top rated', 'checkCircle', feed.topRated],
+    ['Most favourited', 'heart', feed.favourites],
+    ['Popular manhwa', 'book', feed.manhwa],
+    ['Action', 'play', feed.action],
+    ['Romance', 'heart', feed.romance],
+    ['Fantasy', 'compass', feed.fantasy],
+    ['Comedy', 'feed', feed.comedy],
+  ];
+  for (const [title, iconName, items] of rails) {
+    if (items && items.length) children.push(rail(title, iconName, items));
+  }
   body.replaceChildren(...children);
 }
 
@@ -149,7 +174,17 @@ async function fetchAnilistFeed() {
     const m = page && page.media;
     return Array.isArray(m) ? m : [];
   };
-  return { trending: list(data.trending), popular: list(data.popular) };
+  return {
+    trending: list(data.trending),
+    popular: list(data.popular),
+    topRated: list(data.topRated),
+    favourites: list(data.favourites),
+    manhwa: list(data.manhwa),
+    action: list(data.action),
+    romance: list(data.romance),
+    fantasy: list(data.fantasy),
+    comedy: list(data.comedy),
+  };
 }
 
 function anilistTitle(item) {
