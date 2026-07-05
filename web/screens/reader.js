@@ -163,8 +163,8 @@ export function render(view, params) {
       case 'ArrowUp':
         if (mode === 'WEBTOON') return;
         e.preventDefault(); pageStep(-1); break;
-      case 'n': case 'N': e.preventDefault(); goChapter(1); break;   // next chapter
-      case 'p': case 'P': e.preventDefault(); goChapter(-1); break;  // previous chapter
+      case 'n': case 'N': e.preventDefault(); goReadingChapter(1); break;   // next chapter
+      case 'p': case 'P': e.preventDefault(); goReadingChapter(-1); break;  // previous chapter
       case 'f': case 'F': e.preventDefault(); toggleFit(); break;
       case 'Escape': e.preventDefault(); backToDetails(); break;
       default: break;
@@ -191,11 +191,30 @@ export function render(view, params) {
     if (rv) rv.classList.toggle('controls-hidden', !st.controlsVisible);
   }
 
+  // Chapter array ordering VARIES by source (MangaDex = oldest-first; many
+  // scanlation sites = newest-first). Detect the reading direction from chapter
+  // numbers so "next" is always the higher-numbered chapter regardless of order.
+  // Returns the index delta that moves to the NEXT (later) chapter.
+  function nextDelta() {
+    const ch = st.chapters;
+    if (ch.length < 2) return 1;
+    const a = Number(ch[0] && ch[0].number);
+    const b = Number(ch[ch.length - 1] && ch[ch.length - 1].number);
+    if (Number.isFinite(a) && Number.isFinite(b) && a !== b) return a < b ? 1 : -1;
+    return 1; // fallback: assume oldest-first
+  }
+  // reading: +1 = next chapter, -1 = previous chapter (order-independent).
+  function goReadingChapter(reading) { goChapter(reading * nextDelta()); }
+  function chapterExists(reading) {
+    const t = st.index + reading * nextDelta();
+    return t >= 0 && t < st.chapters.length;
+  }
+
   function goChapter(direction) {
     if (st.index < 0 || !st.chapters.length) return;
     const target = st.index + direction;
     if (target < 0 || target >= st.chapters.length) {
-      toast(direction > 0 ? 'No earlier chapter.' : 'No later chapter.');
+      toast('No more chapters this way.');
       return;
     }
     st.chapterUrl = st.chapters[target].url;
@@ -207,10 +226,9 @@ export function render(view, params) {
     if (!st.pages.length) return;
     const last = st.pages.length - 1;
     const target = st.currentPage + delta;
-    // Chapters are oldest-first (index+1 = next). Reading forward past the last
-    // page goes to the NEXT chapter; going back before the first → previous.
-    if (target < 0) { goChapter(-1); return; }
-    if (target > last) { goChapter(1); return; }
+    // Reading forward past the last page → NEXT chapter; back before first → prev.
+    if (target < 0) { goReadingChapter(-1); return; }
+    if (target > last) { goReadingChapter(1); return; }
     setPage(target, true);
   }
 
@@ -478,19 +496,19 @@ export function render(view, params) {
       );
     }
 
-    // Oldest-first chapters: previous = a lower index, next = a higher index.
-    const hasPrev = st.index > 0;
-    const hasNext = st.index >= 0 && st.index < st.chapters.length - 1;
+    // Order-independent: prev = lower-numbered chapter, next = higher-numbered.
+    const hasPrev = st.index >= 0 && chapterExists(-1);
+    const hasNext = st.index >= 0 && chapterExists(1);
 
     const prevBtn = el('button', {
       class: 'reader-btn', type: 'button', disabled: !hasPrev ? true : null,
-      onClick: (e) => { e.stopPropagation(); goChapter(-1); },
+      onClick: (e) => { e.stopPropagation(); goReadingChapter(-1); },
       title: 'Previous chapter (p)'
     }, icon('back'));
 
     const nextBtn = el('button', {
       class: 'reader-btn', type: 'button', disabled: !hasNext ? true : null,
-      onClick: (e) => { e.stopPropagation(); goChapter(1); },
+      onClick: (e) => { e.stopPropagation(); goReadingChapter(1); },
       title: 'Next chapter (n)'
     }, icon('chevron'));
 
