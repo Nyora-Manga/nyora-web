@@ -819,6 +819,110 @@ body.hide-search .search-form { display: none; }
 }
 .chapter-list .skeleton-row { justify-content: space-between; pointer-events: none; }
 
+/* ===== details v2 — Tachiyomi-style two-pane (fixed info, scrolling chapters) === */
+body[data-route="details"] .main { height: 100dvh; min-height: 0; }
+body[data-route="details"] .view { overflow: hidden; padding: 0; min-height: 0; }
+body[data-route="details"] .view > .details { height: 100%; min-height: 0; }
+.d2-loading { position: relative; height: 100%; display: grid; place-items: center; }
+.d2-loading > .icon-btn { position: absolute; inset-block-start: 14px; inset-inline-start: 14px; }
+
+.d2 {
+  height: 100%; width: 100%; max-width: 1440px; margin-inline: auto;
+  min-height: 0; position: relative;
+  display: grid; grid-template-columns: 344px minmax(0, 1fr);
+}
+.d2-back {
+  position: absolute; inset-block-start: 14px; inset-inline-start: 14px; z-index: 5;
+  background: color-mix(in srgb, var(--bg) 60%, transparent);
+  border: 1px solid var(--border-strong);
+  backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+}
+
+.d2-info {
+  min-height: 0; overflow-y: auto; overscroll-behavior: contain;
+  padding: 30px 24px 40px; display: flex; flex-direction: column; gap: 16px;
+  border-inline-end: 1px solid var(--border);
+}
+.d2-head { display: flex; gap: 16px; }
+.d2-cover {
+  flex: 0 0 120px; width: 120px; aspect-ratio: 2 / 3; border-radius: var(--radius);
+  overflow: hidden; background: var(--surface1); border: 1px solid var(--border);
+  box-shadow: var(--shadow-sm); position: relative;
+}
+.d2-cover img { width: 100%; height: 100%; object-fit: cover; }
+.d2-titlebox { min-width: 0; display: flex; flex-direction: column; gap: 8px; padding-block-start: 2px; }
+.d2-title {
+  font-size: 20px; line-height: 1.25; margin: 0; letter-spacing: -0.02em;
+  display: -webkit-box; -webkit-line-clamp: 4; line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden;
+}
+.d2-authors { color: var(--text-dim); font-size: 13px; margin: 0; }
+.d2-meta { display: flex; flex-wrap: wrap; gap: 6px; }
+.d2-actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.d2-actions .d2-cta { flex: 1 1 auto; min-width: 140px; }
+.d2-actions-sub { gap: 8px; }
+.d2-desc { color: var(--text-dim); line-height: 1.6; white-space: pre-line; margin: 0; font-size: 13.5px; }
+.d2-desc.clamp { display: -webkit-box; -webkit-line-clamp: 5; line-clamp: 5; -webkit-box-orient: vertical; overflow: hidden; }
+.d2-desc-empty { color: var(--text-faint); font-style: italic; }
+.d2-desc-wrap { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; }
+.d2-desc-wrap .btn-sm { padding-inline: 0; }
+.d2-genres { display: flex; flex-wrap: wrap; gap: 6px; }
+
+.d2-chapters { min-height: 0; display: flex; flex-direction: column; }
+.d2-toolbar {
+  flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; padding: 20px 22px 12px; border-block-end: 1px solid var(--border);
+}
+.d2-toolbar-l { display: flex; align-items: baseline; gap: 12px; min-width: 0; }
+.d2-toolbar-l h2 { margin: 0; font-size: 17px; }
+.d2-count { color: var(--text-faint); font-size: 12.5px; white-space: nowrap; }
+.d2-toolbar-r { display: flex; gap: 2px; }
+.d2-chapter-scroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 8px 14px 48px; }
+.d2-chapter-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 1px; }
+
+.d2-ch {
+  display: flex; align-items: center; gap: 8px; min-height: 54px;
+  padding: 6px 6px 6px 0; border-radius: var(--radius-sm); cursor: pointer;
+  transition: background 0.12s var(--ease);
+}
+.d2-ch:hover { background: var(--surface1); }
+.d2-ch-rail { flex: 0 0 3px; align-self: stretch; margin-block: 9px; border-radius: 3px; background: var(--accent); }
+.d2-ch.read .d2-ch-rail { background: transparent; }
+.d2-ch-main { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 3px; padding-inline-start: 6px; }
+.d2-ch-name { font-size: 14px; font-weight: 550; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.d2-ch.read .d2-ch-name { color: var(--text-faint); font-weight: 500; }
+.d2-ch-meta { font-size: 12px; color: var(--text-faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.d2-ch-progress { height: 3px; border-radius: 3px; background: var(--surface3); overflow: hidden; margin-block-start: 3px; max-width: 240px; }
+.d2-ch-progress span { display: block; height: 100%; background: var(--accent); }
+.d2-ch .icon-btn { flex: 0 0 34px; width: 34px; height: 34px; color: var(--text-faint); }
+.d2-ch .icon-btn:hover { color: var(--accent); background: var(--surface2); }
+.d2-ch .d2-dl.dl-done { color: var(--ok); }
+.d2-ch .d2-dl.dl-queued { color: var(--warn); }
+.d2-ch .d2-more { opacity: 0; }
+.d2-ch:hover .d2-more, .d2-ch:focus-within .d2-more { opacity: 1; }
+
+.row-menu {
+  position: fixed; z-index: 1200; min-width: 208px;
+  background: var(--surface1); border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm); box-shadow: var(--shadow); padding: 6px;
+  display: flex; flex-direction: column; gap: 1px;
+}
+.row-menu-item {
+  display: flex; align-items: center; gap: 10px; width: 100%; text-align: start;
+  padding: 9px 10px; border-radius: 8px; font-size: 13.5px; color: var(--text);
+  background: transparent; border: 0; cursor: pointer;
+}
+.row-menu-item:hover { background: var(--surface2); }
+.row-menu-item.danger { color: var(--danger); }
+.row-menu-item .icon { width: 16px; height: 16px; color: var(--text-dim); flex: 0 0 16px; }
+
+@media (max-width: 900px) {
+  body[data-route="details"] .main { height: auto; min-height: 100dvh; }
+  body[data-route="details"] .view { overflow-y: auto; display: block; }
+  .d2 { display: block; }
+  .d2-info { overflow: visible; border-inline-end: 0; border-block-end: 1px solid var(--border); padding-block-start: 56px; }
+  .d2-chapter-scroll { overflow: visible; padding-block-end: 24px; }
+}
+
 /* ---- library hub redesign ------------------------------------------- */
 .library-container-hub {
   display: flex;

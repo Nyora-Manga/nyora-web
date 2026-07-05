@@ -240,6 +240,8 @@ const ICON_PATHS = {
   linkedin: '<path d="M16 8a6 6 0 0 1 6 6v7h-4v-7a2 2 0 0 0-2-2 2 2 0 0 0-2 2v7h-4v-7a6 6 0 0 1 6-6z"/><rect x="2" y="9" width="4" height="12"/><circle cx="4" cy="4" r="2"/>',
   github: '<path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A3.37 3.37 0 0 0 18.25 5 3.37 3.37 0 0 0 18.25 5 3.37 3.37 0 0 0 16 3.5c-.92 0-2.3 1-2.3 1a10.59 10.59 0 0 0-4.4 0s-1.38-1-2.3-1A3.37 3.37 0 0 0 4 5a3.37 3.37 0 0 0-.94 2.61c0 5.46 3.3 6.65 6.44 7a3.37 3.37 0 0 0-.94 2.61V22"/>',
   mail: '<path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/><rect x="2" y="5" width="20" height="14" rx="2"/>',
+  sort: '<path d="M4 7h16M6 12h12M9 17h6"/>',
+  more: '<circle cx="12" cy="6" r="1.6" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="12" cy="18" r="1.6" fill="currentColor" stroke="none"/>',
 };
 
 export function icon(name) {

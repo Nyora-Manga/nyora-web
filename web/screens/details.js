@@ -2,7 +2,7 @@
 
 import { api } from '../core/api.js';
 import {
-  el, $, proxyImage, applyImage, toast, btn, iconBtn, chip,
+  el, $, $$, icon, spinner, proxyImage, applyImage, toast, btn, iconBtn, chip,
   emptyState, errorBox, modal, fmt,
 } from '../core/ui.js';
 import { router, store } from '../core/store.js';
@@ -58,36 +58,9 @@ function mangaKey(manga, sid) {
 }
 
 function skeletonDetails() {
-  const skLine = (h, w, mb) => el('div', { class: 'skeleton', style: { height: h, width: w, borderRadius: '6px', marginBottom: mb || '0' } });
-
-  const summary = el('div', { class: 'details-summary' },
-    el('div', { class: 'cover skeleton' }),
-    skLine('26px', '80%', '12px'),
-    skLine('13px', '50%', '18px'),
-    el('div', { class: 'chips' },
-      el('span', { class: 'skeleton', style: { height: '26px', width: '78px', borderRadius: '999px' } }),
-      el('span', { class: 'skeleton', style: { height: '26px', width: '64px', borderRadius: '999px' } }),
-    ),
-    el('div', { class: 'details-actions', style: { marginTop: '16px' } },
-      el('div', { class: 'skeleton', style: { height: '40px', width: '100%', borderRadius: '11px' } }),
-    ),
-  );
-
-  const rows = el('ul', { class: 'chapter-list' });
-  for (let i = 0; i < 9; i++) {
-    rows.appendChild(el('li', { class: 'skeleton-row' },
-      skLine('14px', (52 + (i % 4) * 9) + '%'),
-      skLine('11px', '64px'),
-    ));
-  }
-  const chaptersPane = el('div', { class: 'details-chapters' },
-    el('div', { class: 'section-header' }, el('h2', null, 'Chapters')),
-    rows,
-  );
-
-  return el('div', { class: 'details-hero' },
-    el('div', { class: 'hero-bg' }),
-    el('div', { class: 'details-head' }, summary, chaptersPane),
+  return el('div', { class: 'd2-loading' },
+    iconBtn('back', () => router.back(), 'Back'),
+    spinner(),
   );
 }
 
@@ -149,6 +122,48 @@ function backOverlayBar() {
     iconBtn('back', () => router.back(), 'Back'));
 }
 
+// ── read marks (per-visitor overrides layered on the history-derived state) ──
+const READ_KEY = 'nyora.read.marks.v1';
+function loadReadMarks() { try { return JSON.parse(localStorage.getItem(READ_KEY)) || {}; } catch { return {}; } }
+function saveReadMarks(m) { try { localStorage.setItem(READ_KEY, JSON.stringify(m)); } catch { /* private mode */ } }
+function readOverrides(mangaId) {
+  const e = (loadReadMarks()[mangaId]) || {};
+  return { read: new Set(e.read || []), unread: new Set(e.unread || []) };
+}
+function saveOverrides(mangaId, ov) {
+  const all = loadReadMarks();
+  all[mangaId] = { read: [...ov.read], unread: [...ov.unread] };
+  saveReadMarks(all);
+}
+
+// ── lightweight anchored dropdown menu ───────────────────────────────────────
+function openMenu(anchor, items) {
+  const menu = el('div', { class: 'row-menu' },
+    ...items.filter(Boolean).map((it) => el('button', {
+      class: 'row-menu-item' + (it.danger ? ' danger' : ''), type: 'button',
+      onClick: (e) => { e.stopPropagation(); close(); it.onClick(); },
+    }, it.icon ? icon(it.icon) : null, el('span', null, it.label))));
+  document.body.appendChild(menu);
+  const r = anchor.getBoundingClientRect();
+  const top = Math.min(r.bottom + 6, window.innerHeight - menu.offsetHeight - 10);
+  const left = Math.min(r.right - menu.offsetWidth, window.innerWidth - menu.offsetWidth - 10);
+  menu.style.top = `${Math.max(10, top)}px`;
+  menu.style.left = `${Math.max(10, left)}px`;
+  const close = () => { menu.remove(); document.removeEventListener('mousedown', onDoc, true); document.removeEventListener('keydown', onKey, true); };
+  const onDoc = (e) => { if (!menu.contains(e.target)) close(); };
+  const onKey = (e) => { if (e.key === 'Escape') close(); };
+  setTimeout(() => { document.addEventListener('mousedown', onDoc, true); document.addEventListener('keydown', onKey, true); }, 0);
+}
+
+// The manga's current reading progress entry (for the in-progress bar).
+function historyEntryFor(mangaId) {
+  try {
+    const entries = (library.history() || {}).entries || [];
+    for (const h of entries) { if (mangaKey(h && h.manga, h && h.sourceId) === mangaId) return h; }
+  } catch { /* ignore */ }
+  return null;
+}
+
 function buildDetails(view, sid, url, manga, chapters, params) {
   const mangaId = mangaKey(manga, sid);
   const hint = store.cachedManga(url) || {};
@@ -157,60 +172,56 @@ function buildDetails(view, sid, url, manga, chapters, params) {
   const coverHeaders = coverDomain ? { Referer: `https://${coverDomain}/` } : undefined;
   const nsfw = manga.isNsfw === true || manga.contentRating === 'ADULT';
   const title = clean(manga.title) || 'Untitled';
-  const readingOrder = chapters.slice().reverse();
+  const authors = authorsText(manga);
+  const publicUrl = clean(manga.publicUrl) || clean(manga.url);
 
-  // ── Cover ─────────────────────────────────────────────────────────────
-  const coverWrap = el('div', { class: 'cover' });
+  // readingOrder: newest-first index space (kept for parity with download/reader).
+  const readingOrder = chapters.slice().reverse();
+  const ascByNumber = readingOrder.slice().sort((a, b) => (Number(a.number) || 0) - (Number(b.number) || 0));
+
+  // ── read-state resolution (history-derived + explicit overrides) ──────────
+  const overrides = readOverrides(mangaId);
+  function derivedRead() {
+    const lastReadUrl = lastReadChapterUrl(mangaId, readingOrder);
+    const lastReadIdx = readingOrder.findIndex((c) => c.url === lastReadUrl);
+    return (c) => lastReadIdx >= 0 && readingOrder.indexOf(c) <= lastReadIdx;
+  }
+  let isDerived = derivedRead();
+  function isRead(c) {
+    if (overrides.unread.has(c.url)) return false;
+    if (overrides.read.has(c.url)) return true;
+    return isDerived(c);
+  }
+  function unreadCount() { return readingOrder.filter((c) => !isRead(c)).length; }
+  function setRead(c, read) {
+    if (read) { overrides.read.add(c.url); overrides.unread.delete(c.url); }
+    else { overrides.unread.add(c.url); overrides.read.delete(c.url); }
+    saveOverrides(mangaId, overrides);
+  }
+  function markPreviousRead(c) {
+    const n = Number(c.number) || 0;
+    for (const x of ascByNumber) {
+      if ((Number(x.number) || 0) <= n) { overrides.read.add(x.url); overrides.unread.delete(x.url); }
+    }
+    saveOverrides(mangaId, overrides);
+  }
+
+  // ── LEFT: info panel ──────────────────────────────────────────────────────
+  const coverWrap = el('div', { class: 'd2-cover' });
   if (rawCover) {
-    const img = el('img', { loading: 'lazy', decoding: 'async', alt: clean(manga.title) });
+    const img = el('img', { loading: 'lazy', decoding: 'async', alt: title });
     applyImage(img, rawCover, coverHeaders, () => { img.style.display = 'none'; });
     coverWrap.appendChild(img);
   }
   if (nsfw) coverWrap.appendChild(el('span', { class: 'badge nsfw' }, '18+'));
 
-  const coverDownload = iconBtn('download', (e) => {
-    e.stopPropagation();
-    openDownloadDialog(sid, url, mangaId, title, chapters);
-  }, 'Download chapters');
-  coverDownload.classList.add('cover-download-btn');
-  coverWrap.appendChild(coverDownload);
-
-  // ── Meta chips ─────────────────────────────────────────────────────────
   const metaChips = [];
   const state = clean(manga.state);
   if (state) metaChips.push(chip(state.replace(/_/g, ' '), { active: true }));
+  metaChips.push(chip(`${chapters.length} ${chapters.length === 1 ? 'chapter' : 'chapters'}`));
   if (typeof manga.rating === 'number' && manga.rating > 0) metaChips.push(chip(fmt.rating(manga.rating)));
-  const contentRating = clean(manga.contentRating);
-  if (contentRating && contentRating !== 'SAFE') metaChips.push(chip(contentRating, { nsfw }));
-  metaChips.push(chip(chapters.length + (chapters.length === 1 ? ' chapter' : ' chapters')));
-
-  const authors = authorsText(manga);
-
-  const tags = (Array.isArray(manga.tags) ? manga.tags : [])
-    .map((t) => clean(t && (t.title || t.key)))
-    .filter(Boolean)
-    .slice(0, 20);
-  const tagRow = tags.length
-    ? el('div', { class: 'chips tag-chips' },
-        ...tags.map((t) => chip(t, { onClick: () => router.navigate('search', { q: t }) })))
-    : null;
-
-  const descText = plainText(manga.description);
-  let descNode;
-  if (descText) {
-    const p = el('p', { class: 'desc clamp' }, descText);
-    const moreBtn = btn('Show more', {
-      variant: 'ghost', class: 'btn-sm',
-      onClick: () => {
-        const clamped = p.classList.toggle('clamp');
-        const lbl = $('span:not(.icon)', moreBtn);
-        if (lbl) lbl.textContent = clamped ? 'Show more' : 'Show less';
-      },
-    });
-    descNode = el('div', { class: 'desc-wrap' }, p, moreBtn);
-  } else {
-    descNode = el('p', { class: 'desc desc-empty' }, 'No description.');
-  }
+  const cr = clean(manga.contentRating);
+  if (cr && cr !== 'SAFE') metaChips.push(chip(cr, { nsfw }));
 
   const favBtn = btn('Favourite', { variant: 'ghost', icon: 'heart' });
   let favourited = library.isFavourite(mangaId);
@@ -218,119 +229,162 @@ function buildDetails(view, sid, url, manga, chapters, params) {
     favBtn.classList.toggle('btn-accent', favourited);
     favBtn.classList.toggle('btn-ghost', !favourited);
     const lbl = $('span:not(.icon)', favBtn);
-    if (lbl) lbl.textContent = favourited ? 'Favourited' : 'Favourite';
+    if (lbl) lbl.textContent = favourited ? 'In library' : 'Add to library';
   }
   favBtn.addEventListener('click', () => {
-    try {
-      const res = library.toggleFavourite(manga);
-      favourited = !!(res && res.favourited);
-      paintFav();
-    } catch (e) { toast(e.message || 'Error'); }
+    try { const res = library.toggleFavourite(manga); favourited = !!(res && res.favourited); paintFav(); }
+    catch (e) { toast(e.message || 'Error'); }
   });
   paintFav();
-
-  const cta = buildCTA(sid, url, mangaId, chapters);
-  const publicUrl = clean(manga.publicUrl) || clean(manga.url);
 
   const downloadAllBtn = btn('Download', { variant: 'ghost', icon: 'download' });
   downloadAllBtn.addEventListener('click', () => openDownloadDialog(sid, url, mangaId, title, chapters));
 
-  const actions = el('div', { class: 'details-actions' },
-    cta,
-    favBtn,
-    downloadAllBtn,
-    el('div', { class: 'details-actions-icons' },
+  const cta = buildCTA(sid, url, mangaId, chapters, ascByNumber, isRead);
+
+  const descText = plainText(manga.description);
+  let descNode;
+  if (descText) {
+    const p = el('p', { class: 'd2-desc clamp' }, descText);
+    const moreBtn = btn('Show more', { variant: 'ghost', class: 'btn-sm', onClick: () => {
+      const clamped = p.classList.toggle('clamp');
+      const lbl = $('span:not(.icon)', moreBtn);
+      if (lbl) lbl.textContent = clamped ? 'Show more' : 'Show less';
+    } });
+    descNode = el('div', { class: 'd2-desc-wrap' }, p, moreBtn);
+  } else {
+    descNode = el('p', { class: 'd2-desc d2-desc-empty' }, 'No description.');
+  }
+
+  const tags = (Array.isArray(manga.tags) ? manga.tags : [])
+    .map((t) => clean(t && (t.title || t.key))).filter(Boolean).slice(0, 24);
+  const genresNode = tags.length
+    ? el('div', { class: 'd2-genres' }, ...tags.map((t) => chip(t, { onClick: () => router.navigate('search', { q: t }) })))
+    : null;
+
+  const info = el('div', { class: 'd2-info' },
+    el('div', { class: 'd2-head' },
+      coverWrap,
+      el('div', { class: 'd2-titlebox' },
+        el('h1', { class: 'd2-title', title }, title),
+        authors ? el('p', { class: 'd2-authors' }, authors) : null,
+        el('div', { class: 'd2-meta' }, ...metaChips),
+      ),
+    ),
+    el('div', { class: 'd2-actions' }, cta, favBtn),
+    el('div', { class: 'd2-actions d2-actions-sub' },
+      downloadAllBtn,
       iconBtn('folder', () => openCategories(manga, mangaId), 'Add to category'),
       iconBtn('anilist', () => router.navigate('tracker', { title }), 'Track'),
       publicUrl ? iconBtn('external', () => window.open(publicUrl, '_blank'), 'Open site') : null,
     ),
-  );
-
-  const summary = el('div', { class: 'details-summary' },
-    coverWrap,
-    el('h1', { class: 'details-title' }, title),
-    authors ? el('p', { class: 'details-authors' }, authors) : null,
-    el('div', { class: 'details-meta' }, ...metaChips),
-    actions,
-    tagRow,
     descNode,
+    genresNode,
   );
 
-  const chapterHost = el('ul', { class: 'chapter-list' });
-  let newestFirst = true;
+  // ── RIGHT: chapters ───────────────────────────────────────────────────────
+  const state2 = { filter: 'all', sortKey: 'number', asc: false };
+  const listHost = el('ul', { class: 'd2-chapter-list' });
+  const countEl = el('span', { class: 'd2-count' });
+
+  const ctx = {
+    sid, url, mangaId, title,
+    isRead, setRead, markPreviousRead,
+    history: historyEntryFor(mangaId),
+    rerender: () => renderRows(),
+  };
+
+  function sorted() {
+    let list = ascByNumber.slice();
+    if (state2.sortKey === 'date') {
+      list.sort((a, b) => (Number(a.uploadDate) || 0) - (Number(b.uploadDate) || 0));
+    }
+    if (!state2.asc) list = list.reverse();
+    return list;
+  }
 
   function renderRows() {
-    chapterHost.replaceChildren();
-    if (!readingOrder.length) {
-      chapterHost.appendChild(emptyState('No chapters yet.'));
-      return;
-    }
-    const lastReadUrl = lastReadChapterUrl(mangaId, readingOrder);
-    const lastReadIdx = readingOrder.findIndex((c) => c.url === lastReadUrl);
-    // Order the displayed chapters by chapter NUMBER so the label always matches
-    // the order — "Newest" = highest number first, "Oldest" = lowest first —
-    // regardless of the order the source returned the array in.
-    const asc = readingOrder.slice().sort((a, b) => (Number(a.number) || 0) - (Number(b.number) || 0));
-    const ordered = newestFirst ? asc.reverse() : asc;
-    for (const c of ordered) {
-      const idx = readingOrder.indexOf(c);
-      const isRead = lastReadIdx >= 0 && idx <= lastReadIdx;
-      // Pass the oldest-first index so a title/number-less chapter's synthesized
-      // "Chapter N" label matches the download dialog and the rest of the stack.
-      chapterHost.appendChild(buildChapterRow(sid, url, c, readingOrder.length - 1 - idx, isRead, mangaId, title));
+    isDerived = derivedRead();
+    listHost.replaceChildren();
+    if (!readingOrder.length) { listHost.appendChild(emptyState('No chapters yet.')); countEl.textContent = ''; return; }
+    let list = sorted();
+    if (state2.filter === 'unread') list = list.filter((c) => !isRead(c));
+    else if (state2.filter === 'downloaded') list = list.filter((c) => { const s = downloads.statusOf(sid, c.url); return s && s.status === 'COMPLETED'; });
+    const unread = unreadCount();
+    countEl.textContent = `${readingOrder.length} chapters · ${unread} unread`;
+    if (!list.length) { listHost.appendChild(emptyState(state2.filter === 'unread' ? 'All caught up.' : 'Nothing here.')); return; }
+    for (const c of list) {
+      const oldestIdx = readingOrder.length - 1 - readingOrder.indexOf(c);
+      listHost.appendChild(buildChapterRow(ctx, c, oldestIdx));
     }
   }
 
-  const sortBtn = btn('Newest', {
-    variant: 'ghost', icon: 'filter', class: 'btn-sm',
-    onClick: () => {
-      newestFirst = !newestFirst;
-      const lbl = $('span:not(.icon)', sortBtn);
-      if (lbl) lbl.textContent = newestFirst ? 'Newest' : 'Oldest';
-      renderRows();
-    },
-  });
+  // toolbar
+  const filterBtn = iconBtn('filter', (e) => openMenu(e.currentTarget, [
+    { label: 'All chapters', icon: state2.filter === 'all' ? 'check' : null, onClick: () => { state2.filter = 'all'; renderRows(); } },
+    { label: 'Unread only', icon: state2.filter === 'unread' ? 'check' : null, onClick: () => { state2.filter = 'unread'; renderRows(); } },
+    { label: 'Downloaded only', icon: state2.filter === 'downloaded' ? 'check' : null, onClick: () => { state2.filter = 'downloaded'; renderRows(); } },
+  ]), 'Filter');
+  const sortBtn = iconBtn('sort', (e) => openMenu(e.currentTarget, [
+    { label: `By chapter number${state2.sortKey === 'number' ? (state2.asc ? ' ↑' : ' ↓') : ''}`, icon: state2.sortKey === 'number' ? 'check' : null,
+      onClick: () => { if (state2.sortKey === 'number') state2.asc = !state2.asc; else { state2.sortKey = 'number'; state2.asc = false; } renderRows(); } },
+    { label: `By upload date${state2.sortKey === 'date' ? (state2.asc ? ' ↑' : ' ↓') : ''}`, icon: state2.sortKey === 'date' ? 'check' : null,
+      onClick: () => { if (state2.sortKey === 'date') state2.asc = !state2.asc; else { state2.sortKey = 'date'; state2.asc = false; } renderRows(); } },
+  ]), 'Sort');
+  const markAllBtn = iconBtn('check', (e) => openMenu(e.currentTarget, [
+    { label: 'Mark all as read', icon: 'check', onClick: () => { for (const c of readingOrder) setRead(c, true); renderRows(); toast('Marked all read'); } },
+    { label: 'Mark all as unread', onClick: () => { for (const c of readingOrder) setRead(c, false); renderRows(); toast('Marked all unread'); } },
+  ]), 'Mark');
 
-  const chaptersPane = el('div', { class: 'details-chapters' },
-    el('div', { class: 'section-header' },
-      el('h2', null, 'Chapters'),
-      el('div', { class: 'section-actions' }, sortBtn),
+  const chapters2 = el('div', { class: 'd2-chapters' },
+    el('div', { class: 'd2-toolbar' },
+      el('div', { class: 'd2-toolbar-l' }, el('h2', null, 'Chapters'), countEl),
+      el('div', { class: 'd2-toolbar-r' }, markAllBtn, filterBtn, sortBtn),
     ),
-    chapterHost,
+    el('div', { class: 'd2-chapter-scroll' }, listHost),
   );
 
   renderRows();
 
-  const hero = el('div', { class: 'details-hero' });
-  if (rawCover) {
-    const bg = el('div', { class: 'hero-bg' });
-    bg.style.backgroundImage = `url("${proxyImage(rawCover, coverHeaders)}")`;
-    hero.appendChild(bg);
-  }
-  hero.appendChild(iconBtn('back', () => router.back(), 'Back'));
-  $('.icon-btn', hero).classList.add('details-back');
-  hero.appendChild(el('div', { class: 'details-head' }, summary, chaptersPane));
-
-  return hero;
+  const root = el('div', { class: 'd2' },
+    iconBtn('back', () => router.back(), 'Back'),
+    info,
+    chapters2,
+  );
+  $('.icon-btn', root).classList.add('d2-back');
+  return root;
 }
 
-function buildCTA(sid, url, mangaId, chapters) {
-  const readingOrder = chapters.slice().reverse();
-  const lastUrl = lastReadChapterUrl(mangaId, readingOrder);
-  const resume = readingOrder.find((c) => c.url === lastUrl);
-  const target = resume || (readingOrder.length ? readingOrder[0] : null);
-
-  if (!target) return null;
-  return btn(resume ? 'Resume' : 'Read', {
-    primary: true, icon: 'play', class: 'details-cta',
-    onClick: () => router.navigate('reader', { sid, url, chapterUrl: target.url }),
+function buildCTA(sid, url, mangaId, chapters, ascByNumber, isRead) {
+  if (!ascByNumber.length) return btn('Read', { primary: true, icon: 'play', class: 'd2-cta', onClick: () => {} });
+  const lastUrl = lastReadChapterUrl(mangaId, ascByNumber);
+  const firstUnread = ascByNumber.find((c) => !isRead(c));
+  const target = firstUnread || ascByNumber[ascByNumber.length - 1];
+  const started = !!lastUrl;
+  const num = target && target.number != null && Number(target.number) > 0
+    ? (Number.isInteger(Number(target.number)) ? Number(target.number) : Number(target.number).toFixed(1)) : null;
+  const label = !firstUnread ? 'Read again' : (started ? 'Continue' : 'Start reading');
+  return btn(num != null ? `${label} · Ch ${num}` : label, {
+    primary: true, icon: 'play', class: 'd2-cta',
+    onClick: () => router.navigate('reader', { sid, url, chapterUrl: (firstUnread || ascByNumber[0]).url }),
   });
 }
 
-function buildChapterRow(sid, url, chapter, index, isRead, mangaId, mangaTitle) {
+function buildChapterRow(ctx, chapter, index) {
+  const { sid, url, mangaId, title: mangaTitle } = ctx;
   const title = fmt.chapterTitle(chapter, index);
   const dateStr = fmt.date(chapter.uploadDate);
   const scanlator = clean(chapter.scanlator);
+  const read = ctx.isRead(chapter);
+
+  const st = downloads.statusOf(sid, chapter.url);
+  const downloaded = st && st.status === 'COMPLETED';
+  const queued = st && (st.status === 'QUEUED' || st.status === 'RUNNING');
+
+  // in-progress bar: the currently-resumed chapter with 0<percent<100
+  const h = ctx.history;
+  const inProgress = h && !read && (h.chapterUrl === chapter.url || h.chapterId === chapter.url)
+    && Number(h.percent) > 0 && Number(h.percent) < 100 ? Number(h.percent) : 0;
 
   const open = () => router.navigate('reader', { sid, url, chapterUrl: chapter.url });
 
@@ -338,34 +392,48 @@ function buildChapterRow(sid, url, chapter, index, isRead, mangaId, mangaTitle) 
   if (dateStr) metaParts.push(dateStr);
   if (scanlator) metaParts.push(scanlator);
 
-  const st = downloads.statusOf(sid, chapter.url);
-  const downloaded = st && st.status === 'COMPLETED';
-  const queued = st && (st.status === 'QUEUED' || st.status === 'RUNNING');
-
   const dlBtn = iconBtn(downloaded ? 'check' : 'download', (e) => {
     e.stopPropagation();
     const res = downloads.enqueue([downloadDesc(sid, url, mangaId, mangaTitle, chapter, index)]);
     if (res.added) toast('Queued ' + title);
     else if (res.requeued) toast('Re-queued ' + title);
-    else if (downloaded) toast('Already downloaded — re-queue with the Download menu');
+    else if (downloaded) toast('Already downloaded');
     else toast('Already in queue');
   }, downloaded ? 'Downloaded' : 'Download');
+  dlBtn.classList.add('d2-dl');
   if (downloaded) dlBtn.classList.add('dl-done');
   if (queued) dlBtn.classList.add('dl-queued');
 
-  const li = el('li', { class: isRead ? 'read' : '', role: 'button', tabindex: '0' },
-    el('span', { class: 'ch-name', title }, title),
-    metaParts.length ? el('span', { class: 'ch-meta' }, metaParts.join(' · ')) : null,
+  const menuBtn = iconBtn('more', (e) => {
+    e.stopPropagation();
+    openMenu(e.currentTarget, [
+      { label: read ? 'Mark as unread' : 'Mark as read', icon: read ? 'close' : 'check',
+        onClick: () => { ctx.setRead(chapter, !read); ctx.rerender(); } },
+      { label: 'Mark previous as read', icon: 'check',
+        onClick: () => { ctx.markPreviousRead(chapter); ctx.rerender(); } },
+      { label: downloaded ? 'Downloaded' : 'Download', icon: 'download',
+        onClick: () => { downloads.enqueue([downloadDesc(sid, url, mangaId, mangaTitle, chapter, index)]); toast('Queued ' + title); } },
+    ]);
+  }, 'More');
+  menuBtn.classList.add('d2-more');
+
+  const main = el('div', { class: 'd2-ch-main' },
+    el('div', { class: 'd2-ch-name', title }, title),
+    metaParts.length ? el('div', { class: 'd2-ch-meta' }, metaParts.join(' · ')) : null,
+    inProgress ? el('div', { class: 'd2-ch-progress' }, el('span', { style: { width: `${inProgress}%` } })) : null,
+  );
+
+  const li = el('li', { class: 'd2-ch' + (read ? ' read' : '') + (inProgress ? ' inprogress' : ''), role: 'button', tabindex: '0' },
+    el('span', { class: 'd2-ch-rail' }),
+    main,
     dlBtn,
+    menuBtn,
   );
   li.addEventListener('click', open);
-  li.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); }
-  });
+  li.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } });
   return li;
 }
 
-// Build a download-manager chapter descriptor.
 function downloadDesc(sid, url, mangaId, mangaTitle, chapter, index) {
   return {
     sourceId: sid,
