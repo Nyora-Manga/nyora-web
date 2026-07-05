@@ -28,7 +28,7 @@
   --surface1: #171719;          /* cards / panes / rows */
   --surface2: #202023;          /* hover */
   --surface3: #2a2a2e;          /* active / inset */
-  --surface-grad: linear-gradient(180deg, #1a1a1d 0%, #0e0e10 100%);
+  --surface-grad: #161618;   /* flat (was a mono gradient) */
   --border: rgba(255, 255, 255, 0.10);
   --border-strong: rgba(255, 255, 255, 0.20);
   --text: #f5f5f6;
@@ -45,7 +45,7 @@
   --grad-accent-soft: linear-gradient(135deg,
       color-mix(in oklab, var(--accent) 22%, transparent) 0%,
       color-mix(in oklab, var(--accent-2) 18%, transparent) 100%);
-  --grad-sheen: linear-gradient(180deg, var(--hairline-sheen), transparent);
+  --grad-sheen: transparent;   /* flat — mono sheen removed */
   /* Pure-black background with a faint accent wash up top — a clean linear
      gradient straight onto #000 (srgb), NOT the muddy oklab-on-transparent mix
      that washed the whole app grey. Bottom stays absolute black. */
@@ -180,14 +180,14 @@
   --surface1: #ffffff;
   --surface2: #ededee;
   --surface3: #dddde0;
-  --surface-grad: linear-gradient(180deg, #ffffff 0%, #f4f4f5 100%);
+  --surface-grad: #ffffff;   /* flat (was a mono gradient) */
   --border: rgba(0, 0, 0, 0.14);
   --border-strong: rgba(0, 0, 0, 0.26);
   --text: #0e0e10;
   --text-dim: #52525a;
   --text-faint: #8a8a90;
   --on-accent: #ffffff;
-  --grad-sheen: linear-gradient(180deg, var(--text-on-surface-muted), transparent);
+  --grad-sheen: transparent;   /* flat — mono sheen removed */
   --bg-tint:
     linear-gradient(160deg, color-mix(in oklab, var(--accent) 7%, transparent) 0%, transparent 40%);
   --danger: #d92d2d;
@@ -439,9 +439,7 @@ body.hide-search .search-form { display: none; }
   min-width: 0;
   padding: 8px;
   border-radius: 22px;
-  background:
-    linear-gradient(145deg, color-mix(in srgb, var(--surface2) 72%, transparent), color-mix(in srgb, var(--pure-black) 76%, transparent)),
-    color-mix(in srgb, var(--bg-elev) 78%, transparent);
+  background: var(--surface1);   /* flat card (was a mono gradient) */
   border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
   box-shadow: var(--shadow-card);
   transform: translateZ(0);
@@ -488,7 +486,7 @@ body.hide-search .search-form { display: none; }
   overflow: hidden;
   background:
     linear-gradient(135deg, color-mix(in srgb, var(--accent) 18%, transparent), transparent 44%),
-    linear-gradient(180deg, var(--cover-ink-top), var(--cover-ink-bottom));
+    var(--cover-ink-bottom);   /* accent overlay kept; mono ink flattened */
   border: 1px solid var(--card-border);
   box-shadow: var(--shadow-cover);
   transition: transform 0.2s var(--ease), border-color 0.2s var(--ease), box-shadow 0.2s var(--ease);
@@ -2072,8 +2070,7 @@ body.reader-active .view {
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
   color: var(--wlc-text);
-  background:
-    radial-gradient(150% 120% at 12% -10%, var(--wlc-sky-1) 0%, var(--wlc-sky-2) 44%, var(--wlc-sky-3) 100%);
+  background: var(--wlc-sky-2);   /* flat sky (was a mono radial gradient) */
   isolation: isolate;
 }
 /* While the welcome is up, lock the page behind it — no main-content flash, no
@@ -2219,7 +2216,7 @@ body.reader-active .view {
   width: 100%; min-width: 0;
   /* Opaque card — no backdrop-filter. The frosted-glass blur re-sampled the
      animated rain behind it every frame, which made scrolling lag on desktop. */
-  background: linear-gradient(180deg, var(--wlc-card-top), var(--wlc-card-bottom));
+  background: var(--wlc-card-top);   /* flat card (was a mono gradient) */
   border: 1px solid var(--wlc-card-border);
   border-radius: 20px;
   padding: 26px;
