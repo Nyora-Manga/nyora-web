@@ -335,9 +335,14 @@ button { cursor: pointer; }
 /* ---- topbar ---------------------------------------------------------- */
 .topbar {
   position: sticky; top: 0; z-index: 20;
+  /* Fixed, uniform height on EVERY page — lock height so flex never shrinks it
+     to fit shorter per-page content (was rendering 55–74px across routes). */
   height: var(--topbar-h);
+  min-height: var(--topbar-h);
+  flex: 0 0 auto;
+  box-sizing: border-box;
   display: flex; align-items: center; gap: 14px;
-  padding: 14px 24px 0;
+  padding: 0 24px;
   /* Seamless with the page — no dark band behind the search. Backdrop blur only
      shows when content scrolls beneath the sticky header. */
   background: transparent;
@@ -357,7 +362,7 @@ button { cursor: pointer; }
   display: inline-flex; align-items: center; gap: 8px;
   padding: 8px 15px; border-radius: 999px;
   font-size: 13px; font-weight: 600; line-height: 1; text-decoration: none;
-  white-space: nowrap; transform: translateY(-2px);
+  white-space: nowrap;
   color: var(--accent-on-light);
   background: var(--accent-tint-soft);
   border: 1px solid color-mix(in srgb, var(--accent) 32%, transparent);
@@ -370,7 +375,7 @@ button { cursor: pointer; }
   .visit-site { padding: 9px; }
 }
 
-.search-form { flex: 1 1 440px; max-width: 560px; position: relative; display: flex; align-items: center; transform: translateY(-2px); }
+.search-form { flex: 1 1 440px; max-width: 560px; position: relative; display: flex; align-items: center; }
 /* Search bar hidden only on the manga detail page + reader (app.js toggles
    body.hide-search per route, so it always reappears on other screens). */
 body.hide-search .search-form { display: none; }
