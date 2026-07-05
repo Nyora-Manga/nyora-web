@@ -142,12 +142,14 @@ export function spinner() {
   return el('div', { class: 'spinner', role: 'status', 'aria-label': 'Loading' });
 }
 
-export function skeletonCard() {
+export function skeletonCard(extraClass = '') {
+  // Matches the minimal cover-forward card: a cover-shaped shimmer + a short
+  // title line. The card wrapper stays transparent (no surface box).
   return el(
     'div',
-    { class: 'card skeleton' },
+    { class: 'card' + (extraClass ? ' ' + extraClass : '') },
     el('div', { class: 'cover skeleton' }),
-    el('div', { class: 'title skeleton', style: { height: '14px', width: '80%' } }),
+    el('div', { class: 'title skeleton', style: { height: '13px', width: '78%' } }),
   );
 }
 

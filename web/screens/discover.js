@@ -303,7 +303,7 @@ function heroSkeleton() {
 
 function railSkeleton(title) {
   const track = el('div', { class: 'discover-rail-track' });
-  for (let i = 0; i < 6; i++) track.appendChild(skeletonCard());
+  for (let i = 0; i < 6; i++) track.appendChild(skeletonCard('discover-rail-card'));
   return el('div', { class: 'discover-rail' },
     sectionHeader(title),
     track,
