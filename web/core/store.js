@@ -41,6 +41,7 @@ const DEFAULT_PREFS = {
   appearance: 'DARK', // 'DARK' | 'LIGHT'
   accent: WALLPAPER_ACCENT,
   showNsfw: false,
+  noNsfwHistory: false, // when true, 18+ manga are never written to history
   reader: {
     mode: 'WEBTOON', // 'WEBTOON' | 'PAGED' | 'PAGED_RTL'
     fit: 'WIDTH', // 'WIDTH' | 'HEIGHT'

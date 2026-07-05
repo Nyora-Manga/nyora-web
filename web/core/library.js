@@ -252,6 +252,14 @@ export const library = {
   recordHistory(body) {
     if (!body) return;
     const manga = body.manga;
+    // Respect "Keep 18+ out of history" — never persist adult manga when enabled.
+    try {
+      const prefs = JSON.parse(localStorage.getItem('nyora.prefs') || '{}');
+      if (prefs.noNsfwHistory && manga &&
+          (manga.isNsfw === true || /adult|porn|erotic|hentai|nsfw/i.test(String(manga.contentRating || '')))) {
+        return;
+      }
+    } catch { /* ignore */ }
     const sourceId = body.sourceId != null ? body.sourceId : sourceFromManga(manga);
     const id = manga ? keyOf(manga, sourceId) : asMangaId(body.mangaId, sourceId);
     if (!id) return;

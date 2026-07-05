@@ -149,7 +149,8 @@ function buildContent() {
   const prefs = store.get();
   const section = el('section', { class: 'settings-section' });
   section.append(el('h2', null, 'Content'));
-  section.append(settingRow('Show 18+ sources', 'Enable adult-only manga sources in Explore.', switchToggle(prefs.showNsfw, (v) => store.set({ showNsfw: v }))));
+  section.append(settingRow('Show 18+ sources', 'Enable adult-only manga sources in Explore and search.', switchToggle(prefs.showNsfw, (v) => store.set({ showNsfw: v }))));
+  section.append(settingRow('Keep 18+ out of history', 'Don’t save adult manga to your reading history.', switchToggle(prefs.noNsfwHistory, (v) => store.set({ noNsfwHistory: v }))));
   return section;
 }
 

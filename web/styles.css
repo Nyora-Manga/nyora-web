@@ -429,93 +429,61 @@ body.hide-search .search-form { display: none; }
   gap: 20px;
 }
 .grid.dense { grid-template-columns: repeat(auto-fill, minmax(124px, 1fr)); gap: 14px; }
+/* Minimal, cover-forward manga card — the artwork IS the card. No surface box,
+   no decorative blobs, no accent tint muddying the cover. Anime-grade hover:
+   the cover lifts and the art does a slow, subtle zoom (Ken Burns). */
 .card {
   position: relative;
-  isolation: isolate;
   cursor: pointer;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 9px;
   min-width: 0;
-  padding: 8px;
-  border-radius: 22px;
-  background: var(--surface1);   /* flat card (was a mono gradient) */
-  border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
-  box-shadow: var(--shadow-card);
-  transform: translateZ(0);
-  transition: transform 0.2s var(--ease), border-color 0.2s var(--ease), box-shadow 0.2s var(--ease), background 0.2s var(--ease);
 }
-.card::before {
-  content: "";
-  position: absolute;
-  inset: 6px 6px auto auto;
-  width: 58%;
-  aspect-ratio: 1 / 1;
-  z-index: -1;
-  border-radius: 18px;
-  background:
-    linear-gradient(135deg, color-mix(in srgb, var(--accent) 48%, transparent), transparent);
-  opacity: 0.22;
-  transform: translate(5px, -5px) rotate(7deg);
-  transition: opacity 0.2s var(--ease), transform 0.2s var(--ease);
-}
-.card::after {
-  content: "";
-  position: absolute;
-  inset: auto 12px 42px 12px;
-  height: 1px;
-  z-index: -1;
-  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--accent) 72%, transparent), transparent);
-  opacity: 0;
-  transition: opacity 0.2s var(--ease);
-}
-.card:hover {
-  transform: translateY(-3px);
-  border-color: color-mix(in srgb, var(--accent) 34%, var(--border-strong));
-  box-shadow: var(--shadow-card-hover);
-}
-.card:hover::before {
-  opacity: 0.34;
-  transform: translate(7px, -7px) rotate(10deg);
-}
-.card:hover::after { opacity: 0.8; }
 .card .cover {
   position: relative;
   aspect-ratio: 2 / 3;
-  border-radius: 17px;
+  border-radius: 14px;
   overflow: hidden;
-  background:
-    linear-gradient(135deg, color-mix(in srgb, var(--accent) 18%, transparent), transparent 44%),
-    var(--cover-ink-bottom);   /* accent overlay kept; mono ink flattened */
+  background: var(--cover-ink-bottom);   /* solid placeholder while the art loads */
   border: 1px solid var(--card-border);
   box-shadow: var(--shadow-cover);
-  transition: transform 0.2s var(--ease), border-color 0.2s var(--ease), box-shadow 0.2s var(--ease);
+  transition: transform 0.34s var(--ease), box-shadow 0.34s var(--ease), border-color 0.34s var(--ease);
+}
+.card .cover img {
+  width: 100%; height: 100%; object-fit: cover; display: block;
+  transition: transform 0.6s cubic-bezier(0.22, 0.61, 0.36, 1);
 }
 .card:hover .cover {
-  transform: translateY(-5px) rotate(-0.6deg);
-  border-color: color-mix(in srgb, var(--accent) 40%, var(--card-border-hover));
+  transform: translateY(-5px);
   box-shadow: var(--shadow-cover-hover);
+  border-color: color-mix(in srgb, var(--accent) 50%, var(--card-border));
 }
-.card .cover img { width: 100%; height: 100%; object-fit: cover; }
-.card .cover::after {
-  content: ""; position: absolute; inset: 0; pointer-events: none;
-  background:
-    linear-gradient(180deg, var(--scrim-faint), transparent 34%, var(--scrim-deep) 100%),
-    linear-gradient(135deg, color-mix(in srgb, var(--accent) 18%, transparent), transparent 42%);
-  opacity: 0.62; transition: opacity 0.2s var(--ease);
+.card:hover .cover img { transform: scale(1.06); }
+.card:active .cover { transform: translateY(-1px); transition-duration: 0.1s; }
+.card:focus-visible { outline: none; }
+.card:focus-visible .cover {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent), var(--shadow-cover);
 }
-.card:hover .cover::after { opacity: 0.86; }
 .card .title {
-  padding: 0 2px 2px;
-  font-size: 12.8px; font-weight: 730; color: var(--text);
+  padding: 0 1px;
+  font-size: 12.8px; font-weight: 600; color: var(--text-dim);
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
-  overflow: hidden; line-height: 1.24;
-  letter-spacing: -0.01em;
+  overflow: hidden; line-height: 1.3;
+  letter-spacing: -0.005em;
+  transition: color 0.18s var(--ease);
+}
+.card:hover .title { color: var(--text); }
+@media (prefers-reduced-motion: reduce) {
+  .card .cover, .card .cover img, .card .title { transition: none; }
+  .card:hover .cover { transform: none; }
+  .card:hover .cover img { transform: none; }
 }
 .badge {
-  position: absolute; top: 8px; left: 8px;
-  font-size: 10px; font-weight: 800; letter-spacing: 0.03em;
-  padding: 3px 8px; border-radius: 8px;
+  position: absolute; top: 8px; left: 8px; z-index: 2;
+  font-size: 9.5px; font-weight: 700; letter-spacing: 0.04em;
+  padding: 3px 7px; border-radius: 6px;
   background: var(--overlay-strong); color: var(--pure-white); backdrop-filter: blur(6px);
 }
 .badge.nsfw { background: var(--danger); color: var(--pure-white); }

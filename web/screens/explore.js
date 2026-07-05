@@ -372,7 +372,8 @@ export function render(view, _params) {
       listWrap.replaceChildren();
       const q = searchInput.value.trim().toLowerCase();
       const filtered = entries.filter((e) =>
-        (e.name || '').toLowerCase().includes(q) || (e.lang || '').toLowerCase().includes(q));
+        (state.showNsfw || !e.isNsfw) &&
+        ((e.name || '').toLowerCase().includes(q) || (e.lang || '').toLowerCase().includes(q)));
       if (!filtered.length) {
         listWrap.appendChild(emptyState(
           entries.length ? 'No extensions match that search.' : 'No extensions available.', 'download'));
