@@ -7,7 +7,6 @@ import {
 import {
   store, COLOR_SCHEMES, resolveAccent, detectBrowserAccent,
 } from '../core/store.js';
-import { otaStatus, resetRuntime } from '../core/parser-runtime.js';
 import sync from '../core/sync.js';
 import { showPreferences } from './welcome.js';
 
@@ -108,7 +107,6 @@ export function render(view, _params) {
   view.append(buildReader());
   view.append(buildContent());
   view.append(buildSync());
-  view.append(buildParserUpdates());
   view.append(buildBackup());
   view.append(buildData());
   view.append(buildAbout());
@@ -166,47 +164,6 @@ function buildContent() {
       }),
     }),
   ));
-  return section;
-}
-
-function buildParserUpdates() {
-  const section = el('section', { class: 'settings-section' });
-  section.append(el('h2', null, 'Sources'));
-
-  const statusText = el('span', { class: 'hint' }, 'Checking…');
-  section.append(settingRow('Source updates', 'Keep your reading sources current', statusText));
-
-  const friendly = (st) => {
-    if (!st) return '—';
-    const base = st.source === 'ota' ? 'Up to date' : 'Using built-in sources';
-    return st.version > 0 ? `${base} · v${st.version}` : base;
-  };
-
-  const checkBtn = btn('Check for updates', {
-    icon: 'refresh',
-    onClick: async () => {
-      checkBtn.disabled = true;
-      statusText.textContent = 'Checking…';
-      resetRuntime();
-      try {
-        const st = await otaStatus();
-        statusText.textContent = friendly(st);
-        toast(st.source === 'ota' ? 'Sources updated' : 'Your sources are up to date');
-      } catch (e) {
-        statusText.textContent = "Couldn't check just now";
-        toast("Couldn't check for updates — try again later");
-      } finally {
-        checkBtn.disabled = false;
-      }
-    },
-  });
-  section.append(el('div', { class: 'row' }, checkBtn));
-
-  // Populate status quietly on load.
-  otaStatus()
-    .then((st) => { statusText.textContent = friendly(st); })
-    .catch(() => { statusText.textContent = 'Using built-in sources'; });
-
   return section;
 }
 
