@@ -338,12 +338,12 @@ button { cursor: pointer; }
   height: var(--topbar-h);
   display: flex; align-items: center; gap: 14px;
   padding: 14px 24px 0;
-  background:
-    linear-gradient(180deg, color-mix(in srgb, var(--accent) 7%, transparent) 0%, transparent 100%),
-    color-mix(in srgb, var(--pure-black) 86%, transparent);
-  backdrop-filter: saturate(160%) blur(18px);
-  -webkit-backdrop-filter: saturate(160%) blur(18px);
-  border-bottom: 1px solid var(--border);
+  /* Seamless with the page — no dark band behind the search. Backdrop blur only
+     shows when content scrolls beneath the sticky header. */
+  background: transparent;
+  backdrop-filter: saturate(150%) blur(16px);
+  -webkit-backdrop-filter: saturate(150%) blur(16px);
+  border-bottom: 1px solid var(--hairline);
 }
 .topbar .spacer { flex: 1 1 auto; }
 .mobile-brand,
