@@ -186,11 +186,20 @@ export function render(view, _params) {
   }
 
   function sourceTile(src) {
-    return el('button', {
-      class: 'source-tile', type: 'button',
+    const pinBtn = el('button', {
+      class: 'source-tile-pin' + (src.isPinned ? ' active' : ''), type: 'button',
+      title: src.isPinned ? 'Unpin source' : 'Pin source',
+      'aria-label': src.isPinned ? 'Unpin source' : 'Pin source',
+      onClick: (e) => { e.stopPropagation(); togglePin(src); },
+    }, icon('pin'));
+    return el('div', {
+      class: 'source-tile' + (src.isPinned ? ' pinned' : ''),
+      role: 'button', tabindex: '0',
       title: src.name || 'Source',
       onClick: () => selectSource(src),
+      onKeydown: (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); selectSource(src); } },
     },
+      pinBtn,
       medallion(src, 'source-tile-badge' + (src.isPinned ? ' pinned' : '')),
       el('span', { class: 'source-tile-name' }, src.name || 'Source'),
       el('span', { class: 'source-tile-sub' }, langLabel(src)),
@@ -423,16 +432,9 @@ export function render(view, _params) {
 
   async function togglePin(src) {
     const next = !src.isPinned;
-    src.isPinned = next;
-    renderSourceLists();
-    try {
-      await api.pinSource(src.id, next);
-      await loadSources({ keepBrowse: true });
-    } catch (e) {
-      src.isPinned = !next;
-      renderSourceLists();
-      toast(`Error: ${e.message}`);
-    }
+    await api.pinSource(src.id, next);           // persists locally
+    await loadSources({ keepBrowse: true });     // refetch → isPinned + re-sort → repaint
+    toast(next ? `Pinned ${src.name || 'source'}` : `Unpinned ${src.name || 'source'}`);
   }
 
   function selectSource(src) {

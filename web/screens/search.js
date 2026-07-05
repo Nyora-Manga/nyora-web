@@ -129,6 +129,10 @@ export function render(view, params) {
       // Respect the "Show 18+ sources" setting — never search adult sources when off.
       const showNsfw = !!store.get().showNsfw;
       sources = (res && res.sources || []).filter((s) => s.isInstalled && (showNsfw || !s.isNsfw));
+      // If the user has pinned any sources, global search only covers those;
+      // with zero pinned it searches everything installed.
+      const pinned = sources.filter((s) => s.isPinned);
+      if (pinned.length) sources = pinned;
     } catch (e) {
       results.replaceChildren(errorBox(e.message));
       return;

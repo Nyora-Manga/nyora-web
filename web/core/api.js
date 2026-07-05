@@ -269,6 +269,16 @@ function saveInstalledIds(ids) {
   try { localStorage.setItem(INSTALLED_KEY, JSON.stringify([...new Set(ids)])); } catch { /* ignore */ }
 }
 
+// Pinned sources (per-visitor). Global search restricts to pinned when any exist,
+// otherwise searches all installed. Kept client-side like the installed set.
+const PINNED_KEY = 'nyora.sources.pinned.v1';
+function pinnedIds() {
+  try { const a = JSON.parse(localStorage.getItem(PINNED_KEY)); return Array.isArray(a) ? a : []; } catch { return []; }
+}
+function savePinnedIds(ids) {
+  try { localStorage.setItem(PINNED_KEY, JSON.stringify([...new Set(ids)])); } catch { /* ignore */ }
+}
+
 /** Effective installed ids: the saved set, or ALL catalog ids by default. */
 async function currentInstalledIds() {
   const saved = savedInstalledIds();
@@ -307,10 +317,11 @@ export const api = {
   async listSources() {
     const [catalog, ids] = [await fetchCatalog(), await currentInstalledIds()];
     const byId = new Map(catalog.map((e) => [e.id, e]));
+    const pinned = new Set(pinnedIds());
     const sources = ids
       .map((id) => byId.get(id))
       .filter(Boolean)
-      .map((e) => ({ ...e, isInstalled: true, isNsfw: isNsfwSource(e) }));
+      .map((e) => ({ ...e, isInstalled: true, isNsfw: isNsfwSource(e), isPinned: pinned.has(e.id) }));
     return { sources };
   },
   refreshSources() {
@@ -344,8 +355,12 @@ export const api = {
     return { ok: true };
   },
   pinSource(id, pinned) {
-    // Server toggles by id; `pinned` is sent for forward-compat/intent.
-    return post('/sources/pin' + qs({ id, pinned }));
+    // Persist the pin locally (per-visitor); best-effort notify the helper.
+    const set = new Set(pinnedIds());
+    if (pinned) set.add(id); else set.delete(id);
+    savePinnedIds([...set]);
+    try { helperPost('/sources/pin' + qs({ id, pinned })); } catch { /* best-effort */ }
+    return Promise.resolve({ ok: true });
   },
   sourceFilters(id) {
     return get('/sources/filters' + qs({ id }));

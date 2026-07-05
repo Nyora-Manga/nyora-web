@@ -666,6 +666,7 @@ body.hide-search .search-form { display: none; }
   display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 12px;
 }
 .source-tile {
+  position: relative;
   display: flex; flex-direction: column; align-items: center; gap: 8px;
   padding: 14px 8px 12px; text-align: center; cursor: pointer;
   background: var(--surface-grad); border: 1px solid var(--border);
@@ -674,6 +675,23 @@ body.hide-search .search-form { display: none; }
 }
 .source-tile:hover { border-color: var(--accent); background: var(--surface2); }
 .source-tile:active { transform: scale(0.97); }
+.source-tile.pinned { border-color: color-mix(in srgb, var(--accent) 42%, var(--border)); }
+/* pin toggle — hidden until hover/focus; always shown (accent) when pinned */
+.source-tile-pin {
+  position: absolute; top: 6px; right: 6px; z-index: 2;
+  width: 26px; height: 26px; border-radius: 8px; display: grid; place-items: center;
+  background: var(--surface3); border: 1px solid var(--border); color: var(--text-faint);
+  cursor: pointer; opacity: 0; transform: scale(0.9);
+  transition: opacity 0.14s var(--ease), transform 0.14s var(--ease), color 0.14s var(--ease), background 0.14s var(--ease), border-color 0.14s var(--ease);
+}
+.source-tile-pin svg { width: 14px; height: 14px; }
+.source-tile:hover .source-tile-pin,
+.source-tile:focus-within .source-tile-pin { opacity: 1; transform: none; }
+.source-tile-pin:hover { color: var(--accent); border-color: var(--accent); }
+.source-tile-pin.active {
+  opacity: 1; transform: none;
+  background: var(--accent); color: var(--on-accent); border-color: transparent;
+}
 .source-tile-badge {
   width: 52px; height: 52px; border-radius: 15px; display: grid; place-items: center;
   font-weight: 800; font-size: 15px;
