@@ -46,6 +46,10 @@ const id = createHash('sha256').update(await readFile(`${OUT}/app.js`)).digest('
 //    so the new bundle reaches returning visitors.
 let html = await readFile(`${OUT}/index.html`, 'utf8');
 html = html.replace(/\/app\.js\?v=[\w-]+/g, `/app.js?v=${id}`);
+// Version styles.css by its content hash too, so CSS edits bust the cache
+// automatically (it was pinned at a hand-bumped ?v= that got forgotten).
+const cssId = createHash('sha256').update(await readFile(`${OUT}/styles.css`)).digest('hex').slice(0, 8);
+html = html.replace(/\/styles\.css\?v=[\w-]+/g, `/styles.css?v=${cssId}`);
 await writeFile(`${OUT}/index.html`, html);
 
 let sw = await readFile(`${OUT}/sw.js`, 'utf8');
