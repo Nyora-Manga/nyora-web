@@ -114,6 +114,8 @@ export function render(view, params) {
 
   // Hide app-level UI
   document.body.classList.add('reader-active');
+  // Distraction-free: restore the persisted "hide sidebar" preference.
+  document.body.classList.toggle('reader-immersive', !!(store.get().reader || {}).immersive);
 
   view.replaceChildren(el('div', { class: 'reader-loading-screen' }, loadingBlock('Loading chapter…')));
 
@@ -176,9 +178,25 @@ export function render(view, params) {
     st.destroyed = true;
     document.removeEventListener('keydown', onKey);
     document.body.classList.remove('reader-active');
+    document.body.classList.remove('reader-immersive');
     if (scrollListener) { window.removeEventListener('scroll', scrollListener); scrollListener = null; }
   }
   view.__readerTeardown = teardown;
+
+  // Toggle the distraction-free "hide sidebar" mode (desktop). Persisted so it
+  // sticks across chapters/sessions; the sidebar returns automatically when the
+  // reader closes (CSS gates it on .reader-active.reader-immersive).
+  function toggleImmersive(e) {
+    if (e) e.stopPropagation();
+    const on = !document.body.classList.contains('reader-immersive');
+    document.body.classList.toggle('reader-immersive', on);
+    store.set({ reader: { immersive: on } });
+    $$('.reader-sidebar-toggle', view).forEach((n) => {
+      n.classList.toggle('active', on);
+      n.title = on ? 'Show sidebar' : 'Hide sidebar';
+    });
+    toast(on ? 'Sidebar hidden' : 'Sidebar shown');
+  }
 
   // ── navigation ─────────────────────────────────────────────────────────
   function backToDetails() {
@@ -504,11 +522,16 @@ export function render(view, params) {
       const settingsBtn = iconBtn('settings', openSettings, 'Settings');
       settingsBtn.classList.add('reader-btn');
 
+      const immersive = document.body.classList.contains('reader-immersive');
+      const sidebarBtn = iconBtn('panel', toggleImmersive, immersive ? 'Show sidebar' : 'Hide sidebar');
+      sidebarBtn.classList.add('reader-btn', 'reader-sidebar-toggle');
+      if (immersive) sidebarBtn.classList.add('active');
+
       return el('div', { class: 'reader-bar top' },
         back,
         titleWrap,
         el('div', { class: 'reader-actions' },
-          bmBtn, listBtn, settingsBtn,
+          sidebarBtn, bmBtn, listBtn, settingsBtn,
         ),
       );
     }
