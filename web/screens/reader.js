@@ -370,7 +370,7 @@ export function render(view, params) {
 
   function maybePrefetch() {
     if (!prefetch) return;
-    const next = st.index - 1;
+    const next = st.index + nextDelta();
     if (next < 0 || next >= st.chapters.length) return;
     api.pages(st.sid, st.chapters[next].url).catch(() => {});
   }

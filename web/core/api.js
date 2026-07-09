@@ -24,6 +24,7 @@
 import { library } from './library.js';
 import * as parserRuntime from './parser-runtime.js';
 import downloadManager from './downloads.js';
+import { BLOCKED_SOURCE_IDS } from './blocked-sources.js';
 
 // ---- low-level helpers -------------------------------------------------
 
@@ -310,7 +311,10 @@ async function fetchCatalog() {
   if (_catalogCache) return _catalogCache;
   const res = await get('/sources/catalog'); // hosted helper (static snapshot)
   const list = (res && (res.entries || res.sources)) || (Array.isArray(res) ? res : []);
-  _catalogCache = Array.isArray(list) ? list : [];
+  // Hide sources that a live health-check found dead / Cloudflare-blocked
+  // (see core/blocked-sources.js) so users only ever see working sources.
+  const filtered = (Array.isArray(list) ? list : []).filter((e) => !BLOCKED_SOURCE_IDS.has(e.id));
+  _catalogCache = filtered;
   _nsfwIds = new Set(_catalogCache.filter(isNsfwSource).map((e) => e.id));
   return _catalogCache;
 }
