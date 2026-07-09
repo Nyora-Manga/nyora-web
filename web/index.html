@@ -2,6 +2,55 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
+  <!-- Domain move: nyoraweb.pages.dev -> nyoramanga.hasanraza.tech.
+       Runs before anything else so a reload always lands on the new domain and
+       carries the visitor's local data (library, history, prefs, sources) across
+       origins (localStorage doesn't cross origins on its own). One-shot. -->
+  <script>
+  (function () {
+    var NEW_ORIGIN = 'https://nyoramanga.hasanraza.tech';
+    var OLD_HOSTS = ['nyoraweb.pages.dev'];
+    var isNyoraKey = function (k) {
+      return !!k && (k.lastIndexOf('nyora.', 0) === 0 || k.lastIndexOf('nyora:', 0) === 0);
+    };
+    try {
+      if (OLD_HOSTS.indexOf(location.hostname) !== -1) {
+        // OLD domain: dump every nyora.* localStorage key, then hard-redirect to
+        // the new domain with the data in the URL fragment (fragments are never
+        // sent to the server, so no URL-length limit at the edge).
+        var dump = {};
+        try {
+          for (var i = 0; i < localStorage.length; i++) {
+            var k = localStorage.key(i);
+            if (isNyoraKey(k)) dump[k] = localStorage.getItem(k);
+          }
+        } catch (e) {}
+        var frag = '';
+        try {
+          var b64 = btoa(unescape(encodeURIComponent(JSON.stringify(dump))));
+          if (b64.length <= 1900000) frag = '#__m=' + b64; // guard against extreme URLs
+        } catch (e) {}
+        location.replace(NEW_ORIGIN + '/' + frag);
+        // Hide the page while the redirect is in flight.
+        document.documentElement.style.visibility = 'hidden';
+        return;
+      }
+      // NEW domain: if a migration payload arrived, import the keys we don't
+      // already have (don't clobber data created on this origin), then strip it.
+      if (location.hash.indexOf('#__m=') === 0) {
+        try {
+          var data = JSON.parse(decodeURIComponent(escape(atob(location.hash.slice(5)))));
+          for (var key in data) {
+            if (Object.prototype.hasOwnProperty.call(data, key) && localStorage.getItem(key) == null) {
+              localStorage.setItem(key, data[key]);
+            }
+          }
+        } catch (e) {}
+        try { history.replaceState(null, '', location.origin + location.pathname); } catch (e) {}
+      }
+    } catch (e) {}
+  })();
+  </script>
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=5" />
   <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#060810" />
   <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f1f5f9" />
