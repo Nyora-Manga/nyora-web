@@ -144,7 +144,10 @@ export function render(view, params) {
   let mode = gp.mode || 'WEBTOON';
   let fit = gp.fit || 'WIDTH';
   let prefetch = gp.prefetch !== false;
-  let webtoonWidth = gp.webtoonWidth || 880;
+  // Webtoon column width as a PERCENTAGE of the reader area (30–100). Values
+  // > 100 are legacy pixel widths (e.g. 880/1200) — migrate them to the default.
+  const clampWidth = (v) => { v = Number(v); return (!v || v > 100) ? 70 : Math.max(30, Math.min(100, Math.round(v))); };
+  let webtoonWidth = clampWidth(gp.webtoonWidth);
 
   let scrollListener = null;
 
@@ -312,7 +315,7 @@ export function render(view, params) {
         if (p.readerMode && ['WEBTOON', 'PAGED', 'PAGED_RTL'].includes(p.readerMode)) mode = p.readerMode;
         if (p.readerFit && ['WIDTH', 'HEIGHT'].includes(p.readerFit)) fit = p.readerFit;
         if (typeof p.prefetch === 'boolean') prefetch = p.prefetch;
-        if (p.webtoonWidth) webtoonWidth = Number(p.webtoonWidth);
+        if (p.webtoonWidth) webtoonWidth = clampWidth(p.webtoonWidth);
       }
     } catch { /* keep defaults */ }
   }
@@ -471,7 +474,7 @@ export function render(view, params) {
   }
 
   function applyReaderWidth() {
-    view.style.setProperty('--reader-width', `${webtoonWidth}px`);
+    view.style.setProperty('--reader-width', `${webtoonWidth}%`);
   }
 
   // ── DOM helpers ────────────────────────────────────────────────────────────
@@ -808,15 +811,15 @@ export function render(view, params) {
       fit, (v) => { if (v !== fit) toggleFit(); },
     );
     
-    const widthVal = el('span', { class: 'counter' }, `${webtoonWidth}px`);
-    const widthSlider = el('input', { 
-      type: 'range', min: '400', max: '1200', step: '20', 
+    const widthVal = el('span', { class: 'counter' }, `${webtoonWidth}%`);
+    const widthSlider = el('input', {
+      type: 'range', min: '30', max: '100', step: '5',
       value: String(webtoonWidth),
       style: { width: '100%', accentColor: 'var(--accent)' }
     });
     widthSlider.addEventListener('input', () => {
       const val = Number(widthSlider.value);
-      widthVal.textContent = `${val}px`;
+      widthVal.textContent = `${val}%`;
       setWebtoonWidth(val);
     });
 

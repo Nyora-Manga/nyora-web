@@ -46,7 +46,7 @@ const DEFAULT_PREFS = {
     mode: 'WEBTOON', // 'WEBTOON' | 'PAGED' | 'PAGED_RTL'
     fit: 'WIDTH', // 'WIDTH' | 'HEIGHT'
     prefetch: true,
-    webtoonWidth: 880,
+    webtoonWidth: 70,
   },
 };
 
