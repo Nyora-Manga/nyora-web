@@ -28,7 +28,9 @@
         var frag = '';
         try {
           var b64 = btoa(unescape(encodeURIComponent(JSON.stringify(dump))));
-          if (b64.length <= 1900000) frag = '#__m=' + b64; // guard against extreme URLs
+          // URL-encode so browsers that percent-encode +,/,= in the fragment
+          // can't corrupt the base64 on the way to the new origin.
+          if (b64.length <= 1900000) frag = '#__m=' + encodeURIComponent(b64); // guard against extreme URLs
         } catch (e) {}
         location.replace(NEW_ORIGIN + '/' + frag);
         // Hide the page while the redirect is in flight.
@@ -39,7 +41,7 @@
       // already have (don't clobber data created on this origin), then strip it.
       if (location.hash.indexOf('#__m=') === 0) {
         try {
-          var data = JSON.parse(decodeURIComponent(escape(atob(location.hash.slice(5)))));
+          var data = JSON.parse(decodeURIComponent(escape(atob(decodeURIComponent(location.hash.slice(5))))));
           for (var key in data) {
             if (Object.prototype.hasOwnProperty.call(data, key) && localStorage.getItem(key) == null) {
               localStorage.setItem(key, data[key]);
