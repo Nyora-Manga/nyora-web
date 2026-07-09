@@ -13,6 +13,31 @@
     var isNyoraKey = function (k) {
       return !!k && (k.lastIndexOf('nyora.', 0) === 0 || k.lastIndexOf('nyora:', 0) === 0);
     };
+    // Merge two nyora.library.v1 blobs (favourites/history/bookmarks/…) so the
+    // incoming library adds to any library already on this origin instead of
+    // being dropped. History entries resolve by newest updatedAt.
+    var mergeLib = function (curStr, incStr) {
+      var cur = {}, inc = {};
+      try { cur = JSON.parse(curStr) || {}; } catch (e) {}
+      try { inc = JSON.parse(incStr) || {}; } catch (e) { return curStr; }
+      ['favourites', 'history', 'categories', 'categoryMembers', 'prefs', 'snapshots'].forEach(function (b) {
+        var c = (cur[b] && typeof cur[b] === 'object' && !Array.isArray(cur[b])) ? cur[b] : {};
+        var i = (inc[b] && typeof inc[b] === 'object' && !Array.isArray(inc[b])) ? inc[b] : {};
+        var out = {}, k;
+        for (k in c) out[k] = c[k];
+        for (k in i) {
+          if (b === 'history' && out[k] && (Number(out[k].updatedAt) || 0) >= (Number(i[k].updatedAt) || 0)) continue;
+          out[k] = i[k];
+        }
+        cur[b] = out;
+      });
+      var arr = (Array.isArray(cur.bookmarks) ? cur.bookmarks : []).concat(Array.isArray(inc.bookmarks) ? inc.bookmarks : []);
+      var seen = {}, merged = [];
+      arr.forEach(function (bm) { var id = bm && bm.id != null ? String(bm.id) : JSON.stringify(bm); if (!seen[id]) { seen[id] = 1; merged.push(bm); } });
+      cur.bookmarks = merged;
+      cur.seq = Math.max(Number(cur.seq) || 1, Number(inc.seq) || 1);
+      try { return JSON.stringify(cur); } catch (e) { return curStr; }
+    };
     try {
       if (OLD_HOSTS.indexOf(location.hostname) !== -1) {
         // OLD domain: dump every nyora.* localStorage key, then hard-redirect to
@@ -43,9 +68,11 @@
         try {
           var data = JSON.parse(decodeURIComponent(escape(atob(decodeURIComponent(location.hash.slice(5))))));
           for (var key in data) {
-            if (Object.prototype.hasOwnProperty.call(data, key) && localStorage.getItem(key) == null) {
-              localStorage.setItem(key, data[key]);
-            }
+            if (!Object.prototype.hasOwnProperty.call(data, key)) continue;
+            var cur = localStorage.getItem(key);
+            if (cur == null) localStorage.setItem(key, data[key]);
+            else if (key === 'nyora.library.v1') localStorage.setItem(key, mergeLib(cur, data[key]));
+            // other keys: keep this origin's existing value (don't clobber prefs)
           }
         } catch (e) {}
         try { history.replaceState(null, '', location.origin + location.pathname); } catch (e) {}

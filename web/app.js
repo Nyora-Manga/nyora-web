@@ -341,12 +341,23 @@ function syncTabbar(name) {
 }
 
 // PWA: register the service worker (no-op in dev/insecure contexts).
+// updateViaCache:'none' forces the browser to revalidate sw.js on every check,
+// and an auto-reload on controllerchange means new deploys take effect on the
+// next load instead of getting stuck behind a stale cached build.
 function registerSW() {
-  if ('serviceWorker' in navigator) {
-    window.addEventListener('load', () => {
-      navigator.serviceWorker.register('/sw.js').catch(() => { /* ignore */ });
-    });
-  }
+  if (!('serviceWorker' in navigator)) return;
+  // If this page is already controlled by a SW, a controllerchange means a NEW
+  // worker took over (an update) — reload once so the fresh app/assets are used.
+  const wasControlled = !!navigator.serviceWorker.controller;
+  let reloaded = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (wasControlled && !reloaded) { reloaded = true; location.reload(); }
+  });
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' })
+      .then((reg) => { try { reg.update(); } catch { /* ignore */ } })
+      .catch(() => { /* ignore */ });
+  });
 }
 
 function wireTopbar() {

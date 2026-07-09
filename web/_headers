@@ -1,0 +1,4 @@
+# The service worker must never be cached, or clients keep an old version and
+# never pick up new deploys. (Cloudflare Pages was serving it max-age=14400.)
+/sw.js
+  Cache-Control: no-cache, no-store, must-revalidate
