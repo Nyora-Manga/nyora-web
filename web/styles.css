@@ -1046,7 +1046,8 @@ body.reader-active .topbar,
 body.reader-active .tabbar {
   display: none !important;
 }
-body.reader-active.reader-immersive .sidebar {
+body.reader-active.reader-immersive .sidebar,
+body.reader-active.reader-fullscreen .sidebar {
   display: none !important;
 }
 

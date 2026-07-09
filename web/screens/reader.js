@@ -177,8 +177,12 @@ export function render(view, params) {
   function teardown() {
     st.destroyed = true;
     document.removeEventListener('keydown', onKey);
+    document.removeEventListener('fullscreenchange', onFullscreenChange);
+    document.removeEventListener('webkitfullscreenchange', onFullscreenChange);
     document.body.classList.remove('reader-active');
     document.body.classList.remove('reader-immersive');
+    document.body.classList.remove('reader-fullscreen');
+    if (document.fullscreenElement) { try { document.exitFullscreen(); } catch { /* ignore */ } }
     if (scrollListener) { window.removeEventListener('scroll', scrollListener); scrollListener = null; }
   }
   view.__readerTeardown = teardown;
@@ -197,6 +201,33 @@ export function render(view, params) {
     });
     toast(on ? 'Sidebar hidden' : 'Sidebar shown');
   }
+
+  // Toggle true browser fullscreen (Fullscreen API) for the best reading view —
+  // hides the browser chrome AND the app sidebar (via .reader-fullscreen).
+  function toggleFullscreen(e) {
+    if (e) e.stopPropagation();
+    const fsEl = document.fullscreenElement || document.webkitFullscreenElement;
+    if (!fsEl) {
+      const de = document.documentElement;
+      const req = de.requestFullscreen || de.webkitRequestFullscreen;
+      if (req) { Promise.resolve(req.call(de)).catch(() => toast('Fullscreen not available')); }
+      else toast('Fullscreen not supported');
+    } else {
+      const exit = document.exitFullscreen || document.webkitExitFullscreen;
+      if (exit) { Promise.resolve(exit.call(document)).catch(() => {}); }
+    }
+  }
+  function onFullscreenChange() {
+    const on = !!(document.fullscreenElement || document.webkitFullscreenElement);
+    document.body.classList.toggle('reader-fullscreen', on);
+    $$('.reader-fs-toggle', view).forEach((n) => {
+      n.classList.toggle('active', on);
+      n.title = on ? 'Exit fullscreen' : 'Fullscreen';
+      n.replaceChildren(icon(on ? 'fullscreenExit' : 'fullscreen'));
+    });
+  }
+  document.addEventListener('fullscreenchange', onFullscreenChange);
+  document.addEventListener('webkitfullscreenchange', onFullscreenChange);
 
   // ── navigation ─────────────────────────────────────────────────────────
   function backToDetails() {
@@ -527,11 +558,16 @@ export function render(view, params) {
       sidebarBtn.classList.add('reader-btn', 'reader-sidebar-toggle');
       if (immersive) sidebarBtn.classList.add('active');
 
+      const fsOn = !!(document.fullscreenElement || document.webkitFullscreenElement);
+      const fsBtn = iconBtn(fsOn ? 'fullscreenExit' : 'fullscreen', toggleFullscreen, fsOn ? 'Exit fullscreen' : 'Fullscreen');
+      fsBtn.classList.add('reader-btn', 'reader-fs-toggle');
+      if (fsOn) fsBtn.classList.add('active');
+
       return el('div', { class: 'reader-bar top' },
         back,
         titleWrap,
         el('div', { class: 'reader-actions' },
-          sidebarBtn, bmBtn, listBtn, settingsBtn,
+          sidebarBtn, fsBtn, bmBtn, listBtn, settingsBtn,
         ),
       );
     }
