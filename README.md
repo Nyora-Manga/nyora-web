@@ -14,7 +14,6 @@ A fast, free, ad-free, open-source manga reader that runs entirely in your brows
 [![JavaScript](https://img.shields.io/badge/JavaScript-F7DF1E?style=for-the-badge&logo=javascript&logoColor=black)](#tech-stack)
 [![PWA](https://img.shields.io/badge/PWA-5A0FC8?style=for-the-badge&logo=pwa&logoColor=white)](#tech-stack)
 [![Cloudflare](https://img.shields.io/badge/Cloudflare-F38020?style=for-the-badge&logo=cloudflare&logoColor=white)](#tech-stack)
-[![Supabase](https://img.shields.io/badge/Supabase-3FCF8E?style=for-the-badge&logo=supabase&logoColor=black)](#tech-stack)
 
 [![License: Apache 2.0](https://img.shields.io/github/license/Hasan72341/nyora-web?color=blue)](LICENSE)
 [![Stars](https://img.shields.io/github/stars/Hasan72341/nyora-web?style=social)](https://github.com/Hasan72341/nyora-web/stargazers)
@@ -47,7 +46,7 @@ Open-source and auditable · no ads · no tracking · your library stays yours.
 | Discover | Settings |
 |:-:|:-:|
 | ![Discover](docs/screenshots/desktop/discover.png)<br/>**Discover** — Trending manga the moment the page loads. | ![Settings](docs/screenshots/desktop/settings.png)<br/>**Settings** — Reader, sync and appearance, right in the browser. |
-| ![Welcome](docs/screenshots/desktop/welcome.png)<br/>**Welcome** — Sign in with Google, continue as guest, or restore a backup — no account required. | ![Library](docs/screenshots/desktop/library.png)<br/>**Library** — Your shelf in any browser, with nothing to install. |
+| ![Welcome](docs/screenshots/desktop/welcome.png)<br/>**Welcome** — Sign in with email, continue as guest, or restore a backup — no account required. | ![Library](docs/screenshots/desktop/library.png)<br/>**Library** — Your shelf in any browser, with nothing to install. |
 
 </div>
 
@@ -55,14 +54,14 @@ Open-source and auditable · no ads · no tracking · your library stays yours.
 
 ## About
 
-Nyora Web is the browser-native edition of Nyora — a free, ad-free, open-source manga, manhwa and manhua reader. No app store, no download, no sign-up wall: open a tab and you are reading, on a laptop, a phone, or anything with a modern browser. It is built from scratch as a **100% client-side static SPA** — the source catalogue, the search, and the parsers that turn a manga site into clean, readable pages all run on your machine. Add it to your home screen and Nyora becomes a real PWA with an offline app shell. Sign in with Google and your library and source preferences follow you to every other Nyora platform. The only server-side component is a tiny Cloudflare Worker that proxies CORS and images — everything else is just static files you can host anywhere.
+Nyora Web is the browser-native edition of Nyora — a free, ad-free, open-source manga, manhwa and manhua reader. No app store, no download, no sign-up wall: open a tab and you are reading, on a laptop, a phone, or anything with a modern browser. It is built from scratch as a **100% client-side static SPA** — the source catalogue, the search, and the parsers that turn a manga site into clean, readable pages all run on your machine. Add it to your home screen and Nyora becomes a real PWA with an offline app shell. Create a free Nyora Cloud account with an email and password and your library and source preferences follow you to every other Nyora platform. The only server-side pieces are a tiny Cloudflare Worker that proxies CORS and images and — only if you sign in — the Nyora Cloud sync backend; everything else is just static files you can host anywhere.
 
 ## Why you'll love it
 
 - **Nothing to install.** It's a website. Click the link and you're reading in seconds — no store, no APK, no Gatekeeper prompt. Want an app icon? Add it to your home screen and it behaves like a native app.
-- **No ads, ever. No tracking, ever.** There is no advertising SDK and no telemetry pipeline anywhere in the code. The app talks only to the sources you browse, an optional image proxy, and — only if *you* sign in — Supabase for sync.
+- **No ads, ever. No tracking, ever.** There is no advertising SDK and no telemetry pipeline anywhere in the code. The app talks only to the sources you browse, an optional image proxy, and — only if *you* sign in — Nyora Cloud for sync.
 - **No account to read.** Open the app and start. Sign-in is entirely optional and exists for one reason: syncing your library across your devices.
-- **Your library is yours.** Reading state lives on your device, and — if you sign in — in Supabase rows tied to your own account. There's no Nyora-operated backend quietly collecting what you read.
+- **Your library is yours.** Reading state lives on your device, and — if you sign in — in your own account on Nyora Cloud, a self-hosted sync backend. Nothing else about what you read is collected.
 - **Auditable and yours to keep.** Apache-2.0, original code, built from scratch. You can read every line, fork it, or self-host the whole thing — even off a USB stick.
 - **One library, every screen.** Favourite something on the web and it's waiting on Android, iOS, macOS, Windows and Linux, on the same chapter and page you left off.
 
@@ -72,7 +71,7 @@ Nyora Web is the browser-native edition of Nyora — a free, ad-free, open-sourc
 |---|---|
 | **Sources** | Hundreds of online sources — manga, manhwa and manhua — parsed entirely client-side, with OTA parser bundles that are SHA-256 verified and ship with bundled fallbacks. |
 | **Reader** | A polished standard and webtoon reader (LTR, RTL or continuous vertical) with per-title settings, favourites in custom categories, and full reading history. |
-| **Sync** | Free Google cloud sync of your library and source preferences via Supabase, plus AniList tracking driven directly from the browser. |
+| **Sync** | Free Nyora Cloud sync of your library and source preferences via an email + password account, plus AniList tracking driven directly from the browser. |
 | **Self-host** | Deploy anywhere static — Cloudflare Pages, Netlify, your own box, a USB stick. Own your reader end to end. |
 | **Open Source** | Free, ad-free, no tracking, no accounts needed to read. Apache-2.0, auditable, built from scratch. |
 
@@ -124,7 +123,7 @@ The reader handles every kind of series. It supports a **standard paged mode and
 
 ### Cloud Sync
 
-Sign in with **Google** and your **library and source preferences** follow you everywhere. Sync is implemented **per-row via Supabase** with a last-write-wins strategy, so the manga you favourited on the web is waiting on **Android, iOS, macOS, Windows and Linux** — and vice-versa. The flow is **Google Identity → Supabase Auth**, and all of it runs from the browser; there is no Nyora-operated backend storing your reading data beyond the Supabase rows tied to your account. Sync is free.
+Create a free **Nyora Cloud** account with an **email and password** and your **library and source preferences** follow you everywhere. Sync is implemented **per-row** with a last-write-wins strategy, so the manga you favourited on the web is waiting on **Android, iOS, macOS, Windows and Linux** — and vice-versa. Accounts run on **Nyora Cloud**, a self-hosted FastAPI backend (OAuth2 password flow + JWT) at `stream.hasanraza.tech`; it stores only the reading data tied to your account. Sync is free.
 
 ### Trackers
 
@@ -140,7 +139,7 @@ Nyora Web is **just static files**, so it deploys **anywhere static** — Cloudf
 
 ### Privacy & Open Source
 
-Nyora Web is **free, ad-free, with no tracking, and no account needed to read**. It is licensed under **Apache-2.0** with fully auditable code, built from scratch. There is no telemetry pipeline and no advertising SDK — the app only talks to the manga sources you browse, the optional Cloudflare proxy, and (if you sign in) Supabase for sync and AniList for tracking. Community **issues and pull requests are welcome**.
+Nyora Web is **free, ad-free, with no tracking, and no account needed to read**. It is licensed under **Apache-2.0** with fully auditable code, built from scratch. There is no telemetry pipeline and no advertising SDK — the app only talks to the manga sources you browse, the optional Cloudflare proxy, and (if you sign in) Nyora Cloud for sync and AniList for tracking. Community **issues and pull requests are welcome**.
 
 ### Themes & Personalisation
 
@@ -157,7 +156,7 @@ What the browser edition does and does not do, at a glance. "—" means the capa
 | Standard + webtoon reader (LTR / RTL / vertical) | ✓ |
 | Per-title reading settings | ✓ |
 | Favourites in custom categories + reading history | ✓ |
-| Google cloud sync (library + source preferences) | ✓ |
+| Nyora Cloud sync (library + source preferences) | ✓ |
 | AniList tracking | ✓ |
 | Installable PWA + offline app shell | ✓ |
 | Self-hostable (static host + Cloudflare Worker) | ✓ |
@@ -169,7 +168,7 @@ What the browser edition does and does not do, at a glance. "—" means the capa
 
 Nyora Web is deliberately a pure client-side reader. Honest constraints to know before you rely on it:
 
-- **No AI page translation.** Whole-page OCR + translation is not part of the web client; it lives in Nyora's native apps. Sign in with the same Google account there and your web library carries over.
+- **No AI page translation.** Whole-page OCR + translation is not part of the web client; it lives in Nyora's native apps. Sign in with the same Nyora Cloud account there and your web library carries over.
 - **No chapter downloads beyond the app shell.** Offline support means the cached PWA app shell and bundled parser fallbacks — not saved chapters. There is no per-chapter download or CBZ export in the browser; use a native app for true offline reading.
 - **Some sources need the proxy.** Manga sites frequently omit CORS headers, so HTML and images for those sources route through the Cloudflare Worker. The app always tries a direct fetch first and only falls back to the worker when required.
 - **Google sign-in is origin-bound.** When self-hosting locally, sign-in only works on the registered origin `127.0.0.1:3000`; other origins (for example `localhost`) are rejected by the sign-in flow.
@@ -187,7 +186,7 @@ Nyora Web is deliberately a pure client-side reader. Honest constraints to know 
 | Discover | Settings |
 |:-:|:-:|
 | ![Discover](docs/screenshots/desktop/discover.png)<br/>**Discover** — Trending manga the moment the page loads. | ![Settings](docs/screenshots/desktop/settings.png)<br/>**Settings** — Reader, sync and appearance, right in the browser. |
-| ![Welcome](docs/screenshots/desktop/welcome.png)<br/>**Welcome** — Sign in with Google, continue as guest, or restore a backup — no account required. | ![Library](docs/screenshots/desktop/library.png)<br/>**Library** — Your shelf in any browser, with nothing to install. |
+| ![Welcome](docs/screenshots/desktop/welcome.png)<br/>**Welcome** — Sign in with email, continue as guest, or restore a backup — no account required. | ![Library](docs/screenshots/desktop/library.png)<br/>**Library** — Your shelf in any browser, with nothing to install. |
 
 ## Installation
 
@@ -195,7 +194,7 @@ There is nothing to install to start reading. This is the lowest-friction way to
 
 ### Use it instantly
 
-Just open **[nyoraweb.pages.dev](https://nyoraweb.pages.dev)** in any modern browser. That's the whole install. Sign in with Google to sync your library, history and source preferences with your other Nyora devices — **no account is required if you only want to read.**
+Just open **[nyoraweb.pages.dev](https://nyoraweb.pages.dev)** in any modern browser. That's the whole install. Create a free Nyora Cloud account (email + password) to sync your library, history and source preferences with your other Nyora devices — **no account is required if you only want to read.**
 
 ### Install as a PWA
 
@@ -213,7 +212,7 @@ Yes. A few reassurances, in plain terms:
 
 - **It's open-source and auditable.** Every line is on [GitHub](https://github.com/Hasan72341/nyora-web) under Apache-2.0. Nothing is hidden, obfuscated or phoning home.
 - **No ads, no trackers, no telemetry.** There is no advertising SDK and no analytics pipeline in the code.
-- **No account needed to read**, and the only data ever stored on a server is the sync rows tied to *your* Google account — and only if you choose to sign in.
+- **No account needed to read**, and the only data ever stored on a server is the sync rows tied to *your* Nyora Cloud account — and only if you choose to sign in.
 - **It runs in your browser's sandbox.** Unlike a downloaded app, a website can't touch your files or system; it just renders pages. If you ever want to stop using it, close the tab — there's nothing left behind to uninstall (and a PWA install removes cleanly like any bookmark/app).
 
 ### Requirements
@@ -259,12 +258,11 @@ This is the **only** server-side component. The SPA tries direct fetches first a
 [![JavaScript](https://img.shields.io/badge/JavaScript-F7DF1E?style=for-the-badge&logo=javascript&logoColor=black)](#tech-stack)
 [![PWA](https://img.shields.io/badge/PWA-5A0FC8?style=for-the-badge&logo=pwa&logoColor=white)](#tech-stack)
 [![Cloudflare](https://img.shields.io/badge/Cloudflare-F38020?style=for-the-badge&logo=cloudflare&logoColor=white)](#tech-stack)
-[![Supabase](https://img.shields.io/badge/Supabase-3FCF8E?style=for-the-badge&logo=supabase&logoColor=black)](#tech-stack)
 
 - **TypeScript / JavaScript** — the entire SPA, including the in-browser parser runtime, is plain client-side JavaScript/TypeScript with no build-time backend.
 - **PWA** — an installable Progressive Web App with a cached, offline-capable app shell.
 - **Cloudflare** — a single small Cloudflare Worker proxies CORS and images; the SPA itself deploys cleanly to Cloudflare Pages or any static host.
-- **Supabase** — provides authentication (via Google Identity) and per-row library and source-preference sync.
+- **Nyora Cloud** — a self-hosted FastAPI backend providing email + password authentication (OAuth2 + JWT) and per-row library and source-preference sync.
 
 ## Architecture
 
@@ -276,7 +274,7 @@ cloudflare-worker/    ← CORS / image proxy (worker.js)
 
 - **Parsing runs in-browser.** `core/parser-runtime.js` loads JS parser bundles OTA (SHA-256 verified, with bundled fallback) and executes them client-side. No server scrapes on your behalf.
 - **CORS bypass is the Cloudflare worker.** Manga sites typically don't send CORS headers, so HTML and images are fetched through `<proxy>/proxy?url=…` and `<proxy>/image?u=…` (the latter adds the source `Referer`/`UA`). The app always tries a direct fetch first and only falls back to the worker when needed.
-- **Account sync is client-side.** The flow is Google Identity → Supabase Auth → per-row library and source-preference sync, using last-write-wins. There is no Nyora-operated backend beyond the proxy worker and your Supabase rows.
+- **Account sync is client-side.** The flow is email + password → Nyora Cloud (OAuth2 + JWT) → per-row library and source-preference sync, using last-write-wins. The only server pieces are the Cloudflare proxy worker and your Nyora Cloud account.
 
 ## Nyora on Every Platform
 
@@ -308,10 +306,10 @@ Because there's nothing to install — it's a website running in your browser's 
 No. Open the app and start reading. Signing in with Google is entirely optional and exists only to sync your library and preferences across your devices.
 
 **Will my data stay private?**
-Yes. Reading runs client-side, and the only data that ever leaves your device is the sync rows tied to your own account — and only if you sign in. Sync uses Supabase with Google sign-in, storing your library and source preferences per-row against your account. Nyora does not run a separate backend collecting your reading activity, and there is no telemetry.
+Yes. Reading runs client-side, and the only data that ever leaves your device is the sync rows tied to your own account — and only if you sign in. Sync uses your own Nyora Cloud account (email + password), storing your library and source preferences per-row against your account. Nyora does not run a separate backend collecting your reading activity, and there is no telemetry.
 
 **Are there any ads or trackers?**
-No. There is no advertising SDK and no telemetry. The app only communicates with the sources you browse, the optional Cloudflare proxy, and — if you choose to sign in — Supabase for sync and AniList for tracking.
+No. There is no advertising SDK and no telemetry. The app only communicates with the sources you browse, the optional Cloudflare proxy, and — if you choose to sign in — Nyora Cloud for sync and AniList for tracking.
 
 **Where does the content come from, and is that legal?**
 Nyora does not host any manga. It parses publicly available online sources entirely client-side, much like a browser does. Nyora is not affiliated with any of the sources it can access.
@@ -323,7 +321,7 @@ The PWA app shell is cached for offline use, and parser bundles ship with bundle
 Absolutely. The SPA is just static files you can serve from any static host, and the only server-side piece is a small Cloudflare Worker for the CORS/image proxy. See [Build from Source](#build-from-source).
 
 **How do I get AI translation and offline downloads?**
-Those engines live in Nyora's native apps. Install one from the [platform table](#nyora-on-every-platform), sign in with the same Google account, and your web library syncs straight over.
+Those engines live in Nyora's native apps. Install one from the [platform table](#nyora-on-every-platform), sign in with the same Nyora Cloud account, and your web library syncs straight over.
 
 **How do I update the web app?**
 Just reload it. As a deployed static SPA, the latest version is served on each visit; parser bundles update over-the-air independently and are SHA-256 verified before they run. There's no manual update step.
@@ -381,7 +379,7 @@ web/
   core/
     api.js                ← source / catalogue API surface
     parser-runtime.js     ← loads + verifies OTA parser bundles, runs them
-    sync.js               ← Google Identity → Supabase per-row sync
+    sync.js               ← Nyora Cloud (email + password) per-row sync
     library.js            ← favourites, categories, reading state
     store.js · db.js      ← local persistence
     ui.js · motion.js     ← shared UI + animation helpers
@@ -430,7 +428,7 @@ If Nyora makes your reading better, the simplest way to help is to **star the [r
 
 ## Acknowledgements
 
-Nyora's sources are source-compatible with Tachiyomi/Kotatsu-style definitions, and the project owes thanks to the broader open-source manga-reader community whose ecosystems made that compatibility possible. Thanks also to the maintainers of the libraries and platforms Nyora Web builds on — Supabase for auth and sync, and Cloudflare for the proxy and static hosting — and to everyone who reports issues and contributes fixes.
+Nyora's sources are source-compatible with Tachiyomi/Kotatsu-style definitions, and the project owes thanks to the broader open-source manga-reader community whose ecosystems made that compatibility possible. Thanks also to the maintainers of the libraries and platforms Nyora Web builds on — Cloudflare for the proxy and static hosting — and to everyone who reports issues and contributes fixes.
 
 ## License
 
