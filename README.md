@@ -137,6 +137,8 @@ Add Nyora to your home screen or install it from your browser and it becomes a r
 
 Nyora Web is **just static files**, so it deploys **anywhere static** — Cloudflare Pages, Netlify, GitHub-style static hosts, your own server, or even a USB stick. The **only** server-side piece in the entire stack is a tiny **Cloudflare Worker** that proxies CORS and images for sources that don't send permissive CORS headers. Run your own reader end to end: host the SPA wherever you like and point it at your own worker. See [Build from Source](#build-from-source) for the exact commands.
 
+Prefer a **one-command, fully-local Docker deployment** — the SPA plus a bundled parser **helper** in one container, with no Cloudflare Worker to run? Use **[nyora-selfhost](https://github.com/Hasan72341/nyora-selfhost)**: `docker compose up` and open `localhost:8080`.
+
 ### Privacy & Open Source
 
 Nyora Web is **free, ad-free, with no tracking, and no account needed to read**. It is licensed under **Apache-2.0** with fully auditable code, built from scratch. There is no telemetry pipeline and no advertising SDK — the app only talks to the manga sources you browse, the optional Cloudflare proxy, and (if you sign in) Nyora Cloud for sync and AniList for tracking. Community **issues and pull requests are welcome**.
