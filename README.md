@@ -171,7 +171,7 @@ Nyora Web is deliberately a pure client-side reader. Honest constraints to know 
 - **No AI page translation.** Whole-page OCR + translation is not part of the web client; it lives in Nyora's native apps. Sign in with the same Nyora Cloud account there and your web library carries over.
 - **No chapter downloads beyond the app shell.** Offline support means the cached PWA app shell and bundled parser fallbacks — not saved chapters. There is no per-chapter download or CBZ export in the browser; use a native app for true offline reading.
 - **Some sources need the proxy.** Manga sites frequently omit CORS headers, so HTML and images for those sources route through the Cloudflare Worker. The app always tries a direct fetch first and only falls back to the worker when required.
-- **Google sign-in is origin-bound.** When self-hosting locally, sign-in only works on the registered origin `127.0.0.1:3000`; other origins (for example `localhost`) are rejected by the sign-in flow.
+- **Sign-in is email + password.** Nyora Cloud accounts use an email and password (no Google OAuth), so sign-in is not tied to a registered origin and works wherever the app is served.
 
 ## Screenshots
 
@@ -217,11 +217,11 @@ Yes. A few reassurances, in plain terms:
 
 ### Requirements
 
-A current version of any major browser (Chromium-based, Firefox, or Safari) with JavaScript enabled. Google sign-in is only needed for cross-device sync; AniList tracking only when you connect it.
+A current version of any major browser (Chromium-based, Firefox, or Safari) with JavaScript enabled. A Nyora Cloud account (email + password) is only needed for cross-device sync; AniList tracking only when you connect it.
 
 ### Troubleshooting
 
-- **Google sign-in fails when self-hosting locally.** Use the origin `127.0.0.1:3000` — that is the origin registered for Google sign-in. Other origins (for example `localhost`) will not be accepted by the sign-in flow.
+- **Self-hosting sign-in.** Sign-in is email + password against Nyora Cloud and is not origin-bound; just make sure your build can reach `stream.hasanraza.tech`.
 - **A source won't load images or pages.** Manga sites frequently omit CORS headers; the app tries a direct fetch first and only then routes through the Cloudflare proxy. If you are self-hosting, make sure your worker is deployed and reachable (see below).
 - **A parser looks broken.** Parser bundles are loaded OTA and SHA-256 verified; if verification or the network fails, the app falls back to the bundled parser. Reloading the app picks up the latest verified bundle.
 
@@ -240,7 +240,7 @@ Nyora Web is static — you can serve the `web/` directory with anything.
 cd web && python3 -m http.server 3000   # → http://127.0.0.1:3000
 ```
 
-Use `127.0.0.1:3000` (the origin registered for Google sign-in). Any static host works in production — Cloudflare Pages, Netlify, and similar.
+Use `127.0.0.1:3000` for local development. Any static host works in production — Cloudflare Pages, Netlify, and similar.
 
 ### Deploy the CORS / image proxy
 
@@ -356,7 +356,7 @@ cd nyora-web
 cd web && python3 -m http.server 3000   # → http://127.0.0.1:3000
 ```
 
-- Open **`http://127.0.0.1:3000`** (use `127.0.0.1`, not `localhost` — that's the origin registered for Google sign-in). Sign-in is optional; everything except cross-device sync works without it.
+- Open **`http://127.0.0.1:3000`** (use `127.0.0.1`, not `localhost`, for local development). Sign-in is optional; everything except cross-device sync works without it.
 - The app is authored as **unbundled ES modules**, so you just edit a file under `web/` and reload the tab — there is no watcher or compile step to run.
 - `build.mjs` (run via `npm run build`, requires Node + esbuild) bundles `web/` into `dist/` for production deploys on Cloudflare Pages. **You don't need it for development** — it's only for shipping.
 - To work on the proxy, the Cloudflare Worker lives in `cloudflare-worker/` and deploys with `npx wrangler deploy`.
