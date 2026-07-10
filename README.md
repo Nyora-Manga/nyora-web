@@ -6,7 +6,7 @@
 
 ### Read like the world can wait.
 
-A fast, free, ad-free, open-source manga reader that runs entirely in your browser — no backend, no install, no account required to start reading. The catalogue, search and page parsing all happen on your device, and the same library, history and progress sync across every Nyora platform.
+A fast, free, ad-free, open-source manga reader that runs in your browser — no install, no account required to start reading. It reads through the shared **Nyora helper** (the Kotatsu parser engine), and the same library, history and progress sync across every Nyora platform.
 
 <br/>
 
@@ -54,7 +54,7 @@ Open-source and auditable · no ads · no tracking · your library stays yours.
 
 ## About
 
-Nyora Web is the browser-native edition of Nyora — a free, ad-free, open-source manga, manhwa and manhua reader. No app store, no download, no sign-up wall: open a tab and you are reading, on a laptop, a phone, or anything with a modern browser. It is built from scratch as a **100% client-side static SPA** — the source catalogue, the search, and the parsers that turn a manga site into clean, readable pages all run on your machine. Add it to your home screen and Nyora becomes a real PWA with an offline app shell. Create a free Nyora Cloud account with an email and password and your library and source preferences follow you to every other Nyora platform. The only server-side pieces are a tiny Cloudflare Worker that proxies CORS and images and — only if you sign in — the Nyora Cloud sync backend; everything else is just static files you can host anywhere.
+Nyora Web is the browser-native edition of Nyora — a free, ad-free, open-source manga, manhwa and manhua reader. No app store, no download, no sign-up wall: open a tab and you are reading, on a laptop, a phone, or anything with a modern browser. It is a lightweight **browser client over the Nyora helper** — the same [Kotatsu](https://github.com/KotatsuApp/kotatsu-parsers) parser engine (`api.hasanraza.tech`) that powers every Nyora platform — so the source catalogue, search and reading stay current with **no scraper to maintain in the browser**. The UI, your library and reading state run on your device. Add it to your home screen and Nyora becomes a real PWA with an offline app shell. Create a free Nyora Cloud account with an email and password and your library and source preferences follow you to every other Nyora platform. The server-side pieces are the shared **Nyora helper** (used by every platform), an optional image/CORS proxy, and — only if you sign in — the Nyora Cloud sync backend; the app itself is just static files you can host anywhere.
 
 ## Why you'll love it
 
@@ -69,7 +69,7 @@ Nyora Web is the browser-native edition of Nyora — a free, ad-free, open-sourc
 
 | Pillar | What it means on Web |
 |---|---|
-| **Sources** | Hundreds of online sources — manga, manhwa and manhua — parsed entirely client-side, with OTA parser bundles that are SHA-256 verified and ship with bundled fallbacks. |
+| **Sources** | ~960 online sources — manga, manhwa and manhua — served by the **Nyora helper** (the Kotatsu parser engine), so every source stays current with no client-side scraper to maintain. |
 | **Reader** | A polished standard and webtoon reader (LTR, RTL or continuous vertical) with per-title settings, favourites in custom categories, and full reading history. |
 | **Sync** | Free Nyora Cloud sync of your library and source preferences via an email + password account, plus AniList tracking driven directly from the browser. |
 | **Self-host** | Deploy anywhere static — Cloudflare Pages, Netlify, your own box, a USB stick. Own your reader end to end. |
@@ -115,7 +115,7 @@ Nyora Web is the browser-native edition of Nyora — a free, ad-free, open-sourc
 
 ### Sources & Discovery
 
-Nyora Web ships with a built-in catalogue of **hundreds of online sources** spanning manga, manhwa and manhua. Browse, search and filter across them, and every source is parsed **entirely client-side** — no server scrapes on your behalf. Parser logic is delivered as JavaScript bundles loaded **over-the-air**, so source fixes ship without an app update; each bundle is **SHA-256 verified** before it executes, and the app falls back to **bundled parsers** when the network is unavailable, keeping discovery offline-first. Sources are source-compatible with Tachiyomi/Kotatsu-style definitions, but the parsing runtime here is original code written from scratch for the browser.
+Nyora Web reads from the catalogue of **~960 online sources** spanning manga, manhwa and manhua through the **Nyora helper** — the [Kotatsu](https://github.com/KotatsuApp/kotatsu-parsers) engine at `api.hasanraza.tech`, the same content backend the native apps and SDKs use — so sources stay current without shipping fragile scrapers to the browser. Dead / Cloudflare-walled sources are filtered out, leaving the live, health-checked set. (A dormant in-browser parser fallback ships for offline resilience but is not the primary path.)
 
 ### Reader
 
@@ -153,8 +153,8 @@ What the browser edition does and does not do, at a glance. "—" means the capa
 
 | Capability | Nyora Web |
 |---|---|
-| Hundreds of client-side sources | ✓ |
-| OTA parser bundles (SHA-256 verified, bundled fallback) | ✓ |
+| ~960 sources via the Nyora helper (Kotatsu engine) | ✓ |
+| Same content backend as the native apps & SDKs | ✓ |
 | Standard + webtoon reader (LTR / RTL / vertical) | ✓ |
 | Per-title reading settings | ✓ |
 | Favourites in custom categories + reading history | ✓ |
@@ -192,7 +192,7 @@ Nyora Web is deliberately a pure client-side reader. Honest constraints to know 
 
 ## Installation
 
-There is nothing to install to start reading. This is the lowest-friction way to read manga of any Nyora edition — no store account, no APK, no Gatekeeper warning. Because it's open-source and runs entirely in your browser, you can audit exactly what it does before you trust it.
+There is nothing to install to start reading. This is the lowest-friction way to read manga of any Nyora edition — no store account, no APK, no Gatekeeper warning. Because it's open-source, you can audit exactly what it does before you trust it.
 
 ### Use it instantly
 
@@ -225,7 +225,7 @@ A current version of any major browser (Chromium-based, Firefox, or Safari) with
 
 - **Self-hosting sign-in.** Sign-in is email + password against Nyora Cloud and is not origin-bound; just make sure your build can reach `stream.hasanraza.tech`.
 - **A source won't load images or pages.** Manga sites frequently omit CORS headers; the app tries a direct fetch first and only then routes through the Cloudflare proxy. If you are self-hosting, make sure your worker is deployed and reachable (see below).
-- **A parser looks broken.** Parser bundles are loaded OTA and SHA-256 verified; if verification or the network fails, the app falls back to the bundled parser. Reloading the app picks up the latest verified bundle.
+- **A source looks broken.** Sources are served by the Nyora helper, so fixes ship server-side with no app update — just reload. (A dormant in-browser parser fallback ships for offline resilience.)
 
 ## Build from Source
 
@@ -261,7 +261,7 @@ This is the **only** server-side component. The SPA tries direct fetches first a
 [![PWA](https://img.shields.io/badge/PWA-5A0FC8?style=for-the-badge&logo=pwa&logoColor=white)](#tech-stack)
 [![Cloudflare](https://img.shields.io/badge/Cloudflare-F38020?style=for-the-badge&logo=cloudflare&logoColor=white)](#tech-stack)
 
-- **TypeScript / JavaScript** — the entire SPA, including the in-browser parser runtime, is plain client-side JavaScript/TypeScript with no build-time backend.
+- **TypeScript / JavaScript** — the entire SPA is plain client-side JavaScript/TypeScript (no framework), reading content from the Nyora helper over REST; a dormant in-browser parser runtime ships as an offline fallback.
 - **PWA** — an installable Progressive Web App with a cached, offline-capable app shell.
 - **Cloudflare** — a single small Cloudflare Worker proxies CORS and images; the SPA itself deploys cleanly to Cloudflare Pages or any static host.
 - **Nyora Cloud** — a self-hosted FastAPI backend providing email + password authentication (OAuth2 + JWT) and per-row library and source-preference sync.
@@ -274,7 +274,7 @@ web/                  ← the SPA (deployed)
 cloudflare-worker/    ← CORS / image proxy (worker.js)
 ```
 
-- **Parsing runs in-browser.** `core/parser-runtime.js` loads JS parser bundles OTA (SHA-256 verified, with bundled fallback) and executes them client-side. No server scrapes on your behalf.
+- **Content via the Nyora helper.** `core/api.js` reads the catalogue, search, details and pages from the Nyora helper (the Kotatsu engine). `core/parser-runtime.js` + `web-parsers/` remain as a dormant client-side fallback for offline resilience.
 - **CORS bypass is the Cloudflare worker.** Manga sites typically don't send CORS headers, so HTML and images are fetched through `<proxy>/proxy?url=…` and `<proxy>/image?u=…` (the latter adds the source `Referer`/`UA`). The app always tries a direct fetch first and only falls back to the worker when needed.
 - **Account sync is client-side.** The flow is email + password → Nyora Cloud (OAuth2 + JWT) → per-row library and source-preference sync, using last-write-wins. The only server pieces are the Cloudflare proxy worker and your Nyora Cloud account.
 
@@ -293,7 +293,7 @@ cloudflare-worker/    ← CORS / image proxy (worker.js)
 
 No dates, no promises — just the honest direction.
 
-- **Broader source parity.** Ongoing work expanding and hardening the OTA parser catalogue so newer and trickier sources keep up across platforms.
+- **Broader source parity.** Ongoing work expanding and hardening the shared source catalogue (the Kotatsu engine) so newer and trickier sources keep up across platforms.
 - **Native-app companions.** Whole-page AI translation and offline downloads stay in Nyora's native apps; the cross-platform [iOS](https://github.com/Hasan72341/nyora-ios) build has a signed TestFlight release planned to follow. Your synced web library comes along to all of them.
 
 ## FAQ
@@ -314,7 +314,7 @@ Yes. Reading runs client-side, and the only data that ever leaves your device is
 No. There is no advertising SDK and no telemetry. The app only communicates with the sources you browse, the optional Cloudflare proxy, and — if you choose to sign in — Nyora Cloud for sync and AniList for tracking.
 
 **Where does the content come from, and is that legal?**
-Nyora does not host any manga. It parses publicly available online sources entirely client-side, much like a browser does. Nyora is not affiliated with any of the sources it can access.
+Nyora does not host any manga. It reads publicly available online sources through the Nyora helper (the open-source Kotatsu parser engine). Nyora is not affiliated with any of the sources it can access.
 
 **Does it work offline?**
 The PWA app shell is cached for offline use, and parser bundles ship with bundled fallbacks, so the interface and discovery remain resilient without a connection. There are no offline chapter downloads in the browser — for full offline reading and CBZ export, use one of Nyora's native apps from the platform table above; your synced library comes with you.
@@ -326,7 +326,7 @@ Absolutely. The SPA is just static files you can serve from any static host, and
 Those engines live in Nyora's native apps. Install one from the [platform table](#nyora-on-every-platform), sign in with the same Nyora Cloud account, and your web library syncs straight over.
 
 **How do I update the web app?**
-Just reload it. As a deployed static SPA, the latest version is served on each visit; parser bundles update over-the-air independently and are SHA-256 verified before they run. There's no manual update step.
+Just reload it. As a deployed static SPA, the latest version is served on each visit; sources update server-side through the Nyora helper with no app update. There's no manual update step.
 
 ## Contributing
 
