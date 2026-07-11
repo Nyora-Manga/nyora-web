@@ -346,6 +346,19 @@ function syncTabbar(name) {
 // next load instead of getting stuck behind a stale cached build.
 function registerSW() {
   if (!('serviceWorker' in navigator)) return;
+  // Local development: never use the service worker — it caches aggressively and
+  // makes edits to web/ appear stale. Tear down any existing registration + caches
+  // so every reload serves the latest source. No effect on production hosts.
+  const host = location.hostname;
+  if (host === 'localhost' || host === '127.0.0.1' || host === '[::1]') {
+    navigator.serviceWorker.getRegistrations()
+      .then((regs) => regs.forEach((r) => r.unregister()))
+      .catch(() => {});
+    if (window.caches && caches.keys) {
+      caches.keys().then((keys) => keys.forEach((k) => caches.delete(k))).catch(() => {});
+    }
+    return;
+  }
   // If this page is already controlled by a SW, a controllerchange means a NEW
   // worker took over (an update) — reload once so the fresh app/assets are used.
   const wasControlled = !!navigator.serviceWorker.controller;

@@ -3,11 +3,11 @@
  *
  * Strategy:
  *   - app shell (html/css/js modules, icon)  -> stale-while-revalidate, precached
- *   - parser engine (web-parsers/*.js + sources.json) -> stale-while-revalidate
+ *   - static app modules (js/css/json)        -> stale-while-revalidate
  *   - proxied cover/page images               -> cache-first (immutable-ish)
  *   - everything else / API                   -> network-first, cache fallback
  */
-const VERSION = 'nyora-v2.1.0';
+const VERSION = 'nyora-v2.1.2';
 const SHELL = `${VERSION}-shell`;
 const RUNTIME = `${VERSION}-runtime`;
 const IMAGES = `${VERSION}-img`;
@@ -85,7 +85,7 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Static app + parser engine -> stale-while-revalidate.
+  // Static app modules -> stale-while-revalidate.
   if (/\.(?:js|css|json|webmanifest|png|svg|woff2?)$/.test(url.pathname) || url.pathname === '/') {
     event.respondWith(staleWhileRevalidate(request, RUNTIME));
     return;
