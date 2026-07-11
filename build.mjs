@@ -22,8 +22,6 @@ await rm(OUT, { recursive: true, force: true });
 await cp(SRC, OUT, { recursive: true });
 
 // 2. Bundle the entry over the copied tree (overwrites dist/app.js, adds chunks).
-//    node:crypto is a Node-only fallback in web-parsers/fmreader.js that the
-//    browser path (SubtleCrypto) never reaches — keep it external.
 await build({
   entryPoints: [`${SRC}/app.js`],
   outdir: OUT,
@@ -33,7 +31,6 @@ await build({
   splitting: true,
   entryNames: 'app',
   chunkNames: 'chunk-[hash]',
-  external: ['node:crypto'],
   target: ['es2020'],
   legalComments: 'none',
   logLevel: 'info',
