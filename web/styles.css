@@ -504,7 +504,8 @@ body.hide-search .search-form { display: none; }
 }
 .chip[role="button"] { cursor: pointer; }
 .chip[role="button"]:hover { background: var(--surface2); color: var(--text); border-color: var(--border-strong); }
-.chip.active { background: var(--grad-accent); border-color: transparent; color: var(--on-accent); box-shadow: var(--shadow-accent); }
+.chip.active { background: var(--accent-tint); border-color: color-mix(in oklab, var(--accent) 42%, transparent); color: var(--accent-on-light); box-shadow: none; }
+.chip.active[role="button"]:hover { background: var(--accent-tint-strong); color: var(--accent-on-light); }
 .chip.nsfw { border-color: color-mix(in oklab, var(--danger) 50%, transparent); color: var(--danger); }
 .chip.status-running { color: var(--accent); border-color: color-mix(in oklab, var(--accent) 45%, transparent); }
 .chip.status-queued { color: var(--warn); border-color: color-mix(in oklab, var(--warn) 45%, transparent); }
@@ -569,9 +570,13 @@ body.hide-search .search-form { display: none; }
 .stepper .num { min-width: 32px; text-align: center; font-weight: 700; font-variant-numeric: tabular-nums; }
 
 /* ---- segmented control ---------------------------------------------- */
-.seg { display: inline-flex; background: var(--surface3); border-radius: var(--radius-sm); padding: 3px; gap: 3px; }
-.seg button { border: none; background: transparent; color: var(--text-dim); padding: 7px 15px; border-radius: 9px; cursor: pointer; font-weight: 600; transition: all 0.15s var(--ease); }
-.seg button.active { background: var(--grad-accent); color: var(--on-accent); box-shadow: var(--shadow-sm); }
+/* Segmented control — an inset track with a RAISED active segment (iOS/Material
+   style), not a flat saturated-accent fill. The active pill sits above the track
+   with a soft shadow + a whisper of accent; brand colour stays on real CTAs. */
+.seg { display: inline-flex; background: color-mix(in oklab, var(--bg) 55%, #000); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 3px; gap: 2px; }
+.seg button { border: none; background: transparent; color: var(--text-dim); padding: 7px 16px; border-radius: 9px; cursor: pointer; font-weight: 600; font-size: 13.5px; letter-spacing: -0.01em; transition: color 0.16s var(--ease), background 0.16s var(--ease); }
+.seg button:hover:not(.active) { color: var(--text); }
+.seg button.active { background: color-mix(in oklab, var(--accent) 13%, var(--surface2)); color: var(--text); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), inset 0 0 0 1px color-mix(in oklab, var(--accent) 24%, transparent); }
 
 /* ---- tabs ------------------------------------------------------------ */
 .tabs { display: flex; gap: 7px; margin-bottom: 20px; flex-wrap: wrap; }
@@ -980,11 +985,16 @@ body[data-route="details"] .view > .details { height: 100%; min-height: 0; }
 }
 .discover-hero-bg {
   position: absolute; inset: 0; background-size: cover; background-position: center;
-  filter: blur(36px) saturate(160%); transform: scale(1.25); opacity: 0.42; pointer-events: none;
+  filter: blur(40px) saturate(135%); transform: scale(1.3); opacity: 0.28; pointer-events: none;
 }
+/* Fade the banner out toward the text: a left→right wash so it only faintly tints
+   behind the cover and reads as solid card behind the title, plus a top/bottom
+   darkening. Keeps a bright cover-as-banner (e.g. One Piece) from overpowering. */
 .discover-hero-bg::after {
   content: ""; position: absolute; inset: 0;
-  background: linear-gradient(180deg, color-mix(in srgb, var(--bg) 40%, transparent), var(--bg-elev) 82%);
+  background:
+    linear-gradient(90deg, transparent, color-mix(in srgb, var(--bg-elev) 85%, transparent) 55%, var(--bg-elev) 100%),
+    linear-gradient(180deg, color-mix(in srgb, var(--bg) 55%, transparent), var(--bg-elev) 88%);
 }
 .discover-hero-content {
   position: relative; z-index: 1;
@@ -1178,6 +1188,32 @@ body.reader-active .view {
   inset-block-end: 0;
   padding-bottom: max(12px, env(safe-area-inset-bottom));
   border-top: 1px solid var(--border-strong);
+}
+
+/* End-of-chapter tail card (webtoon), also the auto-scroll landing spot. */
+.reader-end {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  padding: 48px 20px calc(96px + env(safe-area-inset-bottom));
+  text-align: center;
+}
+.reader-end-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-dim);
+}
+.reader-end-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.reader-end-last {
+  font-size: 13px;
+  color: var(--text-faint);
+  align-self: center;
 }
 
 /* top bar pieces */
@@ -1401,9 +1437,19 @@ body.reader-active .view {
 /* ---- states ---------------------------------------------------------- */
 .empty, .error-box {
   display: flex; flex-direction: column; align-items: center; justify-content: center;
-  gap: 12px; text-align: center; padding: 64px 20px; color: var(--text-dim);
+  gap: 5px; text-align: center; padding: 72px 20px; color: var(--text-dim);
 }
-.empty .icon { width: 40px; height: 40px; color: var(--text-faint); opacity: 0.7; }
+/* Icon sits in a soft tinted disc so the empty state reads as designed, not bare. */
+.empty-icon {
+  display: grid; place-items: center; width: 76px; height: 76px; margin-bottom: 12px;
+  border-radius: var(--radius-pill); border: 1px solid var(--border);
+  background: radial-gradient(120% 120% at 50% 30%, var(--accent-tint-soft), transparent 68%), var(--surface1);
+}
+.empty-icon .icon { width: 30px; height: 30px; color: var(--text-dim); opacity: 0.95; }
+.empty-title { margin: 0; font-size: 15px; font-weight: 650; color: var(--text); letter-spacing: -0.01em; }
+.empty-sub { margin: 0; font-size: 13px; color: var(--text-faint); max-width: 340px; line-height: 1.55; }
+.empty > .icon { width: 40px; height: 40px; color: var(--text-faint); opacity: 0.7; }
+.empty > button, .empty > .btn { margin-top: 16px; }
 .error-box { color: var(--danger); }
 .center { display: flex; align-items: center; justify-content: center; gap: 12px; padding: 60px 20px; color: var(--text-dim); flex-direction: column; }
 .spinner {

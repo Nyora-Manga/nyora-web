@@ -19,8 +19,14 @@
 //   .reader-progress   — fixed top bar reflecting position in the chapter.
 //
 // Navigation: click zones (RTL-aware) + keyboard (ArrowLeft/Right, ArrowUp/Down,
-// space; n/p = next/prev chapter; f = fit; Escape = back). Prefetch warms the
-// next chapter's pages when near the end and prefetch is on.
+// space; n/p = next/prev chapter; f = fit; Home/End = first/last page; Escape =
+// back). Prefetch warms the next chapter's pages when near the end.
+//
+// Auto-scroll (hands-free): toggled from the top-bar play/pause button, or a =
+// toggle (space also toggles it in WEBTOON); +/- adjusts speed. WEBTOON drives a
+// smooth time-based scroll (px/sec by level); PAGED auto-advances one page every
+// N seconds. It rolls across chapter boundaries so a whole binge plays through.
+// Speed level (1–10) persists per-manga and has a slider in Settings.
 //
 // Persistence: library.recordHistory({manga, sourceId, chapterUrl, chapterId,
 // chapterTitle, page, total}) fires (debounced) as the reader advances and is
@@ -149,7 +155,20 @@ export function render(view, params) {
   const clampWidth = (v) => { v = Number(v); return (!v || v > 100) ? 70 : Math.max(30, Math.min(100, Math.round(v))); };
   let webtoonWidth = clampWidth(gp.webtoonWidth);
 
+  // Auto-scroll: a hands-free reading mode. In WEBTOON it drives a smooth,
+  // time-based vertical scroll (px/sec by level); in PAGED/PAGED_RTL it auto-
+  // advances one page every N seconds. It rides over chapter boundaries so a
+  // whole binge plays through. `autoLevel` (1–10) is the shared speed and is
+  // persisted; `autoOn` is session intent (always starts off).
+  const clampLevel = (v) => { v = Math.round(Number(v)); return Number.isFinite(v) ? Math.max(1, Math.min(10, v)) : 4; };
+  let autoLevel = clampLevel(gp.autoScrollLevel);
+  let autoOn = false;
+  let autoRaf = null;
+  let autoLastTs = 0;
+  let autoAccum = 0;
+
   let scrollListener = null;
+  let scrollTarget = null;
 
   // ── teardown / keyboard ────────────────────────────────────────────────
   function onKey(e) {
@@ -162,15 +181,25 @@ export function render(view, params) {
       case 'ArrowRight': e.preventDefault(); pageStep(rtl ? -1 : 1); break;
       case 'ArrowLeft': e.preventDefault(); pageStep(rtl ? 1 : -1); break;
       case 'ArrowDown':
-      case ' ':
         if (mode === 'WEBTOON') return;
         e.preventDefault(); pageStep(1); break;
+      case ' ':
+        // Space toggles auto-scroll in WEBTOON (where it has no page meaning);
+        // in PAGED it turns the page.
+        e.preventDefault();
+        if (mode === 'WEBTOON') toggleAuto(); else pageStep(1);
+        break;
       case 'ArrowUp':
         if (mode === 'WEBTOON') return;
         e.preventDefault(); pageStep(-1); break;
       case 'n': case 'N': e.preventDefault(); goReadingChapter(1); break;   // next chapter
       case 'p': case 'P': e.preventDefault(); goReadingChapter(-1); break;  // previous chapter
       case 'f': case 'F': e.preventDefault(); toggleFit(); break;
+      case 'a': case 'A': e.preventDefault(); toggleAuto(); break;          // auto-scroll
+      case '+': case '=': e.preventDefault(); bumpSpeed(1); break;          // faster
+      case '-': case '_': e.preventDefault(); bumpSpeed(-1); break;         // slower
+      case 'Home': e.preventDefault(); jumpTo(0); break;
+      case 'End': e.preventDefault(); jumpTo(st.pages.length - 1); break;
       case 'Escape': e.preventDefault(); backToDetails(); break;
       default: break;
     }
@@ -186,7 +215,8 @@ export function render(view, params) {
     document.body.classList.remove('reader-immersive');
     document.body.classList.remove('reader-fullscreen');
     if (document.fullscreenElement) { try { document.exitFullscreen(); } catch { /* ignore */ } }
-    if (scrollListener) { window.removeEventListener('scroll', scrollListener); scrollListener = null; }
+    cancelAutoLoop();
+    if (scrollListener) { (scrollTarget || window).removeEventListener('scroll', scrollListener); scrollListener = null; scrollTarget = null; }
   }
   view.__readerTeardown = teardown;
 
@@ -316,6 +346,7 @@ export function render(view, params) {
         if (p.readerFit && ['WIDTH', 'HEIGHT'].includes(p.readerFit)) fit = p.readerFit;
         if (typeof p.prefetch === 'boolean') prefetch = p.prefetch;
         if (p.webtoonWidth) webtoonWidth = clampWidth(p.webtoonWidth);
+        if (p.autoScrollLevel != null) autoLevel = clampLevel(p.autoScrollLevel);
       }
     } catch { /* keep defaults */ }
   }
@@ -326,7 +357,7 @@ export function render(view, params) {
       st.chapterUrl = st.chapters[st.index].url;
     }
     st.currentPage = 0;
-    if (scrollListener) { window.removeEventListener('scroll', scrollListener); scrollListener = null; }
+    if (scrollListener) { (scrollTarget || window).removeEventListener('scroll', scrollListener); scrollListener = null; scrollTarget = null; }
     view.replaceChildren(el('div', { class: 'reader-loading-screen' }, bar('top', true), loadingBlock('Loading pages…')));
     try {
       const data = await api.pages(st.sid, st.chapterUrl);
@@ -411,6 +442,7 @@ export function render(view, params) {
         readerFit: fit,
         prefetch,
         webtoonWidth,
+        autoScrollLevel: autoLevel,
         brightness: st.grade.brightness,
         contrast: st.grade.contrast,
         saturation: st.grade.saturation,
@@ -425,6 +457,98 @@ export function render(view, params) {
     const next = st.index + nextDelta();
     if (next < 0 || next >= st.chapters.length) return;
     api.pages(st.sid, st.chapters[next].url).catch(() => {});
+  }
+
+  // ── auto-scroll ────────────────────────────────────────────────────────────
+  // Level → speed. WEBTOON: pixels per second. PAGED: milliseconds per page.
+  function webtoonPxPerSec() { return 24 + (autoLevel - 1) * 26; }        // 24 … 258 px/s
+  function pagedDelayMs() { return Math.max(1500, 9500 - autoLevel * 780); } // ~8.7s … 1.7s
+  function webtoonScrollEl() { return $('.reader.webtoon', view); }
+
+  // Single time-based rAF clock for both modes — no setTimeout races, and it's
+  // trivially cancelled/restarted on every renderReader (mode or chapter change).
+  function autoFrame(ts) {
+    if (!autoOn) { autoRaf = null; return; }
+    if (!autoLastTs) autoLastTs = ts;
+    // Clamp dt so a backgrounded tab (rAF pauses) doesn't bank a giant jump.
+    const dt = Math.min(100, ts - autoLastTs);
+    autoLastTs = ts;
+    if (mode === 'WEBTOON') {
+      const target = webtoonScrollEl();
+      if (target) {
+        autoAccum += webtoonPxPerSec() * (dt / 1000);
+        const whole = Math.floor(autoAccum);
+        if (whole >= 1) {
+          autoAccum -= whole;
+          const before = target.scrollTop;
+          target.scrollTop = before + whole;
+          const moved = target.scrollTop - before;
+          const canScroll = target.scrollHeight > target.clientHeight + 4;
+          const atBottom = target.scrollTop + target.clientHeight >= target.scrollHeight - 2;
+          // Only end on the LAST page — guards against lazy-loaded images that
+          // briefly make scrollHeight look short (which would skip a chapter).
+          const onLastPage = st.currentPage >= st.pages.length - 1;
+          if (onLastPage && (atBottom || !canScroll)) { autoReachedEnd(); return; }
+          // Hit a wall while lower images still load — don't bank a jump.
+          if (moved < whole - 0.5) autoAccum = 0;
+        }
+      }
+    } else {
+      autoAccum += dt;
+      if (autoAccum >= pagedDelayMs()) {
+        autoAccum = 0;
+        if (st.currentPage >= st.pages.length - 1) { autoReachedEnd(); return; }
+        pageStep(1);
+      }
+    }
+    autoRaf = requestAnimationFrame(autoFrame);
+  }
+
+  // End of the current chapter while auto-scrolling: roll on to the next chapter
+  // (auto stays on → the loop restarts once it renders) or stop at the very end.
+  function autoReachedEnd() {
+    autoRaf = null;
+    if (chapterExists(1)) { goReadingChapter(1); }
+    else { stopAuto(); toast('You’re all caught up — last chapter.'); }
+  }
+
+  function cancelAutoLoop() { if (autoRaf) cancelAnimationFrame(autoRaf); autoRaf = null; }
+  function startAutoLoop() { autoLastTs = 0; autoAccum = 0; cancelAutoLoop(); autoRaf = requestAnimationFrame(autoFrame); }
+
+  function startAuto() {
+    if (!st.pages.length) return;
+    autoOn = true;
+    if (!st.controlsVisible) toggleControls();  // reveal chrome so the pause control shows
+    startAutoLoop();
+    syncAutoUi();
+  }
+  function stopAuto() { autoOn = false; cancelAutoLoop(); syncAutoUi(); }
+  function toggleAuto() { autoOn ? stopAuto() : startAuto(); }
+
+  function bumpSpeed(delta, silent) {
+    const next = clampLevel(autoLevel + delta);
+    if (next === autoLevel) return;
+    autoLevel = next;
+    store.set({ reader: { autoScrollLevel: autoLevel } });
+    savePrefs();
+    syncAutoUi();
+    if (!silent) toast(`Auto-scroll speed ${autoLevel}/10`);
+  }
+
+  function jumpTo(page) {
+    if (!st.pages.length) return;
+    setPage(Math.max(0, Math.min(st.pages.length - 1, page)), true);
+  }
+
+  // Reflect auto-scroll state on the top-bar toggle button (the on/off control)
+  // and the speed slider in Settings (whichever are mounted).
+  function syncAutoUi() {
+    $$('.reader-auto-toggle', view).forEach((n) => {
+      n.classList.toggle('active', autoOn);
+      n.replaceChildren(icon(autoOn ? 'pause' : 'play'));
+      n.title = autoOn ? 'Stop auto-scroll (a)' : 'Auto-scroll (a / space)';
+    });
+    $$('.reader-autospeed', view).forEach((n) => { if (Number(n.value) !== autoLevel) n.value = String(autoLevel); });
   }
 
   // ── view-state setters ────────────────────────────────────────────────────
@@ -550,6 +674,10 @@ export function render(view, params) {
       bmBtn.classList.add('reader-btn', 'reader-bm');
       if (st.bookmarked) bmBtn.classList.add('active');
 
+      const autoBtn = iconBtn(autoOn ? 'pause' : 'play', toggleAuto, autoOn ? 'Stop auto-scroll (a)' : 'Auto-scroll (a / space)');
+      autoBtn.classList.add('reader-btn', 'reader-auto-toggle');
+      if (autoOn) autoBtn.classList.add('active');
+
       const listBtn = iconBtn('list', openChapterList, 'Chapters');
       listBtn.classList.add('reader-btn');
 
@@ -570,7 +698,7 @@ export function render(view, params) {
         back,
         titleWrap,
         el('div', { class: 'reader-actions' },
-          sidebarBtn, fsBtn, bmBtn, listBtn, settingsBtn,
+          autoBtn, sidebarBtn, fsBtn, bmBtn, listBtn, settingsBtn,
         ),
       );
     }
@@ -633,19 +761,22 @@ export function render(view, params) {
 
   // ── body renderers ─────────────────────────────────────────────────────────
   function renderReader() {
-    if (scrollListener) { window.removeEventListener('scroll', scrollListener); scrollListener = null; }
+    // A running loop must not outlive the DOM it scrolls (mode/chapter change).
+    cancelAutoLoop();
+    if (scrollListener) { (scrollTarget || window).removeEventListener('scroll', scrollListener); scrollListener = null; scrollTarget = null; }
     if (!st.pages.length) {
       view.replaceChildren(bar('top', true), emptyState('This chapter returned no pages.'));
       return;
     }
-    
+
     applyReaderWidth();
     const readerView = el('div', { class: 'reader-view' + (st.controlsVisible ? '' : ' controls-hidden') });
     readerView.addEventListener('click', toggleControls);
-    
+
     if (mode === 'WEBTOON') {
       const reader = el('div', { class: 'reader webtoon' + (fit === 'HEIGHT' ? ' fit-height' : '') });
       st.pages.forEach((p, i) => reader.appendChild(pageImg(p, i)));
+      reader.appendChild(endCard());
       readerView.append(progressBar(), bar('top'), reader, bar('bottom'));
       view.replaceChildren(readerView);
       installScrollSpy();
@@ -678,6 +809,25 @@ export function render(view, params) {
       preloadAround(st.currentPage);
     }
     syncPosition();
+    syncAutoUi();
+    if (autoOn) startAutoLoop();
+  }
+
+  // Webtoon tail card: makes "end of chapter" a deliberate moment (and the auto-
+  // scroll landing spot) instead of an abrupt stop, with quick chapter jumps.
+  function endCard() {
+    const hasPrev = chapterExists(-1);
+    const hasNext = chapterExists(1);
+    const actions = el('div', { class: 'reader-end-actions' },
+      hasPrev ? btn('Previous', { variant: 'ghost', icon: 'back', onClick: (e) => { e.stopPropagation(); goReadingChapter(-1); } }) : null,
+      hasNext
+        ? btn('Next chapter', { variant: 'accent', onClick: (e) => { e.stopPropagation(); goReadingChapter(1); } })
+        : el('span', { class: 'reader-end-last' }, 'Last chapter'),
+    );
+    return el('div', { class: 'reader-end' },
+      el('div', { class: 'reader-end-title' }, hasNext ? 'End of chapter' : 'You’re all caught up'),
+      actions,
+    );
   }
 
   function progressBar() {
@@ -685,6 +835,12 @@ export function render(view, params) {
   }
 
   function installScrollSpy() {
+    // The webtoon pages scroll INSIDE `.reader.webtoon` (flex:1; overflow-y:auto),
+    // not the window: `.reader-view` is height:100vh; overflow:hidden with fixed
+    // top/bottom bars. Listening on `window` never fired, so currentPage — and the
+    // bottom `X / Y` indicator — never advanced while scrolling. Attach to the real
+    // scroll container, and measure the current page against that container's centre.
+    scrollTarget = $('.reader.webtoon', view) || window;
     let ticking = false;
     scrollListener = () => {
       if (ticking) return;
@@ -693,7 +849,8 @@ export function render(view, params) {
         ticking = false;
         const reader = $('.reader.webtoon', view);
         if (!reader) return;
-        const mid = window.innerHeight / 2;
+        const box = reader.getBoundingClientRect();
+        const mid = box.top + box.height / 2;
         let best = 0; let bestDist = Infinity;
         reader.querySelectorAll('[data-page]').forEach((node) => {
           const r = node.getBoundingClientRect();
@@ -710,7 +867,7 @@ export function render(view, params) {
         }
       });
     };
-    window.addEventListener('scroll', scrollListener, { passive: true });
+    scrollTarget.addEventListener('scroll', scrollListener, { passive: true });
   }
 
   // Paged: scroll the given slide to centre (browser handles RTL). `smooth` for
@@ -827,12 +984,25 @@ export function render(view, params) {
     prefetchInput.checked = prefetch;
     prefetchInput.addEventListener('change', () => setPrefetch(prefetchInput.checked));
     const prefetchSwitch = el('label', { class: 'switch' }, prefetchInput, el('span', { class: 'slider' }));
-    
-    const layoutSection = el('div', { class: 'settings-section' }, 
-      el('h2', null, 'Layout'), 
-      inlineRow('Mode', modeSeg), 
+
+    const speedVal = el('span', { class: 'counter' }, `${autoLevel}/10`);
+    const speedSlider = el('input', {
+      type: 'range', class: 'reader-autospeed', min: '1', max: '10', step: '1',
+      value: String(autoLevel),
+      style: { width: '100%', accentColor: 'var(--accent)' },
+    });
+    speedSlider.addEventListener('input', () => {
+      const val = clampLevel(speedSlider.value);
+      speedVal.textContent = `${val}/10`;
+      if (val !== autoLevel) bumpSpeed(val - autoLevel, true);
+    });
+
+    const layoutSection = el('div', { class: 'settings-section' },
+      el('h2', null, 'Layout'),
+      inlineRow('Mode', modeSeg),
       inlineRow('Fit', fitSeg),
       mode === 'WEBTOON' ? el('div', { class: 'field' }, el('div', { class: 'row', style: { justifyContent: 'space-between' } }, el('label', null, 'Webtoon width'), widthVal), widthSlider) : null,
+      el('div', { class: 'field' }, el('div', { class: 'row', style: { justifyContent: 'space-between' } }, el('label', null, 'Auto-scroll speed'), speedVal), speedSlider),
       inlineRow('Prefetch next chapter', prefetchSwitch)
     );
     

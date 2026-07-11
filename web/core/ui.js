@@ -216,6 +216,8 @@ const ICON_PATHS = {
   eye: '<path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/>',
   eyeOff: '<path d="M3 3l18 18"/><path d="M10.6 10.6a3 3 0 0 0 4.2 4.2"/><path d="M9.9 4.2A10.9 10.9 0 0 1 12 4c6 0 10 7 10 7a17.8 17.8 0 0 1-3.3 3.9M6.6 6.6A17.6 17.6 0 0 0 2 11s4 7 10 7a10.7 10.7 0 0 0 3.4-.6"/>',
   play: '<path d="M7 5v14l11-7z"/>',
+  pause: '<path d="M8 5v14M16 5v14"/>',
+  minus: '<path d="M5 12h14"/>',
   info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/>',
   globe: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18 14 14 0 0 1 0-18z"/>',
   palette: '<path d="M12 3a9 9 0 1 0 0 18 2 2 0 0 0 1.6-3.2 2 2 0 0 1 1.6-3.2H17a4 4 0 0 0 4-4c0-2.8-4-7.6-9-7.6z"/><circle cx="7.5" cy="11.5" r="1"/><circle cx="12" cy="8" r="1"/><circle cx="16.5" cy="11.5" r="1"/>',
@@ -327,11 +329,17 @@ export function sectionHeader(title, ...actions) {
 }
 
 export function emptyState(msg, iconName) {
+  // Split "Title — hint" into a bold title + muted subtitle for a real empty state.
+  const text = String(msg || 'Nothing here yet.');
+  const dash = text.indexOf(' — ');
+  const title = dash === -1 ? text : text.slice(0, dash);
+  const sub = dash === -1 ? '' : text.slice(dash + 3);
   return el(
     'div',
     { class: 'empty' },
-    icon(iconName || 'inbox'),
-    el('p', null, msg || 'Nothing here yet.'),
+    el('div', { class: 'empty-icon' }, icon(iconName || 'inbox')),
+    el('p', { class: 'empty-title' }, title),
+    sub ? el('p', { class: 'empty-sub' }, sub) : null,
   );
 }
 
