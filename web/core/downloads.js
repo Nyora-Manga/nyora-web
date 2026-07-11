@@ -24,7 +24,17 @@
 //    never queued twice; re-enqueuing a FAILED/CANCELLED job re-runs it.
 //  * subscribe(fn) lets screens live-update; progress ticks are throttled.
 
-import { imageUrl } from './parser-runtime.js';
+// Downloads must proxy each page through the PUBLIC helper host. api.imageUrl()
+// repoints the helper's loopback proxy URL (http://127.0.0.1:8788/image?u=…) to
+// api.hasanraza.tech and re-adds the source Referer. parser-runtime's imageUrl
+// instead DOUBLE-WRAPPED that loopback URL (→ an unreachable localhost fetch),
+// which is why downloads errored. Lazy+cached import to avoid the api.js <->
+// downloads.js import cycle (api.js imports this module).
+let _apiMod = null;
+async function apiImageUrl(url, headers) {
+  if (!_apiMod) _apiMod = await import('./api.js');
+  return _apiMod.api.imageUrl(url, headers);
+}
 
 // ---- constants ---------------------------------------------------------
 
@@ -249,7 +259,7 @@ function commit({ throttle = false } = {}) {
 // ---- page image fetching -----------------------------------------------
 
 async function fetchImage(page, signal) {
-  const src = imageUrl(page && page.url, page && page.headers);
+  const src = await apiImageUrl(page && page.url, page && page.headers);
   if (!src) throw new Error('no url');
   let lastErr = null;
   for (let attempt = 0; attempt <= settings.retries; attempt++) {
