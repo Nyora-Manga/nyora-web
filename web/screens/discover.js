@@ -34,48 +34,13 @@ export const meta = {
   order: 0,
 };
 
-// Discover is backed by the MangaBaka database (https://mangabaka.org). Its API
-// is search-first (no trending endpoint) and sends permissive CORS, so we fetch
-// several filtered searches straight from the browser and sort them client-side
-// by popularity / rating to build the rails.
-const MB_SEARCH = 'https://api.mangabaka.dev/v1/series/search';
-
-// A broad query token — MangaBaka search requires `q`, so this matches the bulk
-// of the catalogue; we then sort the results ourselves.
-const MB_BROAD_Q = 'a';
-
-// Pull the sortable global-popularity number out of MangaBaka's nested shape.
-function mbPopularity(it) {
-  const p = it && it.popularity && it.popularity.global;
-  return (p && typeof p.current === 'number' ? p.current : 0) || 0;
-}
-
-// Best available cover: prefer the CDN thumbnails, fall back to the raw image.
-function mbCover(it) {
-  const c = (it && it.cover) || {};
-  return (c.x350 && c.x350.x1) || (c.x250 && c.x250.x1) || (c.raw && c.raw.url) || '';
-}
-
-// "school_life" -> "School Life"
-function prettyGenre(g) {
-  return String(g || '').split('_').map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
-}
-
-// Map a MangaBaka series onto the shape the hero/rail renderers already expect
-// (an AniList-media-like object), so the rest of this screen is unchanged.
-function normalizeMB(it) {
-  const title = it.title || it.romanized_title || it.native_title || 'Untitled';
-  const cover = mbCover(it);
-  return {
-    id: it.id,
-    title: { romaji: it.romanized_title || title, english: title },
-    coverImage: { large: cover, extraLarge: cover },
-    bannerImage: null,
-    genres: (Array.isArray(it.genres) ? it.genres : []).map(prettyGenre).slice(0, 6),
-    averageScore: typeof it.rating === 'number' ? Math.round(it.rating) : null,
-    description: it.description || '',
-  };
-}
+// Discover is backed by AniList's public GraphQL API — no auth, permissive CORS,
+// real trending/popularity, and recognizable titles. `countryOfOrigin` splits the
+// same MANGA type into manga (JP), manhwa (KR) and manhua (CN). AniList media is
+// already the exact shape the hero/rail renderers consume, so no normalization.
+const ANILIST_API = 'https://graphql.anilist.co';
+const MEDIA_FIELDS = 'id title { romaji english native } '
+  + 'coverImage { large extraLarge } bannerImage genres averageScore countryOfOrigin';
 
 // Bump on every render() so a slow fetch from a previous view can't overwrite
 // the screen after the user has navigated away and back.
@@ -164,14 +129,12 @@ async function load(body) {
   // Ordered rails — each is skipped if AniList returned nothing for it.
   const rails = [
     ['Trending now', 'trending', trending.slice(1)],
-    ['All-time popular', 'stats', feed.popular],
-    ['Top rated', 'checkCircle', feed.topRated],
-    ['Most favourited', 'heart', feed.favourites],
     ['Popular manhwa', 'book', feed.manhwa],
+    ['Popular manhua', 'book', feed.manhua],
+    ['Popular manga', 'stats', feed.manga],
     ['Action', 'play', feed.action],
     ['Romance', 'heart', feed.romance],
     ['Fantasy', 'compass', feed.fantasy],
-    ['Comedy', 'feed', feed.comedy],
   ];
   for (const [title, iconName, items] of rails) {
     if (items && items.length) children.push(rail(title, iconName, items));
@@ -179,46 +142,126 @@ async function load(body) {
   body.replaceChildren(...children);
 }
 
-// A MangaBaka series is worth showing only if it has a cover and a real title
-// (the DB is full of 1–2 char placeholder entries we don't want on the grid).
+// Keep only entries with a real cover (the renderers need one).
+function mediaUsable(m) {
+  return m && m.coverImage && (m.coverImage.extraLarge || m.coverImage.large);
+}
+
+// Build the whole Discover feed in ONE AniList GraphQL request: currently-trending
+// across all formats (hero + first rail), plus popularity-ranked manhwa (KR),
+// manhua (CN) and manga (JP) rails, and a few trending-by-genre rails. This
+// surfaces recognizable, current titles (Solo Leveling, Nano Machine, …), not
+// obscure or decades-old entries.
+// AniList is PRIMARY. If it's down / rate-limited / returns nothing, fall back to
+// MangaBaka so Discover still populates.
+async function fetchAnilistFeed() {
+  try {
+    const feed = await fetchFromAniList();
+    if (feed && feed.trending && feed.trending.length) return feed;
+  } catch { /* fall through to MangaBaka */ }
+  try {
+    return await fetchFromMangaBaka();
+  } catch {
+    return { trending: [], manhwa: [], manhua: [], manga: [], action: [], romance: [], fantasy: [] };
+  }
+}
+
+async function fetchFromAniList() {
+  const page = (alias, filter, sort) =>
+    `${alias}: Page(perPage: 30) { media(type: MANGA, isAdult: false, ${filter}sort: ${sort}) { ${MEDIA_FIELDS} } }`;
+  const query = `query {
+    ${page('trending', '', 'TRENDING_DESC')}
+    ${page('manhwa', 'countryOfOrigin: KR, ', 'POPULARITY_DESC')}
+    ${page('manhua', 'countryOfOrigin: CN, ', 'POPULARITY_DESC')}
+    ${page('manga', 'countryOfOrigin: JP, ', 'POPULARITY_DESC')}
+    ${page('action', 'genre: "Action", ', 'TRENDING_DESC')}
+    ${page('romance', 'genre: "Romance", ', 'TRENDING_DESC')}
+    ${page('fantasy', 'genre: "Fantasy", ', 'TRENDING_DESC')}
+  }`;
+  const res = await fetch(ANILIST_API, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+    body: JSON.stringify({ query }),
+  });
+  if (!res.ok) throw new Error(`AniList HTTP ${res.status}`);
+  const json = await res.json();
+  const d = (json && json.data) || {};
+  const pick = (k) => (((d[k] && d[k].media) || []).filter(mediaUsable));
+  return {
+    trending: pick('trending'),
+    manhwa: pick('manhwa'),
+    manhua: pick('manhua'),
+    manga: pick('manga'),
+    action: pick('action'),
+    romance: pick('romance'),
+    fantasy: pick('fantasy'),
+  };
+}
+
+// ---- MangaBaka fallback (only used when AniList is unreachable) -------------
+const MB_SEARCH = 'https://api.mangabaka.dev/v1/series/search';
+const MB_TOKENS = ['a', 'e', 'o', 'the'];
+const MB_TYPES = ['manga', 'manhwa', 'manhua'];
+
+function mbCover(it) {
+  const c = (it && it.cover) || {};
+  return (c.x350 && c.x350.x1) || (c.x250 && c.x250.x1) || (c.raw && c.raw.url) || '';
+}
 function mbUsable(x) {
   return x && x.state !== 'merged' && mbCover(x) && String(x.title || '').trim().length >= 3;
 }
-
-// One MangaBaka search → a normalized, quality-filtered, client-side-sorted rail.
-async function mbRail({ genre, type = 'manga', sortBy = 'popularity', limit = 30, take = 20 } = {}) {
-  const p = new URLSearchParams({
-    q: MB_BROAD_Q,
-    type,
-    content_rating: 'safe',
-    limit: String(limit),
-  });
-  if (genre) p.set('genre', genre);
+// Publication year is the real recency signal (last_updated_at is just re-index time).
+function mbRecency(it) {
+  const y = Number(it && it.year);
+  const year = (y >= 1900 && y < 3000) ? y : 0;
+  const ms = it && it.last_updated_at ? (Date.parse(it.last_updated_at) || 0) : 0;
+  return year * 1e13 + ms;
+}
+// Map a MangaBaka series onto the AniList-media shape the renderers expect.
+function normalizeMB(it) {
+  const title = it.title || it.romanized_title || it.native_title || 'Untitled';
+  const cover = mbCover(it);
+  return {
+    id: it.id,
+    title: { romaji: it.romanized_title || title, english: title },
+    coverImage: { large: cover, extraLarge: cover },
+    bannerImage: null,
+    genres: (Array.isArray(it.genres) ? it.genres : []).slice(0, 6),
+    averageScore: typeof it.rating === 'number' ? Math.round(it.rating) : null,
+  };
+}
+async function mbSearchRaw(q, type) {
+  const p = new URLSearchParams({ q, content_rating: 'safe', limit: '60' });
+  if (type) p.set('type', type);
   const res = await fetch(`${MB_SEARCH}?${p.toString()}`, { headers: { Accept: 'application/json' } });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const json = await res.json();
-  const items = (Array.isArray(json && json.data) ? json.data : []).filter(mbUsable);
-  items.sort((a, b) =>
-    sortBy === 'rating' ? (b.rating || 0) - (a.rating || 0) : mbPopularity(b) - mbPopularity(a),
-  );
-  return items.slice(0, take).map(normalizeMB);
+  return (Array.isArray(json && json.data) ? json.data : []).filter(mbUsable);
 }
-
-// Build the whole Discover feed from parallel MangaBaka searches. A single rail
-// failing (network/rate) resolves to [] so the rest of the page still renders.
-async function fetchAnilistFeed() {
-  const safe = (promise) => promise.catch(() => []);
-  const [popular, topRated, manhwa, action, romance, fantasy, comedy] = await Promise.all([
-    safe(mbRail({ sortBy: 'popularity', limit: 30 })),
-    safe(mbRail({ sortBy: 'rating', limit: 30 })),
-    safe(mbRail({ type: 'manhwa', sortBy: 'popularity', limit: 30 })),
-    safe(mbRail({ genre: 'Action', sortBy: 'popularity', limit: 30 })),
-    safe(mbRail({ genre: 'Romance', sortBy: 'popularity', limit: 30 })),
-    safe(mbRail({ genre: 'Fantasy', sortBy: 'popularity', limit: 30 })),
-    safe(mbRail({ genre: 'Comedy', sortBy: 'popularity', limit: 30 })),
-  ]);
-  // `trending` drives the hero + first rail (popularity-ranked).
-  return { trending: popular, popular: [], topRated, favourites: [], manhwa, action, romance, fantasy, comedy };
+// Broad pool across all three formats, deduped, ranked by recency, sliced to rails.
+async function fetchFromMangaBaka() {
+  const reqs = [];
+  for (const type of MB_TYPES) for (const q of MB_TOKENS) reqs.push(mbSearchRaw(q, type).catch(() => []));
+  const batches = await Promise.all(reqs);
+  const seen = new Set();
+  const pool = [];
+  for (const arr of batches) for (const it of arr) if (it && !seen.has(it.id)) { seen.add(it.id); pool.push(it); }
+  if (!pool.length) throw new Error('MangaBaka returned nothing');
+  pool.sort((a, b) => mbRecency(b) - mbRecency(a));
+  const ofType = (t, n = 22) => pool.filter((x) => x.type === t).slice(0, n).map(normalizeMB);
+  const ofGenre = (g, n = 22) => pool
+    .filter((x) => (Array.isArray(x.genres) ? x.genres : [])
+      .some((gg) => String(gg).toLowerCase().includes(g.toLowerCase())))
+    .slice(0, n).map(normalizeMB);
+  return {
+    trending: pool.slice(0, 24).map(normalizeMB),
+    manhwa: ofType('manhwa'),
+    manhua: ofType('manhua'),
+    manga: ofType('manga'),
+    action: ofGenre('Action'),
+    romance: ofGenre('Romance'),
+    fantasy: ofGenre('Fantasy'),
+  };
 }
 
 function anilistTitle(item) {
@@ -256,7 +299,7 @@ function heroCard(item) {
   for (const g of genres) chips.push(chip(g));
 
   const info = el('div', { class: 'discover-hero-info' },
-    el('div', { class: 'discover-hero-eyebrow' }, 'Top trending'),
+    el('div', { class: 'discover-hero-eyebrow' }, 'Trending'),
     el('h1', { class: 'discover-hero-title', title }, title),
     chips.length ? el('div', { class: 'chips' }, ...chips) : null,
     el('div', { class: 'discover-hero-actions' },
