@@ -2,7 +2,7 @@
 //
 // The shared, read-only catalog (catalog/popular/latest/search/details/pages
 // + the /image proxy) is served by the hosted parser helper at
-// NYORA_HELPER_URL (https://api.hasanraza.tech). Those calls hit the helper
+// NYORA_HELPER_URL (https://api.nyora.xyz). Those calls hit the helper
 // FIRST and fall back to the in-browser web parsers (core/parser-runtime.js)
 // only when the helper is unreachable. Every method returns parsed JSON and
 // THROWS Error(data.error || status) on failure.
@@ -108,7 +108,7 @@ function ensureOk(res, data) {
 // ---- hosted helper (api.hasanraza.tech) --------------------------------
 // Absolute base of the hosted parser helper, trailing slash trimmed.
 function helperBase() {
-  const u = globalThis.NYORA_HELPER_URL || 'https://api.hasanraza.tech';
+  const u = globalThis.NYORA_HELPER_URL || 'https://api.nyora.xyz';
   return String(u).replace(/\/+$/, '');
 }
 

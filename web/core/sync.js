@@ -11,7 +11,7 @@ import library from './library.js';
 import { sourcePrefRows, applySourcePrefRows } from './parser-runtime.js';
 
 export const SYNC_CONFIG = {
-  syncUrl: String(globalThis.NYORA_SYNC_URL || 'https://stream.hasanraza.tech').replace(/\/+$/, ''),
+  syncUrl: String(globalThis.NYORA_SYNC_URL || 'https://sync.nyora.xyz').replace(/\/+$/, ''),
 };
 
 const SESSION_KEY = 'nyora.sync.session.v1';

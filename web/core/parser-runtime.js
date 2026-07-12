@@ -8,7 +8,7 @@
 
 const SOURCE_PREFS_KEY = 'nyora.webParser.sources';
 const SOURCE_PREFS_VERSION = 5;
-const HELPER_URL = ((typeof globalThis !== 'undefined' && globalThis.NYORA_HELPER_URL) || 'https://api.hasanraza.tech').replace(/\/+$/, '');
+const HELPER_URL = ((typeof globalThis !== 'undefined' && globalThis.NYORA_HELPER_URL) || 'https://api.nyora.xyz').replace(/\/+$/, '');
 const DEFAULT_PINNED = ['ASURASCANS_US', 'MANGANATO_GG', 'NYXSCANS', 'DANKE', 'VORTEXSCANS'];
 const DEFAULT_INSTALLED = ['ASURASCANS_US', 'MANGANATO_GG', 'NYXSCANS', 'DANKE', 'VORTEXSCANS', 'TOONGOD'];
 
