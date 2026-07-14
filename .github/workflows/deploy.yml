@@ -53,13 +53,18 @@ jobs:
             -e "ssh -i ~/.ssh/id_ed25519 -o IdentitiesOnly=yes" \
             dist/ "${DEPLOY_USER}@${DEPLOY_HOST}:${DEPLOY_PATH}/"
 
-      - name: Smoke check (live site responds)
+      - name: Smoke check (both hosts respond)
         run: |
-          for i in 1 2 3 4 5; do
-            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 https://web.nyora.xyz/ || true)
-            echo "attempt $i → HTTP $code"
-            [ "$code" = "200" ] && exit 0
-            sleep 3
-          done
-          echo "::error::web.nyora.xyz did not return 200 after deploy"
-          exit 1
+          check() {
+            for i in 1 2 3 4 5; do
+              code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 "$1" || true)
+              echo "  $1 attempt $i → HTTP $code"
+              [ "$code" = "200" ] && return 0
+              sleep 3
+            done
+            echo "::error::$1 did not return 200 after deploy"
+            return 1
+          }
+          # The VM web root serves the app at web.nyora.xyz and the legacy
+          # nyoramanga.hasanraza.tech (which redirects here), so one deploy covers both.
+          check https://web.nyora.xyz/ && check https://nyoramanga.hasanraza.tech/
