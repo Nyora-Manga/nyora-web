@@ -60,7 +60,7 @@ Nyora Web is the browser-native edition of Nyora — a free, ad-free, open-sourc
 
 | Pillar | What it means on Web |
 |---|---|
-| **Sources** | ~960 online sources — manga, manhwa and manhua — served by the **Nyora helper** (the Kotatsu parser engine), so every source stays current with no client-side scraper to maintain. |
+| **Sources** | Hundreds of live, health-checked sources — manga, manhwa and manhua — served by the **Nyora helper** (the Kotatsu parser engine). The web helper runs on a shared server, so Cloudflare-walled / dead sources are filtered out (~390 of the ~960 catalogue); the **full ~960** is available in the native apps, which parse on-device. |
 | **Reader** | A polished standard and webtoon reader (LTR, RTL or continuous vertical) with per-title settings, favourites in custom categories, and full reading history. |
 | **Sync** | Free Nyora Cloud sync of your library and source preferences via an email + password account, plus AniList tracking driven directly from the browser. |
 | **Self-host** | Deploy anywhere static — Cloudflare Pages, Netlify, your own box, a USB stick. Own your reader end to end. |
@@ -106,7 +106,7 @@ Nyora Web is the browser-native edition of Nyora — a free, ad-free, open-sourc
 
 ### Sources & Discovery
 
-Nyora Web reads from the catalogue of **~960 online sources** spanning manga, manhwa and manhua through the **Nyora helper** — the [Kotatsu](https://github.com/KotatsuApp/kotatsu-parsers) engine at `api.nyora.xyz`, the same content backend the native apps and SDKs use — so sources stay current without shipping fragile scrapers to the browser. Dead / Cloudflare-walled sources are filtered out, leaving the live, health-checked set. (A dormant in-browser parser fallback ships for offline resilience but is not the primary path.)
+Nyora Web reads through the **Nyora helper** — the [Kotatsu](https://github.com/KotatsuApp/kotatsu-parsers) engine at `api.nyora.xyz`, the same content backend the native apps and SDKs use — so sources stay current without shipping fragile scrapers to the browser. Because the web helper runs on a **shared server** (a datacenter IP), sources that only serve a real browser or residential IP — the **Cloudflare-walled** ones — plus dead upstreams are **filtered out**, leaving **hundreds of live, health-checked sources** (currently ~390 of the ~960-source catalogue). The **full ~960 catalogue is available in the native apps**, which parse on your device (and use a device relay) to reach the Cloudflare-walled sources a hosted server can't. (A dormant in-browser parser fallback ships for offline resilience but is not the primary path.)
 
 ### Reader
 
@@ -144,7 +144,8 @@ What the browser edition does and does not do, at a glance. "—" means the capa
 
 | Capability | Nyora Web |
 |---|---|
-| ~960 sources via the Nyora helper (Kotatsu engine) | ✓ |
+| Hundreds of live sources via the Nyora helper (Kotatsu engine) | ✓ |
+| Full ~960-source catalogue (Cloudflare-walled sources included) | — |
 | Same content backend as the native apps & SDKs | ✓ |
 | Standard + webtoon reader (LTR / RTL / vertical) | ✓ |
 | Per-title reading settings | ✓ |
@@ -163,6 +164,7 @@ Nyora Web is deliberately a pure client-side reader. Honest constraints to know 
 
 - **No AI page translation.** Whole-page OCR + translation is not part of the web client; it lives in Nyora's native apps. Sign in with the same Nyora Cloud account there and your web library carries over.
 - **No chapter downloads beyond the app shell.** Offline support means the cached PWA app shell and bundled parser fallbacks — not saved chapters. There is no per-chapter download or CBZ export in the browser; use a native app for true offline reading.
+- **Not every source works on the web.** The hosted web helper runs on a shared server (a datacenter IP), so **Cloudflare-walled** sources — the ones that only answer a real browser or residential IP — and dead upstreams are filtered out. The web shows the **live, health-checked subset** (~390 of the ~960-source catalogue). The **full ~960** is reachable in the **native apps**, which parse on your own device (and use a device relay) to get past Cloudflare. Same account, same library — just more sources on native.
 - **Some sources need the proxy.** Manga sites frequently omit CORS headers, so HTML and images for those sources route through the Cloudflare Worker. The app always tries a direct fetch first and only falls back to the worker when required.
 - **Sign-in is email + password.** Nyora Cloud accounts use an email and password (no Google OAuth), so sign-in is not tied to a registered origin and works wherever the app is served.
 
@@ -175,7 +177,7 @@ Real screenshots from the app — both **light and dark** themes, responsive acr
 | Discover | Explore sources |
 |:-:|:-:|
 | ![Discover — desktop, dark](docs/screenshots/desktop/discover-dark.png) | ![Explore — desktop, dark](docs/screenshots/desktop/explore-dark.png) |
-| **Discover** — trending & popular rails on load. | **Explore** — ~960 sources by language. |
+| **Discover** — trending & popular rails on load. | **Explore** — hundreds of live sources by language. |
 
 | Title & chapters | Global search |
 |:-:|:-:|
