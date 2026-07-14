@@ -9,9 +9,8 @@
 // uses, packs them into a CBZ/ZIP with core/zip.js, and keeps them for offline
 // reading in IndexedDB (and/or saves the file straight to the device).
 //
-// It works identically on Netlify (JS parsers + Cloudflare proxy) and the local
-// JVM jar, because it only depends on api.pages() and the image proxy URL —
-// both already function in every deployment.
+// It works the same in every deployment, because it only depends on api.pages()
+// and the helper's image proxy URL — both always available via the Nyora helper.
 //
 // DESIGN
 // ------

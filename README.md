@@ -45,12 +45,12 @@ Open-source and auditable · no ads · no tracking · your library stays yours.
 
 ## About
 
-Nyora Web is the browser-native edition of Nyora — a free, ad-free, open-source manga, manhwa and manhua reader. No app store, no download, no sign-up wall: open a tab and you are reading, on a laptop, a phone, or anything with a modern browser. It is a lightweight **browser client over the Nyora helper** — the same [Kotatsu](https://github.com/KotatsuApp/kotatsu-parsers) parser engine (`api.nyora.xyz`) that powers every Nyora platform — so the source catalogue, search and reading stay current with **no scraper to maintain in the browser**. The UI, your library and reading state run on your device. Add it to your home screen and Nyora becomes a real PWA with an offline app shell. Create a free Nyora Cloud account with an email and password and your library and source preferences follow you to every other Nyora platform. The server-side pieces are the shared **Nyora helper** (used by every platform), an optional image/CORS proxy, and — only if you sign in — the Nyora Cloud sync backend; the app itself is just static files you can host anywhere.
+Nyora Web is the browser-native edition of Nyora — a free, ad-free, open-source manga, manhwa and manhua reader. No app store, no download, no sign-up wall: open a tab and you are reading, on a laptop, a phone, or anything with a modern browser. It is a lightweight **browser client over the Nyora helper** — the same [Kotatsu](https://github.com/KotatsuApp/kotatsu-parsers) parser engine (`api.nyora.xyz`) that powers every Nyora platform — so the source catalogue, search and reading stay current with **no scraper to maintain in the browser**. The UI, your library and reading state run on your device. Add it to your home screen and Nyora becomes a real PWA with an offline app shell. Create a free Nyora Cloud account with an email and password and your library and source preferences follow you to every other Nyora platform. The server-side pieces are the shared **Nyora helper** (used by every platform — it also sends permissive CORS and proxies images), and — only if you sign in — the Nyora Cloud sync backend; the app itself is just static files you can host anywhere.
 
 ## Why you'll love it
 
 - **Nothing to install.** It's a website. Click the link and you're reading in seconds — no store, no APK, no Gatekeeper prompt. Want an app icon? Add it to your home screen and it behaves like a native app.
-- **No ads, ever. No tracking, ever.** There is no advertising SDK and no telemetry pipeline anywhere in the code. The app talks only to the sources you browse, an optional image proxy, and — only if *you* sign in — Nyora Cloud for sync.
+- **No ads, ever. No tracking, ever.** There is no advertising SDK and no telemetry pipeline anywhere in the code. The app talks only to the Nyora helper (for source content and images), and — only if *you* sign in — Nyora Cloud for sync.
 - **No account to read.** Open the app and start. Sign-in is entirely optional and exists for one reason: syncing your library across your devices.
 - **Your library is yours.** Reading state lives on your device, and — if you sign in — in your own account on Nyora Cloud, a self-hosted sync backend. Nothing else about what you read is collected.
 - **Auditable and yours to keep.** Apache-2.0, original code, built from scratch. You can read every line, fork it, or self-host the whole thing — even off a USB stick.
@@ -63,7 +63,7 @@ Nyora Web is the browser-native edition of Nyora — a free, ad-free, open-sourc
 | **Sources** | Hundreds of live, health-checked sources — manga, manhwa and manhua — served by the **Nyora helper** (the Kotatsu parser engine). The web helper runs on a shared server, so Cloudflare-walled / dead sources are filtered out (~390 of the ~960 catalogue); the **full ~960** is available in the native apps, which parse on-device. |
 | **Reader** | A polished standard and webtoon reader (LTR, RTL or continuous vertical) with per-title settings, favourites in custom categories, and full reading history. |
 | **Sync** | Free Nyora Cloud sync of your library and source preferences via an email + password account, plus AniList tracking driven directly from the browser. |
-| **Self-host** | Deploy anywhere static — Cloudflare Pages, Netlify, your own box, a USB stick. Own your reader end to end. |
+| **Self-host** | Deploy anywhere static — a plain web server, your own box, a USB stick. Own your reader end to end. |
 | **Open Source** | Free, ad-free, no tracking, no accounts needed to read. Apache-2.0, auditable, built from scratch. |
 
 > Want whole-page AI translation and offline chapter downloads / CBZ? Those engines live in Nyora's native apps — grab one from the [platform table below](#nyora-on-every-platform) and your synced library comes right along.
@@ -126,9 +126,7 @@ Add Nyora to your home screen or install it from your browser and it becomes a r
 
 ### Self-Hosting
 
-Nyora Web is **just static files**, so it deploys **anywhere static** — a plain web server, Cloudflare Pages, Netlify, GitHub-style static hosts, your own box, or even a USB stick. The one server-side dependency is the **Nyora helper** (`api.nyora.xyz`) — it serves the source content, sends permissive CORS, and proxies cover/page images through its own `/image` endpoint, so the browser talks only to the helper and needs no separate CORS proxy. Point the SPA at your own helper and you own the reader end to end. See [Build from Source](#build-from-source) for the exact commands.
-
-> A standalone Cloudflare Worker CORS/image proxy still lives in `cloudflare-worker/`, but it's **legacy** — it was needed back when parsing ran in the browser. The hosted app and the helper-based self-host do **not** use it.
+Nyora Web is **just static files**, so it deploys **anywhere static** — a plain web server, Cloudflare Pages, GitHub-style static hosts, your own box, or even a USB stick. The one server-side dependency is the **Nyora helper** (`api.nyora.xyz`) — it serves the source content, sends permissive CORS, and proxies cover/page images through its own `/image` endpoint, so the browser talks only to the helper and needs no separate CORS proxy. Point the SPA at your own helper and you own the reader end to end. See [Build from Source](#build-from-source) for the exact commands.
 
 Prefer a **one-command, fully-local Docker deployment** — the SPA plus a bundled parser **helper** in one container, with no Cloudflare Worker to run? Use **[nyora-selfhost](https://github.com/Hasan72341/nyora-selfhost)**: `docker compose up` and open `localhost:8080`.
 
@@ -272,13 +270,11 @@ Nyora Web is static — you can serve the `web/` directory with anything.
 cd web && python3 -m http.server 3000   # → http://127.0.0.1:3000
 ```
 
-Use `127.0.0.1:3000` for local development. Any static host works in production — a plain web server, Cloudflare Pages, Netlify, and similar.
+Use `127.0.0.1:3000` for local development. Any static host works in production — a plain web server, Cloudflare Pages, and similar.
 
 ### Point it at a helper
 
 The SPA reads all content and images from the **Nyora helper**, configured in `web/env.js` (`NYORA_HELPER_URL`, default `https://api.nyora.xyz`). The helper handles CORS and the `/image` proxy, so **there is no separate proxy to deploy**. To self-host the helper itself, see [`nyora-selfhost`](https://github.com/Hasan72341/nyora-selfhost) (SPA + bundled helper in one container).
-
-> The legacy Cloudflare Worker in `cloudflare-worker/` (`npx wrangler deploy`) is only for setups that run the in-browser parser fallback instead of the helper. The hosted app does not use it.
 
 ## Tech Stack
 
@@ -289,7 +285,7 @@ The SPA reads all content and images from the **Nyora helper**, configured in `w
 
 - **TypeScript / JavaScript** — the entire SPA is plain client-side JavaScript/TypeScript (no framework), reading content from the Nyora helper over REST; a dormant in-browser parser runtime ships as an offline fallback.
 - **PWA** — an installable Progressive Web App with a cached, offline-capable app shell.
-- **Nyora helper** — the Kotatsu parser engine over REST (`api.nyora.xyz`); it serves source content, sends permissive CORS, and proxies images via `/image`, so the SPA needs no separate CORS proxy. (A legacy Cloudflare Worker proxy remains in `cloudflare-worker/` but is unused by the hosted app.)
+- **Nyora helper** — the Kotatsu parser engine over REST (`api.nyora.xyz`); it serves source content, sends permissive CORS, and proxies images via `/image`, so the SPA needs no separate CORS proxy.
 - **Nyora Cloud** — a self-hosted FastAPI backend providing email + password authentication (OAuth2 + JWT) and per-row library and source-preference sync.
 
 ## Architecture
@@ -297,7 +293,6 @@ The SPA reads all content and images from the **Nyora helper**, configured in `w
 ```
 web/                  ← the SPA (deployed)
   core/               ← api · parser-runtime · sync · ui · library · store
-cloudflare-worker/    ← legacy CORS / image proxy (unused by the hosted app)
 ```
 
 - **Content via the Nyora helper.** `core/api.js` reads the catalogue, search, details and pages from the Nyora helper (the Kotatsu engine). `core/parser-runtime.js` + `web-parsers/` remain as a dormant client-side fallback for offline resilience.
@@ -387,7 +382,6 @@ cd web && python3 -m http.server 3000   # → http://127.0.0.1:3000
 - Open **`http://127.0.0.1:3000`** (use `127.0.0.1`, not `localhost`, for local development). Sign-in is optional; everything except cross-device sync works without it.
 - The app is authored as **unbundled ES modules**, so you just edit a file under `web/` and reload the tab — there is no watcher or compile step to run.
 - `build.mjs` (run via `npm run build`, requires Node + esbuild) bundles `web/` into `dist/` for production. **You don't need it for development** — it's only for shipping.
-- The `cloudflare-worker/` directory is a **legacy** CORS/image proxy from the old in-browser-parser architecture; the current app relies on the Nyora helper instead and does not use it.
 
 **Where to look first:** start at `web/app.js` (the entry point) and `web/screens/` (one file per screen). To touch source parsing, head to `web/core/web-parsers/`.
 
@@ -416,8 +410,6 @@ web/
       index.js            ← registers every parser family
       sources.json        ← the source catalogue (one entry per site)
       madara.js · mangareader.js · … ← one file per family
-cloudflare-worker/
-  worker.js               ← legacy CORS + image proxy (unused; helper does this now)
 ```
 
 ### Good first contributions

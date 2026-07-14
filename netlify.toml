@@ -1,9 +1,0 @@
-# Nyora Web — a 100% client-side SPA. Manga parsing runs entirely in the
-# browser (core/parser-runtime.js + OTA parser bundles); the only external
-# services are the Cloudflare CORS/image worker (see cloudflare-worker/, used
-# cross-origin) and AniList's CORS-enabled GraphQL API. There is no backend,
-# so there are no proxy rewrites here — just static publishing. The SPA
-# fallback lives in web/_redirects.
-
-[build]
-  publish = "web"
