@@ -232,6 +232,26 @@ export const library = {
     save();
   },
 
+  // Backfill/replace a favourite's cover (the source's `details` often omits the
+  // cover, so the library screen resolves it from search and persists it here).
+  setFavouriteCover(mangaOrId, coverUrl, title) {
+    const id = asMangaId(mangaOrId);
+    const rec = id && _data.favourites[id];
+    if (!rec || !rec.manga) return false;
+    let changed = false;
+    if (coverUrl && !(rec.manga.coverUrl || rec.manga.largeCoverUrl)) {
+      rec.manga.coverUrl = coverUrl;
+      rec.manga.largeCoverUrl = rec.manga.largeCoverUrl || coverUrl;
+      changed = true;
+    }
+    if (title && (!rec.manga.title || rec.manga.title === 'Untitled')) {
+      rec.manga.title = title;
+      changed = true;
+    }
+    if (changed) save();
+    return changed;
+  },
+
   // ====================================================================
   // History
   // ====================================================================

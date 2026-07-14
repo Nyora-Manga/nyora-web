@@ -8,7 +8,7 @@
 
 import { api } from '../core/api.js';
 import {
-  el, card, btn, spinner, emptyState, errorBox, langLabel, langCode, languageOptions,
+  el, card, spinner, emptyState, errorBox, langLabel, langCode, languageOptions,
 } from '../core/ui.js';
 import { router, store } from '../core/store.js';
 
@@ -49,23 +49,8 @@ export function render(view, params) {
 
   const title = el('h1', { class: 'page-title', style: { marginBottom: '8px' } },
     query ? `Results for “${query}”` : 'Global Search');
-  const searchInput = el('input', {
-    id: 'searchPageInput', type: 'search', value: query,
-    placeholder: 'Search all sources', autocomplete: 'off', enterkeyhint: 'search',
-  });
-  const searchForm = el('form', {
-    class: 'search-page-header',
-    onSubmit: (e) => {
-      e.preventDefault();
-      const next = searchInput.value.trim();
-      router.navigate('search', next ? { q: next } : undefined);
-    },
-  },
-    el('div', { class: 'search-field-v2' },
-      btn('Search', { variant: 'accent', class: 'btn-sm', type: 'submit' }),
-      searchInput,
-    ),
-  );
+  // No in-page search field — the global top-bar search (#searchInput) is the
+  // single entry; it's prefilled with the active query below so you refine there.
 
   // Language filter row. The <select> is populated once sources load; changing
   // it re-runs the current search over just that language's sources.
@@ -86,11 +71,16 @@ export function render(view, params) {
   const status = el('div', { class: 'search-status', style: { marginBottom: '24px' } });
   const results = el('div', { class: 'search-results' });
 
-  view.append(title, searchForm, filters, status, results);
+  view.append(title, filters, status, results);
+  // Drive the global top-bar search: reflect the active query there so it reads
+  // as "the" search field, and focus it (caret at end) for quick refining.
   requestAnimationFrame(() => {
-    if (!query || document.body.dataset.route === 'search') {
-      searchInput.focus({ preventScroll: true });
-      try { searchInput.setSelectionRange(searchInput.value.length, searchInput.value.length); } catch { /* ignore */ }
+    const top = document.getElementById('searchInput');
+    if (!top) return;
+    top.value = query;
+    if (!query) {
+      top.focus({ preventScroll: true });
+      try { top.setSelectionRange(top.value.length, top.value.length); } catch { /* ignore */ }
     }
   });
 
@@ -125,6 +115,7 @@ export function render(view, params) {
   }
 
   function updateProgress() {
+    if (searchCache && searchCache.query === query) { searchCache.hits = runState.hits; searchCache.total = runState.total; }
     if (runState.done < runState.total) {
       status.replaceChildren(
         spinner(),
@@ -164,7 +155,11 @@ export function render(view, params) {
       const res = await withTimeout(api.search(src.id, query, 1), PER_SOURCE_TIMEOUT);
       if (token !== runState.token) return;
       const list = ((res && res.entries) || []).slice(0, PER_SOURCE_LIMIT);
-      if (list.length) { runState.hits++; appendResultSection(src, list); }
+      if (list.length) {
+        runState.hits++;
+        appendResultSection(src, list);
+        if (searchCache && searchCache.query === query) searchCache.items.push({ src, list });
+      }
     } catch {
       // Failed / blocked / timed-out source — skip silently (don't clutter with
       // an error card per dead source when searching hundreds).
@@ -183,6 +178,7 @@ export function render(view, params) {
   async function runSearch() {
     const token = ++runState.token;
     runState.total = 0; runState.done = 0; runState.hits = 0;
+    searchCache = { query, items: [], hits: 0, total: 0 }; // fresh cache for this run
     results.replaceChildren();
     status.replaceChildren(spinner(), el('span', null, 'Loading sources…'));
 
@@ -229,7 +225,24 @@ export function render(view, params) {
     if (token === runState.token) updateProgress();
   }
 
-  if (query) runSearch(); else renderEmpty();
+  // Restore the last search's streamed results instantly on back-navigation —
+  // no refetch, so the streamed grid + scroll position come back intact.
+  function restoreSearchResults() {
+    results.replaceChildren();
+    for (const it of searchCache.items) appendResultSection(it.src, it.list);
+    status.replaceChildren(el('span', { class: 'chip' },
+      searchCache.hits > 0
+        ? `Found matches in ${searchCache.hits} of ${searchCache.total} sources`
+        : `No matches found for “${query}”`));
+    ensureSources().then(populateLangSelect).catch(() => { /* keep default dropdown */ });
+  }
+
+  if (query && searchCache && searchCache.query === query && searchCache.items.length) restoreSearchResults();
+  else if (query) runSearch();
+  else renderEmpty();
 }
+
+// Persists the last query's streamed results across re-renders (back-navigation).
+let searchCache = null;
 
 export default { meta, render };

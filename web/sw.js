@@ -7,10 +7,15 @@
  *   - proxied cover/page images               -> cache-first (immutable-ish)
  *   - everything else / API                   -> network-first, cache fallback
  */
-const VERSION = 'nyora-v2.1.2';
+const VERSION = 'nyora-v2.2.1';
 const SHELL = `${VERSION}-shell`;
 const RUNTIME = `${VERSION}-runtime`;
 const IMAGES = `${VERSION}-img`;
+const API = `${VERSION}-api`;
+
+// Helper-API hosts (page lists, chapter lists, details). Caching their GET
+// responses network-first lets a previously-opened chapter reopen offline.
+const API_HOST = /(?:^|\.)nyora\.xyz$/;
 
 const SHELL_ASSETS = [
   '/',
@@ -21,6 +26,10 @@ const SHELL_ASSETS = [
   '/core/motion.js',
   '/vendor/gsap.min.js',
   '/icon.png',
+  '/icon-192.png',
+  '/icon-512.png',
+  '/favicon.svg',
+  '/apple-touch-icon.png',
   '/manifest.webmanifest',
 ];
 
@@ -62,6 +71,31 @@ function cacheFirst(request, cacheName) {
   );
 }
 
+// Cache-first for page/cover images, INCLUDING cross-origin opaque responses
+// (a cross-origin <img> fetch is no-cors → opaque, status 0). A direct load that
+// actually succeeded is exactly the byte stream we want to replay offline; a
+// direct load that FAILED made the app fall back to the /image proxy URL (cached
+// separately, validated), so a stale broken opaque entry is simply never
+// re-requested. This is what makes already-viewed chapters read offline.
+function cacheFirstImage(request, cacheName) {
+  return caches.open(cacheName).then((cache) =>
+    cache.match(request).then((cached) => cached || fetch(request).then((res) => {
+      if (res && (res.ok || res.type === 'opaque')) cache.put(request, res.clone());
+      return res;
+    }).catch(() => cached)),
+  );
+}
+
+// Network-first with cache fallback — fresh when online, last-seen when offline.
+function networkFirst(request, cacheName) {
+  return caches.open(cacheName).then((cache) =>
+    fetch(request).then((res) => {
+      if (res && res.ok) cache.put(request, res.clone());
+      return res;
+    }).catch(() => cache.match(request)),
+  );
+}
+
 self.addEventListener('fetch', (event) => {
   const { request } = event;
   if (request.method !== 'GET') return;
@@ -74,8 +108,14 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Cross-origin: pass through (proxy HTML fetches, etc.).
-  if (!sameOrigin) return;
+  // Cross-origin: cache what makes chapters readable offline.
+  if (!sameOrigin) {
+    // Page & cover images straight from source / AniList CDNs.
+    if (request.destination === 'image') { event.respondWith(cacheFirstImage(request, IMAGES)); return; }
+    // Helper API (page lists, chapter lists, details) → network-first, offline fallback.
+    if (API_HOST.test(url.hostname)) { event.respondWith(networkFirst(request, API)); return; }
+    return; // everything else passes through
+  }
 
   // App shell navigations -> shell cache, fall back to index for SPA routes.
   if (request.mode === 'navigate') {
@@ -86,7 +126,7 @@ self.addEventListener('fetch', (event) => {
   }
 
   // Static app modules -> stale-while-revalidate.
-  if (/\.(?:js|css|json|webmanifest|png|svg|woff2?)$/.test(url.pathname) || url.pathname === '/') {
+  if (/\.(?:js|css|json|webmanifest|png|svg|ico|woff2?)$/.test(url.pathname) || url.pathname === '/') {
     event.respondWith(staleWhileRevalidate(request, RUNTIME));
     return;
   }

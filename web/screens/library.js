@@ -11,7 +11,7 @@ import {
 } from '../core/ui.js';
 import library from '../core/library.js';
 import { api } from '../core/api.js';
-import { router } from '../core/store.js';
+import { router, store } from '../core/store.js';
 import { render as downloadsRender } from './downloads.js';
 
 export const meta = { title: 'Library', nav: true, icon: 'library', order: 10 };
@@ -189,6 +189,75 @@ export function render(view, params) {
       );
     }
     gridHost.replaceChildren(grid);
+
+    // The source `details` endpoint often returns no cover, so favourites can be
+    // stored cover-less (blank tile). Resolve the cover from the source's search
+    // (which DOES include covers), persist it, and repaint — once, in background.
+    const missing = entries.filter((m) => !m.coverUrl && !m.largeCoverUrl);
+    if (missing.length && !renderGrid._backfilling) {
+      renderGrid._backfilling = true;
+      backfillCovers(missing).then((changed) => {
+        renderGrid._backfilling = false;
+        if (changed && gridHost.isConnected) renderGrid();
+      }).catch(() => { renderGrid._backfilling = false; });
+    }
+  }
+
+  // Resolve missing favourite covers via the source search (matched by URL, then
+  // by exact title) and persist them. Best-effort + capped so it never hammers.
+  async function backfillCovers(entries) {
+    let changed = false;
+    const norm = (t) => (t || '').trim().toLowerCase();
+    // Ensure the installed-source list is loaded, or resolveSid() can't map a
+    // favourite to its source id and the popular/latest fetch is skipped.
+    if (!state.sources || !state.sources.length) {
+      try { state.sources = (await installedSources()) || []; } catch { /* ignore */ }
+    }
+    // Group the cover-less favourites by source; resolve the free cache first.
+    const bySid = new Map();
+    for (const m of entries) {
+      const needCover = !m.coverUrl && !m.largeCoverUrl;
+      const needTitle = !m.title || m.title === 'Untitled';
+      if (!needCover && !needTitle) continue;
+      // 1) Free: the persisted grid cache (cover + title, populated by browsing).
+      const c = store.cachedManga(m.url) || {};
+      const gotCover = c.coverUrl || c.largeCoverUrl;
+      const gotTitle = c.title;
+      if ((gotCover || gotTitle) && library.setFavouriteCover(m, gotCover, (gotTitle || '').trim())) changed = true;
+      // 2) Still missing → fetch from the source's popular/latest below.
+      if ((needCover && !gotCover) || (needTitle && !gotTitle)) {
+        const sid = resolveSid(m, state.sources);
+        if (!sid) continue;
+        if (!bySid.has(sid)) bySid.set(sid, []);
+        bySid.get(sid).push(m);
+      }
+    }
+    // For each source: scan popular + latest (page 1) into url/title → cover maps,
+    // then targeted search for anything still missing. Covers live in these lists
+    // even though the `details` endpoint omits them.
+    for (const [sid, list] of bySid) {
+      const byUrl = new Map(); const byTitle = new Map();
+      const collect = (res) => {
+        for (const e of ((res && res.entries) || [])) {
+          if (e.url && !byUrl.has(e.url)) byUrl.set(e.url, e);
+          if (e.title && !byTitle.has(norm(e.title))) byTitle.set(norm(e.title), e);
+        }
+      };
+      try { collect(await api.popular(sid, 1)); } catch { /* skip */ }
+      try { collect(await api.latest(sid, 1)); } catch { /* skip */ }
+      for (const m of list) {
+        let hit = byUrl.get(m.url) || (m.title && byTitle.get(norm(m.title)));
+        if (!hit && m.title) {
+          try { collect(await api.search(sid, m.title, 1)); hit = byUrl.get(m.url) || byTitle.get(norm(m.title)); }
+          catch { /* skip */ }
+        }
+        if (hit) {
+          const cover = hit.coverUrl || hit.largeCoverUrl;
+          if (library.setFavouriteCover(m, cover, (hit.title || '').trim())) changed = true;
+        }
+      }
+    }
+    return changed;
   }
 
   function renderEmpty() {

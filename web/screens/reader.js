@@ -112,6 +112,9 @@ export function render(view, params) {
   const sid = params && params.sid;
   const mangaUrl = params && params.url;
   const startChapterUrl = params && params.chapterUrl;
+  // Resume coordinate: History / Bookmarks pass the last-read page. Applied once,
+  // to the chapter the reader opens on (chapter turns always start at page 0).
+  const startPage = Math.max(0, parseInt(params && params.page, 10) || 0);
 
   if (view.__readerTeardown) {
     try { view.__readerTeardown(); } catch { /* ignore */ }
@@ -154,6 +157,13 @@ export function render(view, params) {
   // > 100 are legacy pixel widths (e.g. 880/1200) — migrate them to the default.
   const clampWidth = (v) => { v = Number(v); return (!v || v > 100) ? 70 : Math.max(30, Math.min(100, Math.round(v))); };
   let webtoonWidth = clampWidth(gp.webtoonWidth);
+  // On phones the reader area is already narrow, so the full column width is the
+  // sensible default — anything less just wastes screen. When still on the global
+  // default (70%), snap webtoon to 100% on phone; an explicit per-manga width
+  // (applied below) or a user-dragged value is still honoured.
+  const isPhone = typeof window !== 'undefined' && !!window.matchMedia
+    && window.matchMedia('(max-width: 760px)').matches;
+  if (isPhone && webtoonWidth === 70) webtoonWidth = 100;
 
   // Auto-scroll: a hands-free reading mode. In WEBTOON it drives a smooth,
   // time-based vertical scroll (px/sec by level); in PAGED/PAGED_RTL it auto-
@@ -169,6 +179,7 @@ export function render(view, params) {
 
   let scrollListener = null;
   let scrollTarget = null;
+  let zoomReset = null;   // paged-mode zoom controller's reset(), set per render
 
   // ── teardown / keyboard ────────────────────────────────────────────────
   function onKey(e) {
@@ -206,11 +217,30 @@ export function render(view, params) {
   }
 
   document.addEventListener('keydown', onKey);
+
+  // ── screen wake lock ─ keep the display awake while reading (best-effort) ────
+  // The OS releases the lock automatically when the tab is hidden, so re-acquire
+  // on visibilitychange. Silently no-ops where the API is unsupported/denied.
+  let wakeLock = null;
+  async function acquireWakeLock() {
+    try {
+      if ('wakeLock' in navigator && document.visibilityState === 'visible' && !st.destroyed) {
+        wakeLock = await navigator.wakeLock.request('screen');
+      }
+    } catch { /* denied / unsupported — ignore */ }
+  }
+  function releaseWakeLock() { try { if (wakeLock) wakeLock.release(); } catch { /* ignore */ } wakeLock = null; }
+  function onVisibility() { if (document.visibilityState === 'visible') acquireWakeLock(); }
+  document.addEventListener('visibilitychange', onVisibility);
+  acquireWakeLock();
+
   function teardown() {
     st.destroyed = true;
     document.removeEventListener('keydown', onKey);
     document.removeEventListener('fullscreenchange', onFullscreenChange);
     document.removeEventListener('webkitfullscreenchange', onFullscreenChange);
+    document.removeEventListener('visibilitychange', onVisibility);
+    releaseWakeLock();
     document.body.classList.remove('reader-active');
     document.body.classList.remove('reader-immersive');
     document.body.classList.remove('reader-fullscreen');
@@ -324,7 +354,7 @@ export function render(view, params) {
       st.index = st.chapters.findIndex((c) => c.url === st.chapterUrl);
       if (st.index < 0) st.index = 0;
       loadPrefs();
-      await loadPages(st.index);
+      await loadPages(st.index, startPage);
     } catch (e) {
       if (st.destroyed) return;
       view.replaceChildren(bar('top', true), errorBox(readerError(e, 'Could not load this chapter')));
@@ -351,7 +381,7 @@ export function render(view, params) {
     } catch { /* keep defaults */ }
   }
 
-  async function loadPages(chapterIndex) {
+  async function loadPages(chapterIndex, startPage = 0) {
     st.index = chapterIndex;
     if (st.index >= 0 && st.index < st.chapters.length) {
       st.chapterUrl = st.chapters[st.index].url;
@@ -363,8 +393,10 @@ export function render(view, params) {
       const data = await api.pages(st.sid, st.chapterUrl);
       if (st.destroyed) return;
       st.pages = data.pages || [];
+      // Resume to the requested page (clamped) — renderReader positions to it.
+      st.currentPage = Math.max(0, Math.min(st.pages.length - 1, Number(startPage) || 0));
       renderReader();
-      recordHistory(0);
+      recordHistory(st.currentPage);
       checkBookmark();
       maybePrefetch();
     } catch (e) {
@@ -540,6 +572,18 @@ export function render(view, params) {
     setPage(Math.max(0, Math.min(st.pages.length - 1, page)), true);
   }
 
+  // Tap the page counter → jump to any page (works in every mode; webtoon has no
+  // seek slider otherwise).
+  function promptJump() {
+    const total = st.pages.length;
+    if (!total) return;
+    const ans = window.prompt(`Go to page (1–${total})`, String(st.currentPage + 1));
+    if (ans == null) return;
+    const n = parseInt(ans, 10);
+    if (Number.isFinite(n) && n >= 1 && n <= total) jumpTo(n - 1);
+    else toast('Enter a page number in range.');
+  }
+
   // Reflect auto-scroll state on the top-bar toggle button (the on/off control)
   // and the speed slider in Settings (whichever are mounted).
   function syncAutoUi() {
@@ -616,6 +660,15 @@ export function render(view, params) {
     // many CDNs gate page images on it. Page-supplied headers win.
     const dom = st.manga && st.manga.source && st.manga.source.domain;
     const headers = Object.assign(dom ? { Referer: `https://${dom}/` } : {}, p.headers || {});
+    // On load, pin the real aspect-ratio (webtoon) so the reserved skeleton slot
+    // snaps to the exact height — no reflow of the pages below, so the scroll
+    // position, the X/Y counter and auto-scroll all stay stable.
+    img.addEventListener('load', () => {
+      img.classList.add('loaded');
+      if (mode === 'WEBTOON' && img.naturalWidth && img.naturalHeight) {
+        img.style.aspectRatio = `${img.naturalWidth} / ${img.naturalHeight}`;
+      }
+    }, { once: true });
     applyImage(img, p.url, headers, () => { img.replaceWith(brokenPage(p, i)); });
     const f = filterStr();
     if (f) img.style.filter = f;
@@ -719,8 +772,12 @@ export function render(view, params) {
       title: 'Next chapter (n)'
     }, icon('chevron'));
 
-    const counter = el('span', { class: 'reader-counter' },
-      `${st.currentPage + 1} / ${st.pages.length || 0}`);
+    const counter = el('span', {
+      class: 'reader-counter', role: 'button', tabindex: '0',
+      title: 'Go to page', 'aria-label': 'Go to page',
+      onClick: (e) => { e.stopPropagation(); promptJump(); },
+      onKeydown: (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); promptJump(); } },
+    }, `${st.currentPage + 1} / ${st.pages.length || 0}`);
 
     let slider = null;
     if (mode !== 'WEBTOON' && st.pages.length > 1) {
@@ -759,10 +816,31 @@ export function render(view, params) {
     $$('.reader-bm', view).forEach((n) => n.classList.toggle('active', st.bookmarked));
   }
 
+  // Horizontal swipe → prev/next chapter (WEBTOON only; paged already uses
+  // horizontal swipe to flip pages). A gesture counts when it's fast, clearly
+  // horizontal, and long enough — so it never fights the vertical page scroll.
+  function bindWebtoonSwipe(scrollEl) {
+    let x0 = 0, y0 = 0, t0 = 0, tracking = false;
+    scrollEl.addEventListener('touchstart', (e) => {
+      if (e.touches.length !== 1) { tracking = false; return; }
+      const t = e.touches[0]; x0 = t.clientX; y0 = t.clientY; t0 = Date.now(); tracking = true;
+    }, { passive: true });
+    scrollEl.addEventListener('touchend', (e) => {
+      if (!tracking) return; tracking = false;
+      const t = e.changedTouches[0];
+      const dx = t.clientX - x0, dy = t.clientY - y0, dt = Date.now() - t0;
+      if (dt < 600 && Math.abs(dx) > 80 && Math.abs(dx) > Math.abs(dy) * 2.2) {
+        if (dx < 0) goReadingChapter(1);   // swipe left  → next chapter
+        else goReadingChapter(-1);         // swipe right → previous chapter
+      }
+    }, { passive: true });
+  }
+
   // ── body renderers ─────────────────────────────────────────────────────────
   function renderReader() {
     // A running loop must not outlive the DOM it scrolls (mode/chapter change).
     cancelAutoLoop();
+    zoomReset = null;   // the previous render's zoom controller is gone
     if (scrollListener) { (scrollTarget || window).removeEventListener('scroll', scrollListener); scrollListener = null; scrollTarget = null; }
     if (!st.pages.length) {
       view.replaceChildren(bar('top', true), emptyState('This chapter returned no pages.'));
@@ -775,11 +853,21 @@ export function render(view, params) {
 
     if (mode === 'WEBTOON') {
       const reader = el('div', { class: 'reader webtoon' + (fit === 'HEIGHT' ? ' fit-height' : '') });
+      bindWebtoonSwipe(reader);
       st.pages.forEach((p, i) => reader.appendChild(pageImg(p, i)));
       reader.appendChild(endCard());
       readerView.append(progressBar(), bar('top'), reader, bar('bottom'));
       view.replaceChildren(readerView);
       installScrollSpy();
+      // Jump to the resume page (reserved aspect-ratios make positions valid
+      // before images load), then warm a window around it.
+      if (st.currentPage > 0) {
+        requestAnimationFrame(() => {
+          const node = $(`.reader.webtoon [data-page="${st.currentPage}"]`, view);
+          if (node) node.scrollIntoView({ block: 'start' });
+        });
+      }
+      eagerWebtoon(st.currentPage);
     } else {
       // Paged / Paged-RTL — a horizontal scroll-snap track: each page is a full
       // viewport slide. Native swipe + momentum on touch; RTL handled by dir.
@@ -805,6 +893,7 @@ export function render(view, params) {
       }, { passive: true });
       readerView.append(progressBar(), bar('top'), stage, bar('bottom'));
       view.replaceChildren(readerView);
+      attachPagedZoom(stage, track);
       goToSlide(st.currentPage, false);
       preloadAround(st.currentPage);
     }
@@ -863,6 +952,7 @@ export function render(view, params) {
           syncPosition();
           recordHistory(best);
           checkBookmark();
+          eagerWebtoon(best);
           if (best >= st.pages.length - 2) maybePrefetch();
         }
       });
@@ -875,19 +965,33 @@ export function render(view, params) {
   function goToSlide(i, smooth) {
     const track = $('.reader-paged-track', view);
     if (!track) return;
+    if (zoomReset) zoomReset();   // leave zoom before turning the page
     const slide = track.children[i];
     if (!slide) return;
     slide.scrollIntoView({ behavior: smooth ? 'smooth' : 'auto', inline: 'center', block: 'nearest' });
     preloadAround(i);
   }
 
-  // Eager-load the current page + its neighbours so a swipe never lands on blank.
+  // Eager-load the current page + a forward window so a swipe never lands on blank.
   function preloadAround(i) {
     const track = $('.reader-paged-track', view);
     if (!track) return;
-    for (let j = i - 1; j <= i + 1; j++) {
+    for (let j = i - 1; j <= i + 3; j++) {
       const img = track.children[j] && track.children[j].querySelector('img');
       if (img) img.loading = 'eager';
+    }
+  }
+
+  // Webtoon look-ahead: promote a window of upcoming pages from lazy → eager so
+  // fast scrolling doesn't outrun native lazy-loading and land on blanks.
+  function eagerWebtoon(center) {
+    const reader = $('.reader.webtoon', view);
+    if (!reader) return;
+    const from = Math.max(0, center - 1);
+    const to = Math.min(st.pages.length - 1, center + 4);
+    for (let j = from; j <= to; j++) {
+      const img = reader.querySelector(`img[data-page="${j}"]`);
+      if (img && img.loading === 'lazy') img.loading = 'eager';
     }
   }
 
@@ -904,12 +1008,127 @@ export function render(view, params) {
     }
     if (best !== st.currentPage) {
       st.currentPage = best;
+      if (zoomReset) zoomReset();
       syncPosition();
       recordHistory(best);
       checkBookmark();
       preloadAround(best);
       if (best >= st.pages.length - 2) maybePrefetch();
     }
+  }
+
+  // Paged-mode zoom: double-tap / double-click toggles 1×↔2.5× centred on the tap,
+  // pinch scales, and drag pans when zoomed. Swipe/tap-nav is suppressed while
+  // zoomed; zoom resets on every page turn. Sets `zoomReset` for external resets.
+  function attachPagedZoom(stage, track) {
+    let scale = 1, tx = 0, ty = 0;
+    const pointers = new Map();
+    let pinchDist = 0, pinchScale = 1, panLast = null;
+    let lastTapT = 0, lastTapX = 0, lastTapY = 0;
+
+    const curImg = () => {
+      const slide = track.children[st.currentPage];
+      return slide ? slide.querySelector('img') : null;
+    };
+    const apply = () => {
+      const img = curImg();
+      if (img) img.style.transform = scale > 1.01 ? `translate(${tx}px, ${ty}px) scale(${scale})` : '';
+      stage.classList.toggle('zoomed', scale > 1.01);
+      track.style.overflowX = scale > 1.01 ? 'hidden' : '';
+    };
+    const clampPan = () => {
+      const img = curImg();
+      if (!img) return;
+      const maxX = Math.max(0, (img.clientWidth * scale - stage.clientWidth) / 2);
+      const maxY = Math.max(0, (img.clientHeight * scale - stage.clientHeight) / 2);
+      tx = Math.max(-maxX, Math.min(maxX, tx));
+      ty = Math.max(-maxY, Math.min(maxY, ty));
+    };
+    const reset = () => {
+      scale = 1; tx = 0; ty = 0; panLast = null; pinchDist = 0;
+      track.querySelectorAll('img').forEach((i) => { i.style.transform = ''; });
+      stage.classList.remove('zoomed', 'panning');
+      track.style.overflowX = '';
+    };
+    zoomReset = reset;
+
+    const zoomTo = (s, clientX, clientY) => {
+      if (s <= 1.01) { reset(); return; }
+      const img = curImg();
+      if (!img) return;
+      const r = img.getBoundingClientRect();
+      const dx = clientX - (r.left + r.width / 2);
+      const dy = clientY - (r.top + r.height / 2);
+      scale = s;
+      tx = -dx * (s - 1);
+      ty = -dy * (s - 1);
+      clampPan();
+      apply();
+    };
+
+    // Mouse: dblclick toggles zoom, but not over a nav zone (side clicks navigate).
+    stage.addEventListener('dblclick', (e) => {
+      if (e.target && e.target.classList && e.target.classList.contains('reader-zone')) return;
+      e.preventDefault(); e.stopPropagation();
+      zoomTo(scale > 1.01 ? 1 : 2.5, e.clientX, e.clientY);
+    });
+
+    stage.addEventListener('pointerdown', (e) => {
+      pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (pointers.size === 2) {
+        const [a, b] = [...pointers.values()];
+        pinchDist = Math.hypot(a.x - b.x, a.y - b.y);
+        pinchScale = scale;
+        panLast = null;
+        return;
+      }
+      // Touch/pen: detect double-tap (mouse uses the dblclick handler above).
+      if (e.pointerType !== 'mouse') {
+        const now = Date.now();
+        if (now - lastTapT < 300 && Math.hypot(e.clientX - lastTapX, e.clientY - lastTapY) < 32) {
+          zoomTo(scale > 1.01 ? 1 : 2.5, e.clientX, e.clientY);
+          lastTapT = 0;
+        } else {
+          lastTapT = now; lastTapX = e.clientX; lastTapY = e.clientY;
+        }
+      }
+      if (scale > 1.01) {
+        panLast = { x: e.clientX, y: e.clientY };
+        stage.classList.add('panning');
+        try { stage.setPointerCapture(e.pointerId); } catch { /* ignore */ }
+      }
+    });
+
+    stage.addEventListener('pointermove', (e) => {
+      if (!pointers.has(e.pointerId)) return;
+      pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (pointers.size >= 2 && pinchDist > 0) {
+        const [a, b] = [...pointers.values()];
+        const d = Math.hypot(a.x - b.x, a.y - b.y);
+        scale = Math.max(1, Math.min(4, pinchScale * (d / pinchDist)));
+        stage.classList.add('panning');
+        clampPan();
+        apply();
+      } else if (pointers.size === 1 && panLast && scale > 1.01) {
+        tx += e.clientX - panLast.x;
+        ty += e.clientY - panLast.y;
+        panLast = { x: e.clientX, y: e.clientY };
+        clampPan();
+        apply();
+      }
+    });
+
+    const onUp = (e) => {
+      pointers.delete(e.pointerId);
+      if (pointers.size < 2) pinchDist = 0;
+      if (pointers.size === 0) {
+        panLast = null;
+        stage.classList.remove('panning');
+        if (scale <= 1.01) reset();
+      }
+    };
+    stage.addEventListener('pointerup', onUp);
+    stage.addEventListener('pointercancel', onUp);
   }
 
   function openChapterList() {

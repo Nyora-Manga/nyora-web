@@ -236,6 +236,9 @@ const ICON_PATHS = {
   checkCircle: '<circle cx="12" cy="12" r="9"/><path d="m8.5 12 2.4 2.4 4.6-4.8"/>',
   feed: '<path d="M4 6a2 2 0 0 1 2-2h9v15a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/><path d="M15 8h3a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2"/><path d="M7 8h5M7 11h5M7 14h3"/>',
   book: '<path d="M5 5a2 2 0 0 1 2-2h11v15H7a2 2 0 0 0-2 2z"/><path d="M5 20a2 2 0 0 1 2-2h11"/>',
+  // Mobile bottom-nav glyphs mirroring the nyora-android design.
+  bars: '<path d="M4 20V9"/><path d="M9.5 20V4"/><path d="M15 20v-8"/><path d="M20.5 20V6"/>',
+  read: '<path d="M12 6.5v14"/><path d="M12 6.5C10.6 5 8.6 4 6 4a1 1 0 0 0-1 1v13.5a1 1 0 0 0 1 1c2.6 0 4.6 1 6 2.5"/><path d="M12 6.5C13.4 5 15.4 4 18 4a1 1 0 0 1 1 1v13.5a1 1 0 0 1-1 1c-2.6 0-4.6 1-6 2.5"/>',
   panel: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/>',
   logo: '<path d="M3 3l6 18h2l6-18h-2l-5 15-5-15h-2z M13 3l6 18h2l-6-18h-2z" fill="currentColor" stroke="none"/>',
   instagram: '<rect x="2" y="2" width="20" height="20" rx="5" ry="5"/><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/><line x1="17.5" y1="6.5" x2="17.51" y2="6.5"/>',
@@ -461,12 +464,19 @@ export function card(manga, onClick) {
   const coverWrap = el('div', { class: 'cover' });
   const coverDomain = manga.source && manga.source.domain;
   const coverHeaders = coverDomain ? { Referer: `https://${coverDomain}/` } : undefined;
-  const cover = manga.coverUrl || manga.largeCoverUrl || '';
-  if (cover) {
-    const img = el('img', { loading: 'lazy', decoding: 'async', alt: manga.title || '' });
-    applyImage(img, cover, coverHeaders, () => { img.style.display = 'none'; });
-    coverWrap.appendChild(img);
-  }
+  const title = manga.title || '';
+  // Try each known cover (thumb → large) via direct load then the /image proxy;
+  // if all fail, show a titled placeholder instead of a blank/black tile.
+  const covers = [...new Set([manga.coverUrl, manga.largeCoverUrl].filter(Boolean))];
+  const mountCover = (i) => {
+    const node = i < covers.length
+      ? el('img', { class: 'cover-media', loading: 'lazy', decoding: 'async', alt: title })
+      : el('div', { class: 'cover-fallback' }, ((title || '?').trim()[0] || '?').toUpperCase());
+    const cur = coverWrap.querySelector('.cover-media, .cover-fallback');
+    if (cur) cur.replaceWith(node); else coverWrap.insertBefore(node, coverWrap.firstChild);
+    if (i < covers.length) applyImage(node, covers[i], coverHeaders, () => mountCover(i + 1));
+  };
+  mountCover(0);
   const nsfw =
     manga.isNsfw === true || manga.contentRating === 'ADULT';
   if (nsfw) {

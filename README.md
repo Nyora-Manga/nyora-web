@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="https://nyora.pages.dev/icon.png" width="120" alt="Nyora"/>
+<img src="https://nyora.xyz/icon.png" width="120" alt="Nyora"/>
 
 # Nyora — Web
 
@@ -15,14 +15,14 @@ A fast, free, ad-free, open-source manga reader that runs in your browser — no
 [![PWA](https://img.shields.io/badge/PWA-5A0FC8?style=for-the-badge&logo=pwa&logoColor=white)](#tech-stack)
 [![Cloudflare](https://img.shields.io/badge/Cloudflare-F38020?style=for-the-badge&logo=cloudflare&logoColor=white)](#tech-stack)
 
-[![License: Apache 2.0](https://img.shields.io/github/license/Hasan72341/nyora-web?color=blue)](LICENSE)
-[![Stars](https://img.shields.io/github/stars/Hasan72341/nyora-web?style=social)](https://github.com/Hasan72341/nyora-web/stargazers)
+[![License: Apache 2.0](https://img.shields.io/github/license/Nyora-Manga/nyora-web?color=blue)](LICENSE)
+[![Stars](https://img.shields.io/github/stars/Nyora-Manga/nyora-web?style=social)](https://github.com/Nyora-Manga/nyora-web/stargazers)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen?style=flat-square)](#contributing)
 
 <br/>
 
-[![Open Web App](https://img.shields.io/badge/Open-Web_App-5A0FC8?style=for-the-badge&logo=pwa&logoColor=white)](https://nyoraweb.pages.dev)
-[![Website](https://img.shields.io/badge/Website-nyora.pages.dev-FF4655?style=for-the-badge&logo=githubpages&logoColor=white)](https://nyora.pages.dev)
+[![Open Web App](https://img.shields.io/badge/Open-Web_App-5A0FC8?style=for-the-badge&logo=pwa&logoColor=white)](https://web.nyora.xyz)
+[![Website](https://img.shields.io/badge/Website-nyora.xyz-FF4655?style=for-the-badge&logo=githubpages&logoColor=white)](https://nyora.xyz)
 
 <br/>
 
@@ -196,13 +196,13 @@ There is nothing to install to start reading. This is the lowest-friction way to
 
 ### Use it instantly
 
-Just open **[nyoraweb.pages.dev](https://nyoraweb.pages.dev)** in any modern browser. That's the whole install. Create a free Nyora Cloud account (email + password) to sync your library, history and source preferences with your other Nyora devices — **no account is required if you only want to read.**
+Just open **[web.nyora.xyz](https://web.nyora.xyz)** in any modern browser. That's the whole install. Create a free Nyora Cloud account (email + password) to sync your library, history and source preferences with your other Nyora devices — **no account is required if you only want to read.**
 
 ### Install as a PWA
 
 Want a real app icon, its own window, and offline launch? Add Nyora to your device. This is the same static files served over HTTPS — there is no separate native package and no extra update channel, so there are no scary permission prompts to approve.
 
-- **Desktop (Chrome / Edge):** open [nyoraweb.pages.dev](https://nyoraweb.pages.dev), then use the install icon in the address bar (or the browser menu → *Install Nyora*).
+- **Desktop (Chrome / Edge):** open [web.nyora.xyz](https://web.nyora.xyz), then use the install icon in the address bar (or the browser menu → *Install Nyora*).
 - **Android (Chrome):** open the app, then menu → *Add to Home screen* / *Install app*.
 - **iOS / iPadOS (Safari):** open the app, tap the Share button, then *Add to Home Screen*.
 
@@ -212,7 +212,7 @@ Once installed, the cached app shell lets the interface load even when you are o
 
 Yes. A few reassurances, in plain terms:
 
-- **It's open-source and auditable.** Every line is on [GitHub](https://github.com/Hasan72341/nyora-web) under Apache-2.0. Nothing is hidden, obfuscated or phoning home.
+- **It's open-source and auditable.** Every line is on [GitHub](https://github.com/Nyora-Manga/nyora-web) under Apache-2.0. Nothing is hidden, obfuscated or phoning home.
 - **No ads, no trackers, no telemetry.** There is no advertising SDK and no analytics pipeline in the code.
 - **No account needed to read**, and the only data ever stored on a server is the sync rows tied to *your* Nyora Cloud account — and only if you choose to sign in.
 - **It runs in your browser's sandbox.** Unlike a downloaded app, a website can't touch your files or system; it just renders pages. If you ever want to stop using it, close the tab — there's nothing left behind to uninstall (and a PWA install removes cleanly like any bookmark/app).
@@ -282,7 +282,7 @@ cloudflare-worker/    ← CORS / image proxy (worker.js)
 
 | Platform | Repo | Get it |
 |---|---|---|
-| Web | **nyora-web** *(you are here)* | [nyoraweb.pages.dev](https://nyoraweb.pages.dev) |
+| Web | **nyora-web** *(you are here)* | [web.nyora.xyz](https://web.nyora.xyz) |
 | Android | [nyora-android](https://github.com/Hasan72341/nyora-android) | [APK](https://github.com/Hasan72341/nyora-android/releases/latest) |
 | Windows | [nyora-windows](https://github.com/Hasan72341/nyora-windows) | [.exe (x64/ARM64)](https://github.com/Hasan72341/nyora-windows/releases/latest) |
 | macOS | [nyora-mac](https://github.com/Hasan72341/nyora-mac) | [.dmg / `brew`](https://github.com/Hasan72341/nyora-mac/releases/latest) |
@@ -302,7 +302,7 @@ No dates, no promises — just the honest direction.
 Yes. It is free, ad-free, with no tracking, and no account is required to read. There is no paid tier and no upsell.
 
 **Is it safe? Why doesn't my browser warn me to install anything?**
-Because there's nothing to install — it's a website running in your browser's sandbox, not a downloaded program, so it never triggers an "unknown app" or Gatekeeper prompt. The code is fully open-source (Apache-2.0) and auditable on [GitHub](https://github.com/Hasan72341/nyora-web), with no ads, no telemetry, and no advertising SDK.
+Because there's nothing to install — it's a website running in your browser's sandbox, not a downloaded program, so it never triggers an "unknown app" or Gatekeeper prompt. The code is fully open-source (Apache-2.0) and auditable on [GitHub](https://github.com/Nyora-Manga/nyora-web), with no ads, no telemetry, and no advertising SDK.
 
 **Do I need an account?**
 No. Open the app and start reading. Signing in with Google is entirely optional and exists only to sync your library and preferences across your devices.
@@ -332,13 +332,13 @@ Just reload it. As a deployed static SPA, the latest version is served on each v
 
 Welcome — genuinely. Nyora Web is **fully open-source and written in plain client-side JavaScript/TypeScript**, which makes it one of the friendliest entry points in the whole project. There's no native toolchain, no private engine, and no build step required to hack on it: clone the repo, serve a folder, and you're editing the live app. Whether you write code or not, there's a way for you to make Nyora better today.
 
-If you're planning a larger change, open an [issue](https://github.com/Hasan72341/nyora-web/issues) first so we can talk through the approach before you invest the work. Be kind, assume good intent, and don't worry about being new — first PRs are very welcome here.
+If you're planning a larger change, open an [issue](https://github.com/Nyora-Manga/nyora-web/issues) first so we can talk through the approach before you invest the work. Be kind, assume good intent, and don't worry about being new — first PRs are very welcome here.
 
 ### Ways to contribute
 
 You don't have to be a programmer to help:
 
-- **Report a bug.** A source that won't load, a reader glitch, a layout issue on your device — [open an issue](https://github.com/Hasan72341/nyora-web/issues) with steps to reproduce, your browser, and a screenshot if you can.
+- **Report a bug.** A source that won't load, a reader glitch, a layout issue on your device — [open an issue](https://github.com/Nyora-Manga/nyora-web/issues) with steps to reproduce, your browser, and a screenshot if you can.
 - **Request or help port a source.** Tell us a site you'd love to read from, or — even better — wire it up yourself (see [Adding a source](#adding-a-source); most are a few lines of JSON).
 - **Improve or translate the UI.** Copy tweaks, accessibility fixes, and localisation all make a real difference. The interface lives in `web/screens/` and `web/styles.css`.
 - **Write docs.** Clarify a confusing step in this README, document a parser family, or add a how-to. Docs PRs are some of the most valuable.
@@ -351,7 +351,7 @@ This is distinct from the end-user [Build from Source](#build-from-source) steps
 
 ```bash
 # 1. Clone
-git clone https://github.com/Hasan72341/nyora-web.git
+git clone https://github.com/Nyora-Manga/nyora-web.git
 cd nyora-web
 
 # 2. Serve the SPA unbundled — no build step needed for development
@@ -403,7 +403,7 @@ Concrete places to start, drawn from how the repo is actually organised:
 - **Docs.** Improve a confusing section of this README, or document a parser family's quirks for the next contributor.
 - **Reproduce and triage bugs.** Pick an open issue, confirm whether you can reproduce it, and add details — even without a fix, that's a real contribution.
 
-Browse the [Issues page](https://github.com/Hasan72341/nyora-web/issues) for things that need a hand.
+Browse the [Issues page](https://github.com/Nyora-Manga/nyora-web/issues) for things that need a hand.
 
 ### Adding a source
 
@@ -424,9 +424,9 @@ A few things that keep reviews fast and friendly:
 - **Describe the change.** Say what it does and why, link any related issue, and include a screenshot or before/after for anything visual.
 - **Match the surrounding style.** The codebase is plain, readable ES modules — follow the patterns already in the file you're editing.
 - **Be kind.** Reviews are a conversation, not a gate. Questions are always welcome, and "I'm new to this" is a perfectly good opening line.
-- File bugs and ideas on the [Issues page](https://github.com/Hasan72341/nyora-web/issues); open a [pull request](https://github.com/Hasan72341/nyora-web/pulls) when you're ready.
+- File bugs and ideas on the [Issues page](https://github.com/Nyora-Manga/nyora-web/issues); open a [pull request](https://github.com/Nyora-Manga/nyora-web/pulls) when you're ready.
 
-If Nyora makes your reading better, the simplest way to help is to **star the [repository](https://github.com/Hasan72341/nyora-web/stargazers) and share it** — it's how the project reaches more readers and more contributors. Thank you for being here.
+If Nyora makes your reading better, the simplest way to help is to **star the [repository](https://github.com/Nyora-Manga/nyora-web/stargazers) and share it** — it's how the project reaches more readers and more contributors. Thank you for being here.
 
 ## Acknowledgements
 

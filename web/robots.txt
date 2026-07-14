@@ -13,4 +13,4 @@ Disallow: /_f.html
 Disallow: /_s.html
 Disallow: /_v.html
 
-Sitemap: https://nyoraweb.pages.dev/sitemap.xml
+Sitemap: https://web.nyora.xyz/sitemap.xml

@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <circle cx="32" cy="32" r="32" fill="#0c0c0c"/>
+  <text x="32" y="33" fill="#ffffff" font-size="30" font-weight="600"
+        text-anchor="middle" dominant-baseline="central"
+        font-family="'Hiragino Kaku Gothic ProN', 'Yu Gothic', 'Noto Sans JP', 'Meiryo', sans-serif">にょ</text>
+</svg>

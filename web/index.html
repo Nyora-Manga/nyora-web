@@ -2,14 +2,14 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <!-- Domain move: nyoraweb.pages.dev -> nyoramanga.hasanraza.tech.
+  <!-- Domain move: legacy hosts -> web.nyora.xyz (the canonical app domain).
        Runs before anything else so a reload always lands on the new domain and
        carries the visitor's local data (library, history, prefs, sources) across
        origins (localStorage doesn't cross origins on its own). One-shot. -->
   <script>
   (function () {
-    var NEW_ORIGIN = 'https://nyoramanga.hasanraza.tech';
-    var OLD_HOSTS = ['nyoraweb.pages.dev'];
+    var NEW_ORIGIN = 'https://web.nyora.xyz';
+    var OLD_HOSTS = ['nyoraweb.pages.dev', 'nyoramanga.hasanraza.tech'];
     var isNyoraKey = function (k) {
       return !!k && (k.lastIndexOf('nyora.', 0) === 0 || k.lastIndexOf('nyora:', 0) === 0);
     };
@@ -95,31 +95,30 @@
 <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1" />
 
 <!-- Canonical: single indexable URL is the app root -->
-<link rel="canonical" href="https://nyoraweb.pages.dev/" />
+<link rel="canonical" href="https://web.nyora.xyz/" />
 
 <!-- Open Graph -->
 <meta property="og:type" content="website" />
 <meta property="og:site_name" content="Nyora" />
 <meta property="og:title" content="Nyora — Free Online Manga Reader in Your Browser" />
 <meta property="og:description" content="Read manga online free in your browser — no install. An installable, offline-capable PWA with hundreds of sources, favourites, history & AniList sync." />
-<meta property="og:url" content="https://nyoraweb.pages.dev/" />
+<meta property="og:url" content="https://web.nyora.xyz/" />
 <meta property="og:locale" content="en_US" />
-<meta property="og:image" content="https://nyoraweb.pages.dev/icon.png" />
+<meta property="og:image" content="https://web.nyora.xyz/og.png" />
+<meta property="og:image:secure_url" content="https://web.nyora.xyz/og.png" />
 <meta property="og:image:type" content="image/png" />
-<meta property="og:image:width" content="192" />
-<meta property="og:image:height" content="192" />
-<meta property="og:image:alt" content="Nyora — free online manga reader" />
+<meta property="og:image:width" content="1200" />
+<meta property="og:image:height" content="630" />
+<meta property="og:image:alt" content="Nyora — free online manga reader in your browser" />
 
-<!-- X (Twitter Card markup) -->
-<!-- NOTE: using summary (square) because the only image is the square icon. -->
-<!-- Switch to summary_large_image once a real 1200x630 og-image.png exists. -->
-<meta name="twitter:card" content="summary" />
+<!-- X (Twitter Card markup) — wide 1200x630 social image -->
+<meta name="twitter:card" content="summary_large_image" />
 <meta name="twitter:site" content="@hasanraza___" />
 <meta name="twitter:creator" content="@hasanraza___" />
 <meta name="twitter:title" content="Nyora — Free Online Manga Reader in Your Browser" />
 <meta name="twitter:description" content="Read manga online free in your browser — no install. Installable, offline-capable PWA, also on Android, Windows, macOS, Linux & iOS." />
-<meta name="twitter:image" content="https://nyoraweb.pages.dev/icon.png" />
-<meta name="twitter:image:alt" content="Nyora — free online manga reader" />
+<meta name="twitter:image" content="https://web.nyora.xyz/og.png" />
+<meta name="twitter:image:alt" content="Nyora — free online manga reader in your browser" />
 
 <!-- Structured data: cross-linked WebApplication + Organization + Person + WebSite. -->
 <!-- No SearchAction: Nyora's search is client-side hash-based, not a crawlable URL. -->
@@ -129,17 +128,17 @@
   "@graph": [
     {
       "@type": "WebApplication",
-      "@id": "https://nyoraweb.pages.dev/#webapp",
+      "@id": "https://web.nyora.xyz/#webapp",
       "name": "Nyora",
       "alternateName": "Nyora Web",
-      "url": "https://nyoraweb.pages.dev/",
+      "url": "https://web.nyora.xyz/",
       "description": "Free online manga reader that runs entirely in your browser — no install required. Read manga from hundreds of sources parsed client-side, with a standard and webtoon reader (LTR, RTL, vertical), favourites, reading history, AniList tracking and Google cloud sync. Installable as an offline-capable PWA.",
       "applicationCategory": "EntertainmentApplication",
       "applicationSubCategory": "BookApplication",
       "operatingSystem": "Any (web browser); also Android, Windows, macOS, Linux, iOS",
       "browserRequirements": "Requires JavaScript. Requires a modern web browser.",
-      "image": "https://nyoraweb.pages.dev/icon.png",
-      "screenshot": "https://nyoraweb.pages.dev/icon.png",
+      "image": "https://web.nyora.xyz/og.png",
+      "screenshot": "https://web.nyora.xyz/og.png",
       "inLanguage": "en",
       "isAccessibleForFree": true,
       "keywords": "free online manga reader, read manga in browser, no install manga reader, installable PWA, offline-capable, webtoon reader, manga library, AniList tracking",
@@ -148,40 +147,37 @@
         "price": "0",
         "priceCurrency": "USD"
       },
-      "author": { "@id": "https://nyoraweb.pages.dev/#author" },
-      "publisher": { "@id": "https://nyoraweb.pages.dev/#org" },
-      "isPartOf": { "@id": "https://nyoraweb.pages.dev/#website" }
+      "author": { "@id": "https://web.nyora.xyz/#org" },
+      "publisher": { "@id": "https://web.nyora.xyz/#org" },
+      "isPartOf": { "@id": "https://web.nyora.xyz/#website" }
     },
     {
       "@type": "Organization",
-      "@id": "https://nyoraweb.pages.dev/#org",
-      "name": "Nyora",
-      "url": "https://nyora.pages.dev",
-      "logo": "https://nyoraweb.pages.dev/icon.png",
-      "founder": { "@id": "https://nyoraweb.pages.dev/#author" },
-      "sameAs": ["https://x.com/hasanraza___"]
-    },
-    {
-      "@type": "Person",
-      "@id": "https://nyoraweb.pages.dev/#author",
-      "name": "Md Hasan Raza",
-      "sameAs": ["https://x.com/hasanraza___"]
+      "@id": "https://web.nyora.xyz/#org",
+      "name": "The Nyora Project",
+      "url": "https://nyora.xyz",
+      "logo": "https://web.nyora.xyz/icon-512.png",
+      "sameAs": ["https://x.com/hasanraza___", "https://github.com/Nyora-Manga/nyora-web"]
     },
     {
       "@type": "WebSite",
-      "@id": "https://nyoraweb.pages.dev/#website",
+      "@id": "https://web.nyora.xyz/#website",
       "name": "Nyora",
-      "url": "https://nyoraweb.pages.dev/",
+      "url": "https://web.nyora.xyz/",
       "description": "Free, client-side, installable manga reader for the browser.",
       "inLanguage": "en",
-      "publisher": { "@id": "https://nyoraweb.pages.dev/#org" }
+      "publisher": { "@id": "https://web.nyora.xyz/#org" }
     }
   ]
 }
 </script>
 
-  <link rel="icon" href="/icon.png" />
-  <link rel="apple-touch-icon" href="/icon.png" />
+  <link rel="icon" href="/favicon.ico" sizes="any" />
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
+  <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png" />
+  <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+  <link rel="mask-icon" href="/favicon.svg" color="#0c0c0c" />
   <link rel="manifest" href="/manifest.webmanifest" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -191,14 +187,11 @@
   <meta name="msapplication-TileColor" content="#000000" />
   <meta name="msapplication-tap-highlight" content="no" />
 
-  <link rel="preconnect" href="https://api.fontshare.com" crossorigin>
-  <link rel="preconnect" href="https://cdn.fontshare.com" crossorigin>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://api.fontshare.com/v2/css?f[]=clash-display@600,700&f[]=satoshi@400,500,700&display=swap" rel="stylesheet">
-  <!-- Poppins — matches the nyora-android product face for the mobile-web look. -->
-  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/styles.css?v=21" />
+  <!-- Plus Jakarta Sans (expressive display) + Inter (crisp body/UI) — the Material 3 Expressive face. -->
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&family=Inter:wght@400;450;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/styles.css?v=38" />
 
   </head>
   <body>
@@ -210,7 +203,7 @@
         <input id="searchInput" placeholder="Search all sources…" />
       </form>
       <span class="spacer"></span>
-      <a class="visit-site" href="https://nyora.pages.dev" target="_blank" rel="noopener" aria-label="Visit the official Nyora website">
+      <a class="visit-site" href="https://nyora.xyz" target="_blank" rel="noopener" aria-label="Visit the official Nyora website">
         <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
         <span class="visit-site-label">Official website</span>
       </a>
@@ -234,7 +227,7 @@
   </ul>
   <h2>Get the app</h2>
   <ul>
-    <li><a href="https://nyora.pages.dev" rel="noopener">Official website &amp; downloads</a></li>
+    <li><a href="https://nyora.xyz" rel="noopener">Official website &amp; downloads</a></li>
   </ul>
 </section>
     </main>

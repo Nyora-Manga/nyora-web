@@ -119,9 +119,9 @@ function buildAppearance() {
   section.append(settingRow('Theme', null, segControl([['DARK', 'Dark'], ['LIGHT', 'Light']], prefs.appearance === 'LIGHT' ? 'LIGHT' : 'DARK', (v) => store.set({ appearance: v }))));
   const appearance = prefs.appearance === 'LIGHT' ? 'LIGHT' : 'DARK';
   const cards = el('div', { class: 'scheme-cards' });
-  // Any unknown/legacy stored value (old raw hex, 'auto') highlights Dynamic.
+  // Any unknown/legacy stored value (old 'wallpaper'/'auto', raw hex) → default Sakura.
   const knownIds = new Set(COLOR_SCHEMES.map((s) => s.id));
-  const selectedId = knownIds.has(prefs.accent) ? prefs.accent : 'wallpaper';
+  const selectedId = knownIds.has(prefs.accent) ? prefs.accent : 'sakura';
   const clearActive = () => { for (const child of Array.from(cards.children)) child.classList.remove('active'); };
   for (const scheme of COLOR_SCHEMES) {
     cards.appendChild(schemeCard(scheme, {
@@ -130,7 +130,7 @@ function buildAppearance() {
       onChoose: (node) => { store.set({ accent: scheme.id }); clearActive(); node.classList.add('active'); },
     }));
   }
-  section.append(field('Color scheme', cards, 'Dynamic follows your browser or OS accent colour by default.'));
+  section.append(field('Color scheme', cards, 'Sakura is the default accent.'));
   return section;
 }
 
@@ -278,9 +278,9 @@ function buildData() {
 
 function buildAbout() {
   const section = el('section', { class: 'settings-section about-section', style: { borderBottom: 'none', textAlign: 'center', padding: '48px 0' } });
-  
-  const socialLink = (iconName, url, title) => el('a', {
-    href: url, target: '_blank', title,
+
+  const iconLink = (iconName, url, title) => el('a', {
+    href: url, target: '_blank', rel: 'noopener', title, 'aria-label': title,
     class: 'social-link',
     style: {
       display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
@@ -291,24 +291,23 @@ function buildAbout() {
     }
   }, icon(iconName));
 
+  const textLink = (label, url) => el('a', {
+    href: url, target: '_blank', rel: 'noopener',
+    style: { color: 'var(--accent)', fontSize: '13px', textDecoration: 'none', fontWeight: '600' },
+  }, label);
+
   const credits = el('div', { class: 'credits' },
     el('div', { style: { fontWeight: '800', fontSize: '18px', letterSpacing: '0.08em', marginBottom: '6px', color: 'var(--text)' } }, 'NYORA WEB 2.0'),
-    el('div', { style: { color: 'var(--text-faint)', fontSize: '13px', marginBottom: '24px' } }, 'Md Hasan Raza · Creator of Nyora'),
+    el('div', { style: { color: 'var(--text-faint)', fontSize: '13px', marginBottom: '4px' } }, 'A free, open-source manga reader for the browser.'),
+    el('div', { style: { color: 'var(--text-faint)', fontSize: '12px', marginBottom: '24px' } }, 'Released under the Apache 2.0 License.'),
     el('div', { class: 'row', style: { justifyContent: 'center' } },
-      socialLink('instagram', 'https://www.instagram.com/md_hasan_raza____?igsh=MXZ6eTk2Y3FsNGs3aQ==', 'Instagram'),
-      socialLink('linkedin', 'https://www.linkedin.com/in/md-hasan-raza-8817372a7/', 'LinkedIn'),
-      socialLink('github', 'https://github.com/Hasan72341', 'GitHub'),
-      socialLink('mail', 'mailto:hasanraza96@outlook.com', 'Email'),
+      iconLink('github', 'https://github.com/Nyora-Manga/nyora-web', 'Source code on GitHub'),
+      iconLink('globe', 'https://nyora.xyz', 'Website'),
     ),
     el('div', { style: { marginTop: '18px', display: 'flex', justifyContent: 'center', gap: '20px', flexWrap: 'wrap' } },
-      el('a', {
-        href: 'https://nyora.pages.dev', target: '_blank', rel: 'noopener',
-        style: { color: 'var(--accent)', fontSize: '13px', textDecoration: 'none', fontWeight: '600' },
-      }, 'Official website ↗'),
-      el('a', {
-        href: 'https://github.com/Hasan72341/nyora-web', target: '_blank', rel: 'noopener',
-        style: { color: 'var(--accent)', fontSize: '13px', textDecoration: 'none', fontWeight: '600' },
-      }, 'Source code ↗'),
+      textLink('Source code ↗', 'https://github.com/Nyora-Manga/nyora-web'),
+      textLink('Report an issue ↗', 'https://github.com/Nyora-Manga/nyora-web/issues'),
+      textLink('License ↗', 'https://github.com/Nyora-Manga/nyora-web/blob/main/LICENSE'),
     ),
     el('div', {
       style: { color: 'var(--text-faint)', fontSize: '12px', marginTop: '20px', maxWidth: '420px', marginLeft: 'auto', marginRight: 'auto', lineHeight: '1.5' },

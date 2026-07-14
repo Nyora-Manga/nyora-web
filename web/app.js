@@ -23,7 +23,6 @@ import { meta as settingsMeta, render as settingsRender } from './screens/settin
 import { meta as detailsMeta, render as detailsRender } from './screens/details.js';
 import { meta as readerMeta, render as readerRender } from './screens/reader.js';
 import { meta as searchMeta, render as searchRender } from './screens/search.js';
-import { meta as trackerMeta, render as trackerRender } from './screens/tracker.js';
 import { meta as browserMeta, render as browserRender } from './screens/browser.js';
 import { shouldShowWelcome, showWelcome } from './screens/welcome.js';
 
@@ -42,7 +41,6 @@ const routes = {
   details: detailsRender,
   reader: readerRender,
   search: searchRender,
-  tracker: trackerRender,
   browser: browserRender,
 };
 
@@ -61,7 +59,6 @@ const metas = {
   details: detailsMeta,
   reader: readerMeta,
   search: searchMeta,
-  tracker: trackerMeta,
   browser: browserMeta,
 };
 
@@ -105,9 +102,17 @@ function continueReading() {
 const BASE_TITLE = 'Nyora — Free Online Manga Reader in Your Browser';
 const view = $('#view');
 
+// Per-route scroll memory: returning to a list (e.g. back from a manga) restores
+// where you were instead of jumping to the top. Reserved cover aspect-ratios make
+// the list height stable before images load, so the restore lands accurately.
+const scrollPos = new Map();
+let prevScrollKey = null;
+
 function dispatch(route) {
   const name = routes[route.name] ? route.name : 'explore';
   const fn = routes[name];
+  // Save the outgoing screen's scroll before its content is replaced.
+  if (prevScrollKey !== null) scrollPos.set(prevScrollKey, view.scrollTop);
   document.body.dataset.route = name;
   document.title = name === 'explore' ? BASE_TITLE : ((metas[name] && metas[name].title) ? metas[name].title + ' · Nyora' : BASE_TITLE);
 
@@ -145,9 +150,14 @@ function dispatch(route) {
   try {
     fn(view, route.params || {});
     revealView(view, name);
-  } catch (e) {
-    view.replaceChildren(el('div', { class: 'error-box' }, String((e && e.message) || e)));
+  } catch {
+    view.replaceChildren(el('div', { class: 'error-box' }, 'Something went wrong loading this screen. Please try again.'));
   }
+  // Restore this screen's remembered scroll position (0 = fresh navigation).
+  const scrollKey = name + '?' + JSON.stringify(route.params || {});
+  const savedY = scrollPos.get(scrollKey) || 0;
+  requestAnimationFrame(() => { try { view.scrollTop = savedY; } catch { /* ignore */ } });
+  prevScrollKey = scrollKey;
   syncNav(name);
   syncTabbar(name);
 }
@@ -155,7 +165,9 @@ function dispatch(route) {
 function syncNav(name) {
   const items = document.querySelectorAll('#sidebar [data-route]');
   for (const item of items) {
-    item.classList.toggle('active', item.getAttribute('data-route') === name);
+    const on = item.getAttribute('data-route') === name;
+    item.classList.toggle('active', on);
+    if (on) item.setAttribute('aria-current', 'page'); else item.removeAttribute('aria-current');
   }
 }
 
@@ -313,13 +325,16 @@ function buildMobileSearchPanel() {
 // right. The rest of the destinations live in the drawer. Shown only at the
 // phone breakpoint (CSS-gated).
 const TABBAR_KEYS = ['discover', 'library', 'explore', 'history'];
+// Bottom-nav glyphs mirroring the nyora-android design (chart / bars / compass /
+// clock), independent of the sidebar icons.
+const TABBAR_ICONS = { discover: 'trending', library: 'bars', explore: 'compass', history: 'history' };
 function buildTabbar() {
   const bar = $('#tabbar');
   if (!bar) return;
   const pill = el('div', { class: 'tabbar-pill' },
     ...TABBAR_KEYS.filter((k) => metas[k]).map((key) =>
       el('a', { 'data-tab': key, href: `#/${key}`, onClick: () => { document.body.classList.remove('nav-open'); } },
-        icon(metas[key].icon),
+        icon(TABBAR_ICONS[key] || metas[key].icon),
         el('span', null, metas[key].title),
       ),
     ),
@@ -331,12 +346,14 @@ function buildTabbar() {
     'aria-label': 'Continue reading',
     title: 'Continue reading',
     onClick: () => { document.body.classList.remove('nav-open'); continueReading(); },
-  }, icon('book'));
+  }, icon('read'));
   bar.replaceChildren(pill, fab);
 }
 function syncTabbar(name) {
   for (const a of document.querySelectorAll('#tabbar [data-tab]')) {
-    a.classList.toggle('active', a.getAttribute('data-tab') === name);
+    const on = a.getAttribute('data-tab') === name;
+    a.classList.toggle('active', on);
+    if (on) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current');
   }
 }
 
@@ -388,11 +405,103 @@ function wireTopbar() {
   }
 }
 
+// ── PWA install prompt ───────────────────────────────────────────────────────
+// Chrome/Edge/Android fire `beforeinstallprompt` when the app is installable.
+// Stash it and offer a dismissible banner; the native chooser opens on tap. Once
+// installed (or dismissed) we never nag again.
+function setupInstallPrompt() {
+  const standalone = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone;
+  if (standalone) return;
+  let deferred = null;
+
+  window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    deferred = e;
+    if (localStorage.getItem('nyora.install.dismissed') === '1') return;
+    showBanner();
+  });
+  window.addEventListener('appinstalled', () => {
+    localStorage.setItem('nyora.install.dismissed', '1');
+    const b = $('.install-banner'); if (b) b.remove();
+  });
+
+  function showBanner() {
+    if ($('.install-banner')) return;
+    const banner = el('div', { class: 'install-banner' },
+      el('img', { src: '/icon.png', class: 'install-banner-icon', alt: '' }),
+      el('div', { class: 'install-banner-text' },
+        el('strong', {}, 'Install Nyora'),
+        el('span', {}, 'Add it to your home screen — full-screen and offline-ready.'),
+      ),
+      el('div', { class: 'install-banner-actions' },
+        el('button', { class: 'btn btn-ghost', onClick: dismiss }, 'Later'),
+        el('button', { class: 'btn btn-accent', onClick: doInstall }, 'Install'),
+      ),
+    );
+    document.body.appendChild(banner);
+    requestAnimationFrame(() => banner.classList.add('show'));
+  }
+  async function doInstall() {
+    const b = $('.install-banner'); if (b) b.remove();
+    if (!deferred) return;
+    deferred.prompt();
+    try { await deferred.userChoice; } catch { /* ignore */ }
+    deferred = null;
+  }
+  function dismiss() {
+    localStorage.setItem('nyora.install.dismissed', '1');
+    const b = $('.install-banner');
+    if (b) { b.classList.remove('show'); setTimeout(() => b.remove(), 250); }
+  }
+}
+
+// ── pull-to-refresh (mobile) ─────────────────────────────────────────────────
+// Drag down from the very top of #view to re-render the current screen. Skipped
+// in the reader/details (own scroll chrome) and whenever #view isn't at the top.
+function setupPullToRefresh() {
+  const scroller = view; // #view is the scrolling <main>
+  const THRESH = 72, MAX = 120;
+  let startY = 0, pulling = false, dist = 0, indicator = null;
+
+  const eligible = () => {
+    const name = document.body.dataset.route;
+    return name !== 'reader' && name !== 'details' && scroller.scrollTop <= 0;
+  };
+  const ensureIndicator = () => {
+    if (!indicator) { indicator = el('div', { class: 'ptr-indicator' }, icon('refresh')); document.body.appendChild(indicator); }
+    return indicator;
+  };
+  const hide = () => { if (indicator) { indicator.style.transform = ''; indicator.style.opacity = '0'; indicator.classList.remove('ready'); } };
+
+  scroller.addEventListener('touchstart', (e) => {
+    if (e.touches.length !== 1 || !eligible()) { pulling = false; return; }
+    startY = e.touches[0].clientY; pulling = true; dist = 0;
+  }, { passive: true });
+  scroller.addEventListener('touchmove', (e) => {
+    if (!pulling) return;
+    dist = e.touches[0].clientY - startY;
+    if (dist <= 0) { pulling = false; hide(); return; }
+    const pull = Math.min(dist, MAX);
+    const ind = ensureIndicator();
+    ind.style.transform = `translateX(-50%) translateY(${Math.min(pull, THRESH + 8)}px) rotate(${pull * 2.4}deg)`;
+    ind.style.opacity = String(Math.min(1, pull / THRESH));
+    ind.classList.toggle('ready', pull >= THRESH);
+  }, { passive: true });
+  scroller.addEventListener('touchend', () => {
+    if (!pulling) return;
+    pulling = false;
+    if (dist >= THRESH) { const r = router.current(); if (r && r.name) { dispatch(r); toast('Refreshed'); } }
+    hide();
+  }, { passive: true });
+}
+
 store.applyTheme();
 buildSidebar();
 buildMobileNav();
 buildTabbar();
 wireTopbar();
+setupInstallPrompt();
+setupPullToRefresh();
 registerSW();
 router.onChange(dispatch);
 

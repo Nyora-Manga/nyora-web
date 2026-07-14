@@ -13,22 +13,29 @@
 /* ---- tokens ---------------------------------------------------------- */
 :root,
 :root[data-theme="DARK"] {
-  /* Type system — Awwwards-grade pairing (Fontshare): Clash Display for
-     headlines, Satoshi for everything else. System fallbacks keep the UI
+  /* Type system — Material 3 Expressive pairing (Google Fonts): Plus Jakarta
+     Sans for headlines, Inter for everything else. System fallbacks keep the UI
      usable before the webfonts land / when offline. */
-  --font-display: "Poppins", "Clash Display", "Satoshi", -apple-system, system-ui, sans-serif;
-  --font-body: "Poppins", "Satoshi", -apple-system, system-ui, "Segoe UI", sans-serif;
+  --font-display: "Plus Jakarta Sans", "Inter", -apple-system, system-ui, "Segoe UI", sans-serif;
+  --font-body: "Inter", -apple-system, system-ui, "Segoe UI Variable", "Segoe UI", Roboto, sans-serif;
   /* Cosmic-midnight palette mirrored from nyora-android (values-night):
      background #060810, surfaces are subtly indigo-tinted so the mobile-web
      reads like the android app rather than a flat neutral AMOLED shell. */
   /* Monochrome base — true neutral greys, zero hue. The ONLY colour in the UI
      is --accent (the user's chosen scheme colour), applied deliberately. */
-  --bg: #0a0a0b;                /* near-black, neutral */
-  --bg-elev: #121213;          /* raised chrome (topbar, sidebar) */
-  --surface1: #171719;          /* cards / panes / rows */
-  --surface2: #202023;          /* hover */
-  --surface3: #2a2a2e;          /* active / inset */
-  --surface-grad: #161618;   /* flat (was a mono gradient) */
+  /* AMOLED: pure-black base — bg, chrome and card surfaces are all #000 (pixels
+     off on OLED), separated by --border/--hairline. Only hover/active lift to a
+     barely-there near-black so interaction still registers. */
+  --bg: #000000;                /* pure black */
+  --bg-elev: #000000;          /* raised chrome (topbar, sidebar) — also black */
+  --surface1: #000000;          /* cards / panes / rows */
+  --surface2: #0c0c0d;          /* hover (minimal lift) */
+  --surface3: #161618;          /* active / inset */
+  --surface-grad: #000000;   /* flat */
+  /* segmented control: recessed track + raised active pill (theme-adaptive so
+     inactive labels never sit dark-on-dark / light-on-light). */
+  --seg-track: rgba(255, 255, 255, 0.06);   /* subtle lift, visible on black */
+  --seg-active: #1d1d21;                      /* raised pill base */
   --border: rgba(255, 255, 255, 0.10);
   --border-strong: rgba(255, 255, 255, 0.20);
   --text: #f5f5f6;
@@ -51,9 +58,9 @@
      that washed the whole app grey. Bottom stays absolute black. */
   --bg-tint:
     linear-gradient(168deg,
-      color-mix(in srgb, var(--accent) 9%, #0a0a0b) 0%,
-      #0a0a0b 44%,
-      #0a0a0b 100%);
+      color-mix(in srgb, var(--accent) 9%, #000000) 0%,
+      #000000 44%,
+      #000000 100%);
   --danger: #ff5a65;
   --ok: #34d399;
   --warn: #fbbf24;
@@ -80,7 +87,7 @@
   --pure-white: #ffffff;
   --pure-black: #000000;
   /* A near-black ink used by card / surface bases. */
-  --surface-ink: #050505;
+  --surface-ink: #000000;
   --cover-ink-top: #1b1d18;
   --cover-ink-bottom: #050505;
 
@@ -181,6 +188,8 @@
   --surface2: #ededee;
   --surface3: #dddde0;
   --surface-grad: #ffffff;   /* flat (was a mono gradient) */
+  --seg-track: rgba(0, 0, 0, 0.06);   /* light recessed track */
+  --seg-active: #ffffff;               /* raised white pill */
   --border: rgba(0, 0, 0, 0.14);
   --border-strong: rgba(0, 0, 0, 0.26);
   --text: #0e0e10;
@@ -221,10 +230,15 @@ body {
   color: var(--text);
   font-family: var(--font-body);
   font-size: 15px;
-  line-height: 1.5;
+  line-height: 1.55;
+  letter-spacing: -0.006em;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
+  font-optical-sizing: auto;
+  /* Inter tuned to harmonise with Plus Jakarta Sans: single-story a (cv11)
+     + open digits, so body and headings share a geometric-humanist voice. */
+  font-feature-settings: "cv11", "ss01", "tnum" 0;
   display: flex;
   min-height: 100vh;
   overscroll-behavior-y: none;
@@ -241,19 +255,29 @@ a { color: inherit; text-decoration: none; }
 img { display: block; max-width: 100%; }
 button, input, select, textarea { font-family: inherit; color: inherit; }
 
-/* Display type — headlines & section heads carry the Clash Display face with
-   tightened tracking for that editorial, designed-from-scratch feel. */
+/* Display type — headlines & section heads carry the Plus Jakarta Sans face
+   with tightened tracking for that editorial, expressive feel. */
 h1, h2, h3,
 .page-title, .section-head, .section-head h2,
 .hero-card h1, .wlc-eyebrow, .brand span {
   font-family: var(--font-display);
-  letter-spacing: -0.015em;
-  font-feature-settings: "ss01", "cv01";
+  letter-spacing: -0.02em;
+  font-optical-sizing: auto;
+  font-feature-settings: "ss01";
 }
 button { cursor: pointer; }
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-thumb { background: var(--surface3); border-radius: 8px; border: 2px solid transparent; background-clip: content-box; }
 ::-webkit-scrollbar-track { background: transparent; }
+
+/* The app sidebar + the details columns scroll on wheel/trackpad WITHOUT a
+   visible native scrollbar (they looked dated). Content still scrolls. */
+.sidebar,
+.d2-info,
+.d2-chapter-scroll { scrollbar-width: none; }
+.sidebar::-webkit-scrollbar,
+.d2-info::-webkit-scrollbar,
+.d2-chapter-scroll::-webkit-scrollbar { display: none; }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 8px; }
 .hidden { display: none !important; }
 ::selection { background: var(--accent-soft); }
@@ -455,6 +479,12 @@ body.hide-search .search-form { display: none; }
   box-shadow: var(--shadow-cover);
   transition: transform 0.34s var(--ease), box-shadow 0.34s var(--ease), border-color 0.34s var(--ease);
 }
+.cover-fallback {
+  position: absolute; inset: 0; display: grid; place-items: center;
+  font-family: var(--font-display); font-weight: 800; font-size: 34px;
+  color: var(--text-faint);
+  background: linear-gradient(160deg, var(--surface2), var(--surface1));
+}
 .card .cover img {
   width: 100%; height: 100%; object-fit: cover; display: block;
   transition: transform 0.6s cubic-bezier(0.22, 0.61, 0.36, 1);
@@ -573,10 +603,10 @@ body.hide-search .search-form { display: none; }
 /* Segmented control — an inset track with a RAISED active segment (iOS/Material
    style), not a flat saturated-accent fill. The active pill sits above the track
    with a soft shadow + a whisper of accent; brand colour stays on real CTAs. */
-.seg { display: inline-flex; background: color-mix(in oklab, var(--bg) 55%, #000); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 3px; gap: 2px; }
+.seg { display: inline-flex; background: var(--seg-track); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 3px; gap: 2px; }
 .seg button { border: none; background: transparent; color: var(--text-dim); padding: 7px 16px; border-radius: 9px; cursor: pointer; font-weight: 600; font-size: 13.5px; letter-spacing: -0.01em; transition: color 0.16s var(--ease), background 0.16s var(--ease); }
 .seg button:hover:not(.active) { color: var(--text); }
-.seg button.active { background: color-mix(in oklab, var(--accent) 13%, var(--surface2)); color: var(--text); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), inset 0 0 0 1px color-mix(in oklab, var(--accent) 24%, transparent); }
+.seg button.active { background: color-mix(in oklab, var(--accent) 13%, var(--seg-active)); color: var(--text); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.22), inset 0 0 0 1px color-mix(in oklab, var(--accent) 24%, transparent); }
 
 /* ---- tabs ------------------------------------------------------------ */
 .tabs { display: flex; gap: 7px; margin-bottom: 20px; flex-wrap: wrap; }
@@ -718,6 +748,9 @@ body.hide-search .search-form { display: none; }
 /* ---- extensions sheet ------------------------------------------------- */
 .ext-sheet { display: flex; flex-direction: column; gap: 14px; }
 .ext-search { margin: 0; flex: 0 0 auto; }
+.ext-toolbar { display: flex; gap: 8px; align-items: center; }
+.ext-toolbar .ext-search { flex: 1 1 auto; }
+.ext-toolbar .ext-lang { flex: 0 0 auto; max-width: 44%; }
 .ext-list { max-height: min(56vh, 520px); overflow-y: auto; }
 .ext-row { display: grid; grid-template-columns: minmax(0,1fr) auto; align-items: center; gap: 12px; }
 .ext-row .row-main { min-width: 0; }
@@ -828,8 +861,10 @@ body.hide-search .search-form { display: none; }
 body[data-route="details"] .main { height: 100dvh; min-height: 0; }
 body[data-route="details"] .view { overflow: hidden; padding: 0; min-height: 0; }
 body[data-route="details"] .view > .details { height: 100%; min-height: 0; }
-.d2-loading { position: relative; height: 100%; display: grid; place-items: center; }
+.d2-loading { position: relative; min-height: 100dvh; display: grid; place-items: center; padding: 24px; }
 .d2-loading > .icon-btn { position: absolute; inset-block-start: 14px; inset-inline-start: 14px; }
+.d2-loading-badge { display: flex; flex-direction: column; align-items: center; gap: 14px; }
+.d2-loading-label { color: var(--text-dim); font-size: 13.5px; font-weight: 500; letter-spacing: 0.01em; }
 
 .d2 {
   height: 100%; width: 100%; max-width: 1440px; margin-inline: auto;
@@ -855,6 +890,12 @@ body[data-route="details"] .view > .details { height: 100%; min-height: 0; }
   box-shadow: var(--shadow-sm); position: relative;
 }
 .d2-cover img { width: 100%; height: 100%; object-fit: cover; }
+.d2-cover-fallback {
+  position: absolute; inset: 0; display: grid; place-items: center;
+  font-family: var(--font-display); font-weight: 800; font-size: 40px;
+  color: var(--text-faint);
+  background: linear-gradient(160deg, var(--surface2), var(--surface1));
+}
 .d2-titlebox { min-width: 0; display: flex; flex-direction: column; gap: 8px; padding-block-start: 2px; }
 .d2-title {
   font-size: 20px; line-height: 1.25; margin: 0; letter-spacing: -0.02em;
@@ -1108,7 +1149,14 @@ body.reader-active .view {
 .reader-paged-track.fit-width .reader-slide { align-items: safe center; overflow-y: auto; }
 .reader-paged-track.fit-width .reader-slide::-webkit-scrollbar { display: none; }
 .reader-paged-track.fit-width .reader-slide img { width: 100%; height: auto; max-width: 100%; }
-.reader-slide img { display: block; }
+.reader-slide img { display: block; transition: transform 0.2s var(--ease); transform-origin: center; }
+/* Paged zoom (double-tap / pinch): only the zoomed slide transforms; disable the
+   snap-scroll, native slide-scroll and tap-zones while zoomed so pan owns gestures. */
+.reader-paged.panning .reader-slide img { transition: none; }
+.reader-paged.zoomed .reader-slide img { will-change: transform; cursor: grab; }
+.reader-paged.zoomed .reader-slide { overflow: hidden; }
+.reader-paged.zoomed .reader-paged-track { touch-action: none; }
+.reader-paged.zoomed .reader-zone { pointer-events: none; }
 /* Tap zones for page-turn — DESKTOP ONLY (touch uses native swipe). */
 .reader-zone { display: none; }
 @media (hover: hover) and (pointer: fine) {
@@ -1276,6 +1324,15 @@ body.reader-active .view {
   box-shadow: 0 4px 12px color-mix(in oklab, var(--accent) 30%, transparent);
 }
 .reader-bar .reader-btn.active .icon { color: var(--on-accent); }
+/* Keep the accent fill (and its light icon) on hover of a SELECTED button —
+   otherwise the generic hover swaps in --surface2 and the on-accent icon
+   vanishes against it (white-on-near-white in light mode). */
+.reader-bar .reader-btn.active:hover:not(:disabled) {
+  background: var(--accent);
+  border-color: transparent;
+  color: var(--on-accent);
+  filter: brightness(1.08);
+}
 
 /* big readable page counter */
 .reader-bar .reader-counter {
@@ -1344,8 +1401,15 @@ body.reader-active .view {
     flex-wrap: wrap;
     padding-bottom: max(12px, env(safe-area-inset-bottom));
   }
-  .reader-bar .reader-btn { width: 44px; height: 44px; border-radius: var(--radius-sm); }
+  .reader-bar .reader-btn { width: 42px; height: 42px; border-radius: var(--radius-sm); }
   .reader-bar .reader-counter { font-size: 16px; min-width: 72px; }
+  /* De-clutter the top-right on phones: the sidebar toggle has no sidebar to
+     toggle here, and native fullscreen is unreliable on mobile browsers — drop
+     both so only auto-scroll, bookmark, chapters and settings remain. */
+  .reader-bar.top .reader-sidebar-toggle,
+  .reader-bar.top .reader-fs-toggle { display: none; }
+  .reader-bar.top .reader-actions { gap: 8px; }
+  .reader-bar.top .reader-title .t-chapter { font-size: 15px; }
   /* slider drops to its own full-width row below the buttons */
   .reader-bar.bottom .reader-slider { flex-basis: 100%; order: 9; min-width: 0; height: 30px; }
 }
@@ -1367,14 +1431,24 @@ body.reader-active .view {
 
 /* ---- settings rows (HORIZONTAL — fixes the .field column clash) ------ */
 .setting-row {
+  /* wrap so a wide control (e.g. the 3-way reading-mode segmented) drops onto
+     its own line instead of overflowing — and being clipped by — the panel. */
   display: flex; align-items: center; justify-content: space-between; gap: 16px;
-  padding: 14px 0; border-bottom: 1px solid var(--border);
+  flex-wrap: wrap; row-gap: 10px;
+  /* No inner divider — sections are already grouped; spacing separates rows so a
+     line never visually cuts through a wrapped control. */
+  padding: 12px 0;
 }
-.setting-row:last-child { border-bottom: none; }
 .setting-row .row-main { min-width: 0; flex: 1 1 auto; }
 .setting-row .row-main .name { font-weight: 650; }
 .setting-row .row-main .sub { color: var(--text-faint); font-size: 12.5px; margin-top: 2px; }
-.setting-row .row-actions { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
+.setting-row .row-actions { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; max-width: 100%; }
+/* On phones give the wrapped control the full row so it never overflows. */
+@media (max-width: 560px) {
+  .setting-row .row-actions { width: 100%; }
+  .setting-row .row-actions .seg { display: flex; width: 100%; }
+  .setting-row .row-actions .seg button { flex: 1 1 0; padding: 8px 6px; text-align: center; }
+}
 
 /* ---- progress bar ---------------------------------------------------- */
 .progress { height: 7px; border-radius: 7px; background: var(--surface3); overflow: hidden; margin-top: 6px; }
@@ -1401,17 +1475,20 @@ body.reader-active .view {
 .field input:focus, .field select:focus, .field textarea:focus, input.field:focus { border-color: var(--accent); outline: none; }
 .field textarea { height: auto; min-height: 90px; padding: 10px 14px; resize: vertical; }
 .row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-.settings-section { background: var(--surface-grad); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 22px; margin-bottom: 18px; max-width: 760px; }
-.settings-section h2 { margin: 0 0 6px; font-size: 17px; }
+/* Flat, boxless settings (Android/Material-style): section header + spaced rows,
+   no bordered card container. */
+.settings-section { background: none; border: none; border-radius: 0; padding: 0; margin-bottom: 34px; max-width: 760px; }
+.settings-section h2 { margin: 0 0 12px; font-size: 18px; }
 .swatches { display: flex; gap: 10px; flex-wrap: wrap; }
 .swatch { width: 32px; height: 32px; border-radius: 50%; cursor: pointer; border: 2px solid transparent; transition: transform 0.12s var(--ease); }
 .swatch:hover { transform: scale(1.12); }
 .swatch.active { border-color: var(--text); box-shadow: 0 0 0 3px var(--accent-soft); }
 
 /* ---- colour-scheme preview cards (android item_color_scheme) ---------- */
-.scheme-cards { display: flex; gap: 12px; overflow-x: auto; padding: 4px 2px 8px; scroll-snap-type: x proximity; }
-.scheme-cards::-webkit-scrollbar { height: 6px; }
-.scheme-cards::-webkit-scrollbar-thumb { background: var(--border); border-radius: 999px; }
+/* Single scrollable row (horizontal), with the scrollbar hidden for a clean
+   look. Padding keeps the selected card's 2px ring from being clipped. */
+.scheme-cards { display: flex; gap: 12px; overflow-x: auto; padding: 6px; scroll-snap-type: x proximity; scrollbar-width: none; }
+.scheme-cards::-webkit-scrollbar { display: none; }
 .scheme-card { flex: 0 0 auto; cursor: pointer; scroll-snap-align: start; display: flex; flex-direction: column; align-items: center; gap: 6px; outline: none; }
 .scheme-card-surface { position: relative; width: 84px; height: 116px; border-radius: 14px; background: var(--surface2); border: 1px solid var(--border); padding: 10px; box-sizing: border-box; display: flex; flex-direction: column; transition: box-shadow 0.15s var(--ease), border-color 0.15s var(--ease); }
 .scheme-card:hover .scheme-card-surface { border-color: var(--card-primary); }
@@ -1453,11 +1530,14 @@ body.reader-active .view {
 .error-box { color: var(--danger); }
 .center { display: flex; align-items: center; justify-content: center; gap: 12px; padding: 60px 20px; color: var(--text-dim); flex-direction: column; }
 .spinner {
-  width: 28px; height: 28px; border-radius: 50%;
-  border: 3px solid var(--surface3); border-top-color: var(--accent);
-  animation: spin 0.8s linear infinite;
+  width: 30px; height: 30px; border-radius: 50%;
+  border: 2.5px solid var(--hairline);
+  border-top-color: var(--accent);
+  animation: spin 0.7s linear infinite;
+  will-change: transform;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .spinner { animation-duration: 1.5s; } }
 .skeleton { position: relative; overflow: hidden; background: var(--surface1) !important; border-radius: var(--radius-sm); }
 .skeleton::after {
   content: ""; position: absolute; inset: 0;
@@ -1494,7 +1574,7 @@ body.reader-active .view {
 
 /* ---- toast ----------------------------------------------------------- */
 .toast {
-  position: fixed; inset-block-end: 28px; inset-inline-start: 50%; transform: translateX(-50%);
+  position: fixed; inset-block-start: calc(20px + env(safe-area-inset-top)); inset-inline-start: 50%; transform: translateX(-50%);
   z-index: 200; max-width: 90vw;
   background: var(--surface3); color: var(--text);
   border: 1px solid var(--border-strong); border-radius: var(--radius-pill);
@@ -1814,7 +1894,7 @@ body.reader-active .view {
   .row-item .row-main .sub { font-size: 12.5px; }
 
   /* ---- settings: hairline-divided sections, calm --------------------- */
-  .settings-section { max-width: 100%; padding: 6px 0 18px; border-radius: 0; border-bottom: 1px solid var(--hairline); }
+  .settings-section { max-width: 100%; padding: 0; margin-bottom: 28px; border: none; }
   .settings-section h2 { font-family: var(--font-display); font-size: 16px; font-weight: 600; }
   .setting-row { flex-wrap: wrap; gap: 12px; padding: 14px 0; }
   .setting-row .row-main .name { font-size: 15px; font-weight: 550; }
@@ -1825,7 +1905,7 @@ body.reader-active .view {
   .swatch { width: 34px; height: 34px; }
   .swatch:hover { transform: scale(1.1); }
   .swatch.active { box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--accent); }
-  .scheme-cards { gap: 10px; margin: 0 -2px; padding-inline-start: 2px; padding-inline-end: 2px; }
+  .scheme-cards { gap: 10px; margin: 0; padding: 6px 4px 12px; }
   .scheme-card-surface { width: 76px; height: 106px; }
   .switch { width: 48px; height: 28px; flex-basis: 48px; }
   .switch .slider::before { width: 22px; height: 22px; }
@@ -1914,8 +1994,10 @@ body.reader-active .view {
     pointer-events: auto;
     flex: 0 0 auto; display: flex; align-items: center; justify-content: center;
     width: 56px; height: 56px; border-radius: 999px; border: 0;
-    background: var(--accent); color: #fff; cursor: pointer;
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3), 0 6px 18px var(--accent-glow), 0 2px 6px rgba(0, 0, 0, 0.18);
+    /* Deepen the accent so light pastel schemes (e.g. Sakura in dark) don't blow
+       out, and keep a white icon readable; soften the coloured glow too. */
+    background: color-mix(in oklab, var(--accent) 74%, #000); color: #fff; cursor: pointer;
+    box-shadow: 0 8px 22px rgba(0, 0, 0, 0.34), 0 3px 10px color-mix(in oklab, var(--accent) 18%, transparent), 0 2px 6px rgba(0, 0, 0, 0.18);
     transition: transform 0.18s var(--ease), filter 0.18s var(--ease);
   }
   .tabbar-fab .icon { width: 26px; height: 26px; }
@@ -2147,7 +2229,7 @@ body.reader-active .view {
 
 /* ---- search minimal dark --------------------------------------------- */
 .search-source-card-minimal {
-  background: color-mix(in srgb, var(--bg-elev) 40%, var(--pure-black));
+  background: var(--surface-grad);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   padding: 16px;
@@ -2162,7 +2244,14 @@ body.reader-active .view {
   width: var(--reader-width, 70%);
   max-width: 100%;
   margin-inline: auto;
+  /* Reserve space BEFORE the lazy image loads so pages below don't reflow as
+     each one arrives (keeps scroll position, the X/Y counter and auto-scroll
+     stable). On load, pageImg pins the real aspect-ratio inline, overriding this
+     portrait placeholder, and .loaded drops the skeleton fill. */
+  aspect-ratio: 70 / 100;
+  background: var(--surface1);
 }
+.reader.webtoon .reader-page.loaded { background: none; }
 
 /* ---- cover download overlay ----------------------------------------- */
 .details-summary .cover {
@@ -2664,6 +2753,10 @@ body.reader-active .view {
   /* Phones: also stop the big background animations entirely. */
   .wlc-glow-1, .wlc-glow-2, .wlc-mist { animation: none; }
   .wlc-flash { display: none; }
+  /* Declutter mobile: keep only a faint hint of rain, confined to the upper area
+     so the streaks never cross the auth card / feature pills. */
+  .wlc-rain { inset: -28% -28% 46% -28%; overflow: hidden; }
+  .wlc-rain.is-front { opacity: 0.26; }
 }
 @media (max-width: 460px) {
   .wlc { padding-inline-start: 15px; padding-inline-end: 15px; }
@@ -2687,3 +2780,88 @@ body.reader-active .view {
 .google-mark { width: 18px; height: 18px; }
 .google-mark svg { width: 18px; height: 18px; display: block; }
 .google-mark path { stroke: none; }
+
+/* ===== Material 3 Expressive — mobile uplift (Android-like) ================= */
+@media (max-width: 760px) {
+  /* Rounder shape scale — the M3 Expressive signature. */
+  .card .cover { border-radius: 20px; }
+  .discover-rail-card .card .cover { border-radius: 18px; }
+  .discover-hero { border-radius: 30px; }
+  .discover-hero-cover { border-radius: 18px; }
+  .searchbar, .search-shell, .topbar-search input, input.search { border-radius: 999px; }
+
+  /* Expressive display headings — larger, heavier, tighter tracking. */
+  .section-header h2, .section-header .h2 { font-size: 23px; font-weight: 760; letter-spacing: -0.025em; }
+  .discover-hero-title { font-size: 24px; font-weight: 800; }
+
+  /* "Show all" → a tonal M3 chip instead of a bare accent link. */
+  .section-header .btn.btn-ghost {
+    background: var(--surface2); border: 1px solid var(--hairline);
+    border-radius: 999px; padding: 8px 16px;
+    color: var(--text-dim); font-weight: 640; font-size: 13px;
+  }
+  .section-header .btn.btn-ghost:hover { background: var(--surface3); color: var(--text); border-color: var(--border-strong); }
+
+  /* Fuller, springier primary actions (filled M3 pill). */
+  .discover-hero-actions .btn { border-radius: 999px; min-height: 46px; padding-inline: 22px; }
+  .discover-hero-actions .btn:active { transform: scale(0.96); }
+
+  /* Squishy M3 press feedback on cards. */
+  .card:active .cover { transform: scale(0.97); transition-duration: 0.12s; }
+}
+
+/* ===== Reader page-counter is tappable (jump to page) ====================== */
+.reader-bar .reader-counter { cursor: pointer; transition: color 0.15s var(--ease); }
+.reader-bar .reader-counter:hover { color: var(--accent); }
+
+/* ===== PWA install banner ================================================== */
+.install-banner {
+  position: fixed;
+  left: 50%; bottom: calc(16px + env(safe-area-inset-bottom));
+  transform: translate(-50%, 180%);
+  z-index: 120;
+  width: min(440px, calc(100vw - 24px));
+  display: flex; align-items: center; gap: 14px;
+  padding: 13px 15px;
+  border-radius: var(--radius-lg);
+  background: var(--bg-elev);
+  border: 1px solid var(--border-strong);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(20px) saturate(1.4);
+  -webkit-backdrop-filter: blur(20px) saturate(1.4);
+  opacity: 0;
+  transition: transform 0.34s var(--ease), opacity 0.34s var(--ease);
+}
+.install-banner.show { transform: translate(-50%, 0); opacity: 1; }
+.install-banner-icon { width: 42px; height: 42px; border-radius: 11px; flex: 0 0 auto; }
+.install-banner-text { display: flex; flex-direction: column; gap: 2px; flex: 1 1 auto; min-width: 0; }
+.install-banner-text strong { font-size: 14px; font-weight: 700; }
+.install-banner-text span { font-size: 12px; color: var(--text-dim); line-height: 1.35; }
+.install-banner-actions { display: flex; gap: 8px; flex: 0 0 auto; }
+.install-banner-actions .btn { padding: 8px 14px; font-size: 13px; }
+@media (max-width: 760px) {
+  /* clear the floating tabbar pill + reading FAB */
+  .install-banner { bottom: calc(86px + env(safe-area-inset-bottom)); }
+}
+
+/* ===== Pull-to-refresh indicator ========================================== */
+.ptr-indicator {
+  position: fixed; top: 10px; left: 50%;
+  transform: translateX(-50%);
+  z-index: 90;
+  width: 40px; height: 40px; border-radius: 999px;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--bg-elev);
+  border: 1px solid var(--border-strong);
+  box-shadow: var(--shadow-sm);
+  color: var(--text-dim);
+  opacity: 0; pointer-events: none;
+  transition: opacity 0.2s var(--ease);
+}
+.ptr-indicator.ready { color: var(--accent); border-color: var(--accent); }
+.ptr-indicator .icon { width: 20px; height: 20px; }
+
+/* Details chapter list: last chapter (Ch 1) must clear the floating tabbar+FAB. */
+@media (max-width: 760px) {
+  .d2-chapter-scroll { padding-bottom: calc(104px + env(safe-area-inset-bottom)); }
+}

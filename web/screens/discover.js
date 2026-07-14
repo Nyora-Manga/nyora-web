@@ -102,7 +102,7 @@ async function load(body) {
   } catch (err) {
     if (token !== renderToken) return;
     body.replaceChildren(
-      errorBox(`Couldn't reach MangaBaka: ${err.message || err}`),
+      errorBox("Couldn't load discovery right now."),
       el('div', { class: 'center', style: { marginTop: '14px' } },
         btn('Retry', { variant: 'ghost', icon: 'refresh', onClick: () => load(body) }),
       ),
@@ -116,7 +116,7 @@ async function load(body) {
   const anyContent = Object.values(feed).some((arr) => Array.isArray(arr) && arr.length);
   if (!anyContent) {
     body.replaceChildren(
-      emptyState('MangaBaka has nothing to discover right now — check back soon.', 'trending'),
+      emptyState('Nothing to discover right now — check back soon.', 'trending'),
       el('div', { class: 'center', style: { marginTop: '14px' } },
         btn('Retry', { variant: 'ghost', icon: 'refresh', onClick: () => load(body) }),
       ),
@@ -152,13 +152,47 @@ function mediaUsable(m) {
 // manhua (CN) and manga (JP) rails, and a few trending-by-genre rails. This
 // surfaces recognizable, current titles (Solo Leveling, Nano Machine, …), not
 // obscure or decades-old entries.
-// AniList is PRIMARY. If it's down / rate-limited / returns nothing, fall back to
-// MangaBaka so Discover still populates.
+
+// AniList's public API is capped at ~30 requests/min. To keep AniList as the REAL
+// source of Discover (instead of tripping the limit and silently degrading), the
+// whole feed is cached in-memory + sessionStorage for 15 min. Revisits are instant
+// and cost zero requests; when AniList is rate-limited we reuse the cached feed
+// rather than falling back. MangaBaka is only a last resort if AniList has never
+// answered this session.
+const FEED_TTL = 15 * 60 * 1000;
+const FEED_CACHE_KEY = 'nyora.discover.feed.v1';
+let feedCache = null; // { at:number, feed }
+
+function feedNonEmpty(f) { return !!(f && Array.isArray(f.trending) && f.trending.length); }
+
+function readSessionCache() {
+  if (feedCache) return feedCache;
+  try {
+    const raw = sessionStorage.getItem(FEED_CACHE_KEY);
+    const obj = raw ? JSON.parse(raw) : null;
+    if (obj && typeof obj.at === 'number' && feedNonEmpty(obj.feed)) { feedCache = obj; return obj; }
+  } catch { /* private mode / bad JSON — ignore */ }
+  return null;
+}
+function writeSessionCache(feed, at) {
+  feedCache = { at, feed };
+  try { sessionStorage.setItem(FEED_CACHE_KEY, JSON.stringify(feedCache)); } catch { /* ignore quota */ }
+}
+
+// AniList is PRIMARY. Fresh cache → served instantly; live fetch → cached; on a
+// rate-limit/outage we reuse ANY cached AniList feed before touching MangaBaka.
 async function fetchAnilistFeed() {
+  const cached = readSessionCache();
+  if (cached && (Date.now() - cached.at) < FEED_TTL) return cached.feed;
+
   try {
     const feed = await fetchFromAniList();
-    if (feed && feed.trending && feed.trending.length) return feed;
-  } catch { /* fall through to MangaBaka */ }
+    if (feedNonEmpty(feed)) { writeSessionCache(feed, Date.now()); return feed; }
+  } catch {
+    // Rate-limited or offline — a stale AniList feed still beats MangaBaka.
+    if (cached) return cached.feed;
+  }
+  if (cached) return cached.feed;
   try {
     return await fetchFromMangaBaka();
   } catch {
@@ -288,7 +322,7 @@ function heroCard(item) {
 
   const coverWrap = el('div', { class: 'discover-hero-cover' });
   if (cover) {
-    const img = el('img', { loading: 'eager', decoding: 'async', alt: title });
+    const img = el('img', { loading: 'eager', decoding: 'async', fetchpriority: 'high', alt: title });
     // AniList CDN is CORS-friendly — load directly, fall back to the proxy.
     applyImage(img, cover, undefined, () => { img.style.display = 'none'; });
     coverWrap.appendChild(img);

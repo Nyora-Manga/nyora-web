@@ -211,52 +211,6 @@ export async function del(path) {
 }
 
 
-// ---- AniList tracker (direct client-side GraphQL) ----------------------
-// AniList's API is CORS-enabled (ACAO:* and allows the Authorization header),
-// so the browser talks to it directly — no server, no CORS worker. The token
-// (held by the tracker screen) is sent only to AniList over HTTPS.
-const ANILIST_API = 'https://graphql.anilist.co';
-
-const ANILIST_SEARCH = `query ($search: String) {
-  Page(perPage: 12) {
-    media(search: $search, type: MANGA, sort: SEARCH_MATCH) {
-      id
-      title { romaji english native }
-      coverImage { large }
-      averageScore
-      chapters
-      format
-      isAdult
-      mediaListEntry { status progress }
-    }
-  }
-}`;
-
-const ANILIST_SAVE = `mutation ($mediaId: Int, $progress: Int, $status: MediaListStatus) {
-  SaveMediaListEntry(mediaId: $mediaId, progress: $progress, status: $status) {
-    id status progress
-  }
-}`;
-
-async function anilistGraphQL(query, variables, token) {
-  const res = await fetch(ANILIST_API, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Accept: 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-    body: JSON.stringify({ query, variables }),
-  });
-  // Return the raw GraphQL envelope ({data, errors}); the tracker screen reads
-  // raw.data.Page.media / raw.data.SaveMediaListEntry and handles raw.errors.
-  const data = await parseBody(res);
-  if (!res.ok && !(data && data.errors)) {
-    throw new Error((data && data.message) || `AniList error ${res.status}`);
-  }
-  return data;
-}
-
 // ---- installed sources (new-API model) ---------------------------------
 // The Explore grid + search operate on the user's OWN installed set (kept in
 // localStorage, per visitor), resolved against the hosted helper's catalog
@@ -662,19 +616,6 @@ export const api = {
     return Promise.resolve(library.importData(obj));
   },
 
-  // -- Tracker: AniList (direct client-side GraphQL — no server/worker) --
-  anilistSearch(q, token) {
-    // Returns the raw {data:{Page:{media:[...]}}} envelope.
-    return anilistGraphQL(ANILIST_SEARCH, { search: q }, token);
-  },
-  anilistScrobble(body, token) {
-    // {mediaId, progress, status} -> {data:{SaveMediaListEntry:{…}}}
-    return anilistGraphQL(ANILIST_SAVE, {
-      mediaId: Number(body && body.mediaId),
-      progress: Number(body && body.progress) || 0,
-      status: body && body.status,
-    }, token);
-  },
   // (Account sync is handled entirely by core/sync.js against the hosted
   //  stream backend at NYORA_SYNC_URL.)
 };

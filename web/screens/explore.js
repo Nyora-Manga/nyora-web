@@ -1,7 +1,7 @@
 // screens/explore.js — android-style Explore.
 //
 // Landing (default): a universal search field, a 2x2 quick-actions card
-// (Local storage / Bookmarks / Random / Downloads), then a "Manga sources"
+// (Local storage / Downloads), then a "Manga sources"
 // grid of installed-source tiles with a "Catalog" action (Manage extensions).
 // This mirrors the nyora-android Explore screen.
 //
@@ -43,7 +43,7 @@ function medallion(src, cls) {
   return el('div', { class: cls }, langCode(src).slice(0, 2) || '??');
 }
 
-export function render(view, _params) {
+export function render(view, params) {
   const prefs = store.get();
   view.replaceChildren();
 
@@ -64,6 +64,37 @@ export function render(view, _params) {
     browseError: null,
     browseToken: 0,
   };
+
+  // The browsed source lives in the URL (?source=<id>), so browser-back AND a
+  // reload both return to it (not the landing). Enter browse when it's present.
+  const wantSourceId = params && params.source ? String(params.source) : null;
+  if (wantSourceId) {
+    state.screen = 'browse';
+    const hit = exploreCache && exploreCache.sourceId === wantSourceId && exploreCache.entries.length;
+    state.mode = hit ? exploreCache.mode : 'POPULAR';
+    state.query = hit ? exploreCache.query : '';
+    // Keep the source object if we already have it (back-nav); else resolve it
+    // once the source list loads (reload / deep link).
+    if (!(store.source && store.source.id === wantSourceId)) store.source = null;
+    if (hit) {
+      state.entries = exploreCache.entries.slice();
+      state.page = exploreCache.page;
+      state.hasNext = exploreCache.hasNext;
+    } else {
+      state.browseLoading = true; // show a skeleton grid until entries arrive
+    }
+  }
+
+  // Snapshot the live browse session so a later re-render (back-navigation) can
+  // restore it exactly, with no refetch and correct scroll.
+  function syncExploreCache() {
+    if (state.screen === 'browse' && store.source) {
+      exploreCache = {
+        sourceId: store.source.id, mode: state.mode, query: state.query,
+        entries: state.entries.slice(), page: state.page, hasNext: state.hasNext,
+      };
+    }
+  }
 
   // Single root; the screen swaps landing <-> browse in place.
   const root = el('div', { class: 'explore-screen' });
@@ -117,7 +148,9 @@ export function render(view, _params) {
   // ---- screen swap --------------------------------------------------------
 
   function renderScreen() {
-    if (state.screen === 'browse' && store.source) renderBrowseView();
+    // Render browse as soon as we know we're browsing (source may still be
+    // resolving from the URL) so a reload shows a skeleton, not the landing.
+    if (state.screen === 'browse') renderBrowseView();
     else renderLanding();
   }
 
@@ -130,25 +163,9 @@ export function render(view, _params) {
     const home = el('div', { class: 'explore-home' });
     root.appendChild(home);
 
-    home.appendChild(landingSearch());
+    // No in-page search field — the global top-bar search is the single entry.
     home.appendChild(quickActions());
     home.appendChild(sourcesSection());
-  }
-
-  function landingSearch() {
-    const input = el('input', {
-      type: 'search', class: 'discover-search-input',
-      placeholder: 'Search all sources', autocomplete: 'off', enterkeyhint: 'search',
-      'aria-label': 'Search all sources',
-    });
-    return el('form', {
-      class: 'discover-search', role: 'search',
-      onSubmit: (e) => {
-        e.preventDefault();
-        const q = input.value.trim();
-        router.navigate('search', q ? { q } : {});
-      },
-    }, icon('search'), input);
   }
 
   function quickAction(label, iconName, onClick) {
@@ -163,8 +180,6 @@ export function render(view, _params) {
   function quickActions() {
     return el('div', { class: 'quick-actions' },
       quickAction('Local storage', 'folder', () => router.navigate('local')),
-      quickAction('Bookmarks', 'bookmark', () => router.navigate('bookmarks')),
-      quickAction('Random', 'refresh', () => openRandom()),
       quickAction('Downloads', 'download', () => router.navigate('downloads')),
     );
   }
@@ -241,32 +256,6 @@ export function render(view, _params) {
     );
   }
 
-  // ---- Random -------------------------------------------------------------
-  // Pick a random installed source and open a random popular title from it.
-
-  async function openRandom() {
-    const installed = installedVisible();
-    if (!installed.length) {
-      toast('Install a source first — open the catalog.');
-      return;
-    }
-    const src = installed[Math.floor(Math.random() * installed.length)];
-    toast('Finding something to read…');
-    try {
-      const page = 1 + Math.floor(Math.random() * 3);
-      let res = await api.popular(src.id, page);
-      let entries = (res && res.entries) || [];
-      if (!entries.length && page !== 1) {
-        res = await api.popular(src.id, 1);
-        entries = (res && res.entries) || [];
-      }
-      if (!entries.length) { toast('Nothing found — try again.'); return; }
-      const m = entries[Math.floor(Math.random() * entries.length)];
-      router.navigate('details', { sid: src.id, url: m.url });
-    } catch (e) {
-      toast(friendlyBrowseError(e && e.message));
-    }
-  }
 
   // ======================= SOURCE LIST (mobile sheet) =====================
 
@@ -395,7 +384,14 @@ export function render(view, _params) {
     const searchInput = el('input', {
       class: 'field ext-search', type: 'search', placeholder: 'Search extensions…',
     });
-    modal({ title: 'Catalog', body: el('div', { class: 'ext-sheet' }, searchInput, listWrap) });
+    let catLang = 'all';
+    const langSelect = el('select', {
+      class: 'lang-select ext-lang', 'aria-label': 'Filter extensions by language',
+      onChange: (ev) => { catLang = ev.target.value; renderExt(); },
+    }, el('option', { value: 'all' }, 'All languages'));
+    langSelect.style.display = 'none'; // revealed once ≥2 languages are known
+    modal({ title: 'Catalog', body: el('div', { class: 'ext-sheet' },
+      el('div', { class: 'ext-toolbar' }, searchInput, langSelect), listWrap) });
 
     let entries = [];
     let extToken = 0;
@@ -407,6 +403,7 @@ export function render(view, _params) {
         const res = await api.catalog();
         if (token !== extToken) return;
         entries = (res && res.entries) || [];
+        populateExtLang();
         renderExt();
       } catch (e) {
         if (token === extToken) {
@@ -419,11 +416,24 @@ export function render(view, _params) {
       }
     }
 
+    // Build the language dropdown from the catalog's own languages (with counts),
+    // hiding it when there's only one. Lets users separate the catalog by language.
+    function populateExtLang() {
+      const visible = entries.filter((e) => state.showNsfw || !e.isNsfw);
+      const opts = languageOptions(visible);
+      langSelect.replaceChildren(el('option', { value: 'all' }, `All languages (${visible.length})`));
+      for (const o of opts) langSelect.appendChild(el('option', { value: o.code || '' }, `${o.label} (${o.count})`));
+      if (![...langSelect.options].some((op) => op.value === catLang)) catLang = 'all';
+      langSelect.value = catLang;
+      langSelect.style.display = opts.length > 1 ? '' : 'none';
+    }
+
     function renderExt() {
       listWrap.replaceChildren();
       const q = searchInput.value.trim().toLowerCase();
       const filtered = entries.filter((e) =>
         (state.showNsfw || !e.isNsfw) &&
+        (catLang === 'all' || (e.lang || '').toLowerCase() === catLang) &&
         ((e.name || '').toLowerCase().includes(q) || (e.lang || '').toLowerCase().includes(q)));
       if (!filtered.length) {
         listWrap.appendChild(emptyState(
@@ -480,17 +490,11 @@ export function render(view, _params) {
   }
 
   function selectSource(src) {
-    const already = store.source && store.source.id === src.id;
     store.source = src;
     lsSet(LAST_SOURCE_KEY, src.id);
-    if (!already) {
-      state.mode = 'POPULAR';
-      state.query = '';
-      state.entries = [];
-    }
-    state.screen = 'browse';
-    renderScreen();
-    if (!already || !state.entries.length) loadBrowse(1);
+    // Put the source in the URL; the re-render enters browse, and browser-back
+    // (from a manga) + reload both return to this exact view.
+    router.navigate('explore', { source: src.id });
   }
 
   // ======================= BROWSE =========================================
@@ -504,8 +508,8 @@ export function render(view, _params) {
   }
 
   function backToLanding() {
-    state.screen = 'landing';
-    renderLanding();
+    exploreCache = null; // explicit exit → next visit shows the landing, not browse
+    router.navigate('explore'); // clears ?source from the URL → landing
   }
 
   function renderBrowse() {
@@ -628,7 +632,18 @@ export function render(view, _params) {
       state.sourcesLoading = false;
       state.sourcesError = null;
       renderSourceLists();
-      if (state.screen === 'landing') renderLanding();
+      // Resolve a URL-requested source now that the list is in, then browse it.
+      let resolvedNow = false;
+      if (state.screen === 'browse' && wantSourceId && !store.source) {
+        const src = state.sources.find((s) => s.id === wantSourceId);
+        if (src) { store.source = src; resolvedNow = true; }
+      }
+      if (state.screen === 'browse' && store.source) {
+        if (!state.entries.length && !state.browseError) loadBrowse(1); // fetch (reload / deep link)
+        else if (resolvedNow) renderBrowseView();                       // header now knows the source
+      } else if (state.screen === 'landing') {
+        renderLanding();
+      }
     } catch (e) {
       state.sourcesLoading = false;
       state.sourcesError = e.message;
@@ -658,6 +673,7 @@ export function render(view, _params) {
       state.hasNext = !!(res && res.hasNextPage);
       state.browseLoading = false;
       renderBrowse();
+      syncExploreCache();
     } catch (e) {
       if (token !== state.browseToken) return;
       state.browseLoading = false;
@@ -694,5 +710,7 @@ export function render(view, _params) {
 }
 
 let _onSourcesSynced = null;
+// Persists the last browse session across re-renders so back-navigation restores it.
+let exploreCache = null;
 
 export default { meta, render };

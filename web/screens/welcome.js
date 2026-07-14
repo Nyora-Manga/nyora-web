@@ -204,7 +204,7 @@ export function showWelcome(onDone) {
       el('span', { class: 'wlc-glow wlc-glow-2' }),
       el('span', { class: 'wlc-mist' }),
       rainLayer(small ? 0 : 34, 'is-back'),
-      rainLayer(small ? 22 : 54, 'is-front'),
+      rainLayer(small ? 7 : 54, 'is-front'),
       el('span', { class: 'wlc-flash' }),
       el('span', { class: 'wlc-horizon' }),
       el('span', { class: 'wlc-vignette' }),

@@ -11,14 +11,13 @@ const STORAGE_KEY = 'nyora.prefs';
 const WALLPAPER_ACCENT = 'wallpaper';
 const LEGACY_AUTO_ACCENT = 'auto';
 
-// Shared named colour-scheme set (ported from nyora-android). Dynamic first =
-// default; each scheme carries both a light and a dark primary — the active
-// appearance (LIGHT/DARK) selects which one is used as the Material accent. The
-// `sec` (dark secondary) tone draws the two preview bars on each card.
-//   'wallpaper' (= Dynamic) has no fixed pair — it resolves to the OS/browser
-//   AccentColor, so its preview tones are derived from the detected accent.
+// Shared named colour-scheme set (ported from nyora-android). Each scheme carries
+// both a light and a dark primary — the active appearance (LIGHT/DARK) selects
+// which one is used as the Material accent. The `sec` (dark secondary) tone draws
+// the two preview bars on each card. Default = Sakura (see DEFAULT_PREFS).
 export const COLOR_SCHEMES = [
-  { id: WALLPAPER_ACCENT, name: 'Dynamic', wallpaper: true },
+  // Dynamic/wallpaper accent removed on web — browsers rarely expose a usable
+  // OS accent, so it silently did nothing. Sakura is the default instead.
   { id: 'totoro', name: 'Totoro', light: '#3C6090', dark: '#A6C8FF', sec: '#BCC7DC' },
   { id: 'miku', name: 'Miku', light: '#00696D', dark: '#6FDDE2', sec: '#A6CECF' },
   { id: 'asuka', name: 'Asuka', light: '#904A40', dark: '#FFB4A8', sec: '#E7BDB6' },
@@ -31,15 +30,17 @@ export const COLOR_SCHEMES = [
   { id: 'yuki', name: 'Yuki', light: '#43474A', dark: '#FFFFFF', sec: '#C6C6C9' },
 ];
 
-/** Look up a scheme by id. Unknown/legacy values fall back to Dynamic (wallpaper). */
+/** Look up a scheme by id. Unknown/legacy values fall back to the default (Sakura). */
 export function schemeById(id) {
-  return COLOR_SCHEMES.find((s) => s.id === id) || COLOR_SCHEMES[0];
+  return COLOR_SCHEMES.find((s) => s.id === id)
+    || COLOR_SCHEMES.find((s) => s.id === 'sakura')
+    || COLOR_SCHEMES[0];
 }
-const FALLBACK_ACCENT = '#88ce02'; // Used only when the OS/browser exposes no accent.
+const FALLBACK_ACCENT = '#6366f1'; // Matches the CSS default --accent; used when the OS/browser exposes no accent (e.g. most mobile browsers) instead of a stray green.
 
 const DEFAULT_PREFS = {
   appearance: 'DARK', // 'DARK' | 'LIGHT'
-  accent: WALLPAPER_ACCENT,
+  accent: 'sakura',
   showNsfw: false,
   noNsfwHistory: false, // when true, 18+ manga are never written to history
   reader: {
@@ -90,17 +91,13 @@ export function detectBrowserAccent() {
  * `theme` is 'LIGHT' | 'DARK' (defaults to 'DARK').
  */
 export function resolveAccent(pref, theme) {
-  if (pref === WALLPAPER_ACCENT || pref === LEGACY_AUTO_ACCENT) {
-    return detectBrowserAccent() || FALLBACK_ACCENT;
-  }
   const scheme = COLOR_SCHEMES.find((s) => s.id === pref);
-  if (scheme && !scheme.wallpaper) {
-    return theme === 'LIGHT' ? scheme.light : scheme.dark;
-  }
+  if (scheme) return theme === 'LIGHT' ? scheme.light : scheme.dark;
   // Legacy raw hex saved by an older build — keep honouring it.
   if (pref && /^#[0-9a-fA-F]{6}$/.test(pref)) return pref;
-  // Unknown -> Dynamic/wallpaper fallback.
-  return detectBrowserAccent() || FALLBACK_ACCENT;
+  // 'wallpaper' / 'auto' / anything unknown -> default Sakura.
+  const sakura = COLOR_SCHEMES.find((s) => s.id === 'sakura');
+  return sakura ? (theme === 'LIGHT' ? sakura.light : sakura.dark) : FALLBACK_ACCENT;
 }
 
 // ---- deep helpers ------------------------------------------------------
@@ -153,6 +150,23 @@ function createStore() {
   // the cover when a source's /manga/details omits it (e.g. AsuraScans returns
   // an empty coverUrl — the cover only ever comes from the list entry).
   const mangaCache = new Map();
+  // Persist the cover cache so covers survive reloads and flow into details,
+  // favourites and the library (the source `details` endpoint often omits them).
+  const MANGA_CACHE_KEY = 'nyora.mangacache.v1';
+  const MANGA_CACHE_MAX = 500;
+  try {
+    const saved = JSON.parse(localStorage.getItem(MANGA_CACHE_KEY) || '[]');
+    if (Array.isArray(saved)) for (const [url, v] of saved) if (url && v) mangaCache.set(url, v);
+  } catch { /* corrupt/absent — ignore */ }
+  let _mcTimer = null;
+  function persistMangaCache() {
+    if (_mcTimer) return;
+    _mcTimer = setTimeout(() => {
+      _mcTimer = null;
+      try { localStorage.setItem(MANGA_CACHE_KEY, JSON.stringify([...mangaCache.entries()].slice(-MANGA_CACHE_MAX))); }
+      catch { /* quota — ignore */ }
+    }, 800);
+  }
 
   function persist() {
     try {
@@ -202,12 +216,16 @@ function createStore() {
     /** Remember a manga's display fields (cover/title) keyed by its url. */
     cacheManga(m) {
       if (m && m.url) {
-        mangaCache.set(m.url, {
+        const v = {
           coverUrl: m.coverUrl || '',
           largeCoverUrl: m.largeCoverUrl || '',
           title: m.title || '',
           isNsfw: m.isNsfw === true,
-        });
+        };
+        mangaCache.delete(m.url);       // move-to-end (recency for the LRU cap)
+        mangaCache.set(m.url, v);
+        if (mangaCache.size > MANGA_CACHE_MAX) mangaCache.delete(mangaCache.keys().next().value);
+        if (v.coverUrl || v.largeCoverUrl) persistMangaCache();
       }
     },
 

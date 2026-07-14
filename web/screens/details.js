@@ -60,7 +60,10 @@ function mangaKey(manga, sid) {
 function skeletonDetails() {
   return el('div', { class: 'd2-loading' },
     iconBtn('back', () => router.back(), 'Back'),
-    spinner(),
+    el('div', { class: 'd2-loading-badge' },
+      spinner(),
+      el('div', { class: 'd2-loading-label' }, 'Loading…'),
+    ),
   );
 }
 
@@ -171,7 +174,9 @@ function buildDetails(view, sid, url, manga, chapters, params) {
   const coverDomain = manga.source && manga.source.domain;
   const coverHeaders = coverDomain ? { Referer: `https://${coverDomain}/` } : undefined;
   const nsfw = manga.isNsfw === true || manga.contentRating === 'ADULT';
-  const title = clean(manga.title) || 'Untitled';
+  // The source `details` endpoint sometimes omits the title (like the cover);
+  // fall back to the cached grid title / the nav param before "Untitled".
+  const title = clean(manga.title) || clean(hint.title) || clean(params && params.title) || 'Untitled';
   const authors = authorsText(manga);
   const publicUrl = clean(manga.publicUrl) || clean(manga.url);
 
@@ -208,11 +213,21 @@ function buildDetails(view, sid, url, manga, chapters, params) {
 
   // ── LEFT: info panel ──────────────────────────────────────────────────────
   const coverWrap = el('div', { class: 'd2-cover' });
-  if (rawCover) {
-    const img = el('img', { loading: 'lazy', decoding: 'async', alt: title });
-    applyImage(img, rawCover, coverHeaders, () => { img.style.display = 'none'; });
-    coverWrap.appendChild(img);
+  // Try every cover we know (large → thumb, live → cached), each via direct load
+  // then the /image proxy. If ALL fail (e.g. a hotlink-blocked large cover on a
+  // cold reload), show a titled placeholder instead of a blank void.
+  const covers = [...new Set(
+    [manga.largeCoverUrl, manga.coverUrl, hint.largeCoverUrl, hint.coverUrl].map(clean).filter(Boolean),
+  )];
+  function mountCover(i) {
+    const node = i < covers.length
+      ? el('img', { class: 'd2-cover-media', loading: 'eager', decoding: 'async', alt: title })
+      : el('div', { class: 'd2-cover-fallback' }, ((title || '?').trim()[0] || '?').toUpperCase());
+    const cur = $('.d2-cover-media, .d2-cover-fallback', coverWrap);
+    if (cur) cur.replaceWith(node); else coverWrap.insertBefore(node, coverWrap.firstChild);
+    if (i < covers.length) applyImage(node, covers[i], coverHeaders, () => mountCover(i + 1));
   }
+  mountCover(0);
   if (nsfw) coverWrap.appendChild(el('span', { class: 'badge nsfw' }, '18+'));
 
   const metaChips = [];
@@ -232,7 +247,16 @@ function buildDetails(view, sid, url, manga, chapters, params) {
     if (lbl) lbl.textContent = favourited ? 'In library' : 'Add to library';
   }
   favBtn.addEventListener('click', () => {
-    try { const res = library.toggleFavourite(manga); favourited = !!(res && res.favourited); paintFav(); }
+    // Persist BOTH cover sizes (falling back to the cached grid thumb) so the
+    // library/history cards always have a cover to show — not a blank tile.
+    const favManga = {
+      ...manga,
+      source: manga.source || sid || '',
+      title: (title && title !== 'Untitled') ? title : (clean(manga.title) || clean(hint.title) || ''),
+      coverUrl: clean(manga.coverUrl) || clean(hint.coverUrl) || clean(manga.largeCoverUrl) || '',
+      largeCoverUrl: clean(manga.largeCoverUrl) || clean(hint.largeCoverUrl) || clean(manga.coverUrl) || '',
+    };
+    try { const res = library.toggleFavourite(favManga); favourited = !!(res && res.favourited); paintFav(); }
     catch (e) { toast(e.message || 'Error'); }
   });
   paintFav();
@@ -275,7 +299,6 @@ function buildDetails(view, sid, url, manga, chapters, params) {
     el('div', { class: 'd2-actions d2-actions-sub' },
       downloadAllBtn,
       iconBtn('folder', () => openCategories(manga, mangaId), 'Add to category'),
-      iconBtn('anilist', () => router.navigate('tracker', { title }), 'Track'),
       publicUrl ? iconBtn('external', () => window.open(publicUrl, '_blank'), 'Open site') : null,
     ),
     descNode,
@@ -359,14 +382,17 @@ function buildCTA(sid, url, mangaId, chapters, ascByNumber, isRead) {
   if (!ascByNumber.length) return btn('Read', { primary: true, icon: 'play', class: 'd2-cta', onClick: () => {} });
   const lastUrl = lastReadChapterUrl(mangaId, ascByNumber);
   const firstUnread = ascByNumber.find((c) => !isRead(c));
-  const target = firstUnread || ascByNumber[ascByNumber.length - 1];
   const started = !!lastUrl;
-  const num = target && target.number != null && Number(target.number) > 0
-    ? (Number.isInteger(Number(target.number)) ? Number(target.number) : Number(target.number).toFixed(1)) : null;
+  // The chapter the button ACTUALLY opens: the next unread one, or — when
+  // everything's read — restart at chapter 1. The label must match this exact
+  // target (the old code showed the last chapter but opened the first).
+  const openTarget = firstUnread || ascByNumber[0];
+  const num = openTarget && openTarget.number != null && Number(openTarget.number) > 0
+    ? (Number.isInteger(Number(openTarget.number)) ? Number(openTarget.number) : Number(openTarget.number).toFixed(1)) : null;
   const label = !firstUnread ? 'Read again' : (started ? 'Continue' : 'Start reading');
   return btn(num != null ? `${label} · Ch ${num}` : label, {
     primary: true, icon: 'play', class: 'd2-cta',
-    onClick: () => router.navigate('reader', { sid, url, chapterUrl: (firstUnread || ascByNumber[0]).url }),
+    onClick: () => router.navigate('reader', { sid, url, chapterUrl: openTarget.url }),
   });
 }
 
