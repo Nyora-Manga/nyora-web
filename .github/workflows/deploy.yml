@@ -1,25 +1,30 @@
-name: Deploy web → Cloudflare Pages
+name: Deploy web → nyora VM
 
-# Bundles web/ (esbuild → dist/) and deploys to nyoraweb.pages.dev on every push
-# to main, plus a manual "Run workflow" button. Needs two repo secrets:
-#   CLOUDFLARE_API_TOKEN  — token with Account › Cloudflare Pages › Edit
-#   CLOUDFLARE_ACCOUNT_ID — your Cloudflare account id
-
+# Pushing to the `deploy` branch builds the bundle and rsyncs it straight to the
+# live host (Caddy on the nyora VM, web root /var/www/nyora-web serving
+# web.nyora.xyz). Merge/push to `deploy` = instant deploy.
+#
+# Repo secrets required:
+#   DEPLOY_SSH_KEY      — private key of the CI deploy key (installed in the VM's
+#                         ubuntu authorized_keys)
+#   DEPLOY_KNOWN_HOSTS  — `ssh-keyscan` line(s) for the VM host
 on:
   push:
-    branches: [main]
+    branches: [deploy]
   workflow_dispatch:
 
 concurrency:
-  group: pages-deploy-nyoraweb
+  group: deploy-nyora-web
   cancel-in-progress: true
+
+env:
+  DEPLOY_HOST: REDACTED
+  DEPLOY_USER: ubuntu
+  DEPLOY_PATH: /var/www/nyora-web
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      deployments: write
     steps:
       - uses: actions/checkout@v4
 
@@ -32,18 +37,29 @@ jobs:
           npm install --no-audit --no-fund
           npm run build
 
-      # First run creates the Pages project; later runs ignore "already exists".
-      - name: Ensure Pages project exists
-        continue-on-error: true
-        uses: cloudflare/wrangler-action@v3
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: pages project create nyoraweb --production-branch=main
+      - name: Configure SSH
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          printf '%s\n' "${{ secrets.DEPLOY_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+          chmod 644 ~/.ssh/known_hosts
 
-      - name: Deploy dist/ to nyoraweb.pages.dev
-        uses: cloudflare/wrangler-action@v3
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: pages deploy dist --project-name=nyoraweb --branch=main
+      - name: Rsync dist/ → VM web root
+        run: |
+          rsync -az --delete \
+            --exclude='env.js.bak*' \
+            --exclude='_*.html' \
+            -e "ssh -i ~/.ssh/id_ed25519 -o IdentitiesOnly=yes" \
+            dist/ "${DEPLOY_USER}@${DEPLOY_HOST}:${DEPLOY_PATH}/"
+
+      - name: Smoke check (live site responds)
+        run: |
+          for i in 1 2 3 4 5; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 https://web.nyora.xyz/ || true)
+            echo "attempt $i → HTTP $code"
+            [ "$code" = "200" ] && exit 0
+            sleep 3
+          done
+          echo "::error::web.nyora.xyz did not return 200 after deploy"
+          exit 1

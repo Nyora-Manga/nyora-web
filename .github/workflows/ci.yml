@@ -1,0 +1,57 @@
+name: CI — checks
+
+# Error-checking only (NO deploy). Runs on every push to main and on PRs.
+# Deploys happen on the `deploy` branch (see deploy.yml).
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: JavaScript syntax (node --check)
+        run: |
+          set -e
+          fail=0
+          while IFS= read -r -d '' f; do
+            node --check "$f" || { echo "::error file=$f::syntax error"; fail=1; }
+          done < <(find web functions -name '*.js' -type f -print0)
+          exit $fail
+
+      - name: JSON validity
+        run: |
+          set -e
+          fail=0
+          for f in package.json web/manifest.webmanifest $(find web -name '*.json' -type f); do
+            [ -f "$f" ] || continue
+            node -e "JSON.parse(require('fs').readFileSync('$f','utf8'))" \
+              || { echo "::error file=$f::invalid JSON"; fail=1; }
+          done
+          exit $fail
+
+      - name: Production config guard (no localhost in active env.js)
+        run: |
+          if grep -nE '^[[:space:]]*globalThis\.[A-Z_]+[[:space:]]*=.*(localhost|127\.0\.0\.1)' web/env.js; then
+            echo "::error file=web/env.js::env.js has an ACTIVE localhost URL — comment it before merging"
+            exit 1
+          fi
+          echo "env.js points at production hosts."
+
+      - name: Bundle builds cleanly (resolves all imports)
+        run: |
+          npm install --no-audit --no-fund
+          npm run build
