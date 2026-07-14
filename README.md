@@ -126,13 +126,15 @@ Add Nyora to your home screen or install it from your browser and it becomes a r
 
 ### Self-Hosting
 
-Nyora Web is **just static files**, so it deploys **anywhere static** — Cloudflare Pages, Netlify, GitHub-style static hosts, your own server, or even a USB stick. The **only** server-side piece in the entire stack is a tiny **Cloudflare Worker** that proxies CORS and images for sources that don't send permissive CORS headers. Run your own reader end to end: host the SPA wherever you like and point it at your own worker. See [Build from Source](#build-from-source) for the exact commands.
+Nyora Web is **just static files**, so it deploys **anywhere static** — a plain web server, Cloudflare Pages, Netlify, GitHub-style static hosts, your own box, or even a USB stick. The one server-side dependency is the **Nyora helper** (`api.nyora.xyz`) — it serves the source content, sends permissive CORS, and proxies cover/page images through its own `/image` endpoint, so the browser talks only to the helper and needs no separate CORS proxy. Point the SPA at your own helper and you own the reader end to end. See [Build from Source](#build-from-source) for the exact commands.
+
+> A standalone Cloudflare Worker CORS/image proxy still lives in `cloudflare-worker/`, but it's **legacy** — it was needed back when parsing ran in the browser. The hosted app and the helper-based self-host do **not** use it.
 
 Prefer a **one-command, fully-local Docker deployment** — the SPA plus a bundled parser **helper** in one container, with no Cloudflare Worker to run? Use **[nyora-selfhost](https://github.com/Hasan72341/nyora-selfhost)**: `docker compose up` and open `localhost:8080`.
 
 ### Privacy & Open Source
 
-Nyora Web is **free, ad-free, with no tracking, and no account needed to read**. It is licensed under **Apache-2.0** with fully auditable code, built from scratch. There is no telemetry pipeline and no advertising SDK — the app only talks to the manga sources you browse, the optional Cloudflare proxy, and (if you sign in) Nyora Cloud for sync and AniList for tracking. Community **issues and pull requests are welcome**.
+Nyora Web is **free, ad-free, with no tracking, and no account needed to read**. It is licensed under **Apache-2.0** with fully auditable code, built from scratch. There is no telemetry pipeline and no advertising SDK — the app only talks to the Nyora helper (for source content and images), and (if you sign in) Nyora Cloud for sync and AniList for tracking. Community **issues and pull requests are welcome**.
 
 ### Themes & Personalisation
 
@@ -153,7 +155,7 @@ What the browser edition does and does not do, at a glance. "—" means the capa
 | Nyora Cloud sync (library + source preferences) | ✓ |
 | AniList tracking | ✓ |
 | Installable PWA + offline app shell | ✓ |
-| Self-hostable (static host + Cloudflare Worker) | ✓ |
+| Self-hostable (static host + your own Nyora helper) | ✓ |
 | No account required to read | ✓ |
 | Whole-page AI translation | — *(native apps)* |
 | Offline chapter downloads / CBZ export | — *(native apps)* |
@@ -163,9 +165,9 @@ What the browser edition does and does not do, at a glance. "—" means the capa
 Nyora Web is deliberately a pure client-side reader. Honest constraints to know before you rely on it:
 
 - **No AI page translation.** Whole-page OCR + translation is not part of the web client; it lives in Nyora's native apps. Sign in with the same Nyora Cloud account there and your web library carries over.
-- **No chapter downloads beyond the app shell.** Offline support means the cached PWA app shell and bundled parser fallbacks — not saved chapters. There is no per-chapter download or CBZ export in the browser; use a native app for true offline reading.
+- **No chapter downloads beyond the app shell.** Offline support means the cached PWA app shell — not saved chapters. There is no per-chapter download or CBZ export in the browser; use a native app for true offline reading.
 - **Not every source works on the web.** The hosted web helper runs on a shared server (a datacenter IP), so **Cloudflare-walled** sources — the ones that only answer a real browser or residential IP — and dead upstreams are filtered out. The web shows the **live, health-checked subset** (~390 of the ~960-source catalogue). The **full ~960** is reachable in the **native apps**, which parse on your own device (and use a device relay) to get past Cloudflare. Same account, same library — just more sources on native.
-- **Some sources need the proxy.** Manga sites frequently omit CORS headers, so HTML and images for those sources route through the Cloudflare Worker. The app always tries a direct fetch first and only falls back to the worker when required.
+- **CORS and images go through the helper.** Manga sites frequently omit CORS headers and hotlink-protect their images, so the **Nyora helper** fetches them server-side and re-serves them with permissive CORS (via its `/image` endpoint). The browser only ever talks to the helper — no separate CORS proxy is involved.
 - **Sign-in is email + password.** Nyora Cloud accounts use an email and password (no Google OAuth), so sign-in is not tied to a registered origin and works wherever the app is served.
 
 ## Screenshots
@@ -262,7 +264,7 @@ Nyora Web is static — you can serve the `web/` directory with anything.
 ### Prerequisites
 
 - Python 3 (for the simple dev server below) **or** any static file server.
-- Node.js with `npx` available, only if you want to deploy the Cloudflare Worker.
+- Node.js — only if you want to produce the bundled `dist/` build (`npm run build`).
 
 ### Run the SPA locally
 
@@ -270,17 +272,13 @@ Nyora Web is static — you can serve the `web/` directory with anything.
 cd web && python3 -m http.server 3000   # → http://127.0.0.1:3000
 ```
 
-Use `127.0.0.1:3000` for local development. Any static host works in production — Cloudflare Pages, Netlify, and similar.
+Use `127.0.0.1:3000` for local development. Any static host works in production — a plain web server, Cloudflare Pages, Netlify, and similar.
 
-### Deploy the CORS / image proxy
+### Point it at a helper
 
-The CORS and image proxy is a Cloudflare Worker in `cloudflare-worker/`:
+The SPA reads all content and images from the **Nyora helper**, configured in `web/env.js` (`NYORA_HELPER_URL`, default `https://api.nyora.xyz`). The helper handles CORS and the `/image` proxy, so **there is no separate proxy to deploy**. To self-host the helper itself, see [`nyora-selfhost`](https://github.com/Hasan72341/nyora-selfhost) (SPA + bundled helper in one container).
 
-```bash
-npx wrangler deploy
-```
-
-This is the **only** server-side component. The SPA tries direct fetches first and falls back to the worker for sources that don't send CORS headers.
+> The legacy Cloudflare Worker in `cloudflare-worker/` (`npx wrangler deploy`) is only for setups that run the in-browser parser fallback instead of the helper. The hosted app does not use it.
 
 ## Tech Stack
 
@@ -291,7 +289,7 @@ This is the **only** server-side component. The SPA tries direct fetches first a
 
 - **TypeScript / JavaScript** — the entire SPA is plain client-side JavaScript/TypeScript (no framework), reading content from the Nyora helper over REST; a dormant in-browser parser runtime ships as an offline fallback.
 - **PWA** — an installable Progressive Web App with a cached, offline-capable app shell.
-- **Cloudflare** — a single small Cloudflare Worker proxies CORS and images; the SPA itself deploys cleanly to Cloudflare Pages or any static host.
+- **Nyora helper** — the Kotatsu parser engine over REST (`api.nyora.xyz`); it serves source content, sends permissive CORS, and proxies images via `/image`, so the SPA needs no separate CORS proxy. (A legacy Cloudflare Worker proxy remains in `cloudflare-worker/` but is unused by the hosted app.)
 - **Nyora Cloud** — a self-hosted FastAPI backend providing email + password authentication (OAuth2 + JWT) and per-row library and source-preference sync.
 
 ## Architecture
@@ -299,7 +297,7 @@ This is the **only** server-side component. The SPA tries direct fetches first a
 ```
 web/                  ← the SPA (deployed)
   core/               ← api · parser-runtime · sync · ui · library · store
-cloudflare-worker/    ← CORS / image proxy (worker.js)
+cloudflare-worker/    ← legacy CORS / image proxy (unused by the hosted app)
 ```
 
 - **Content via the Nyora helper.** `core/api.js` reads the catalogue, search, details and pages from the Nyora helper (the Kotatsu engine). `core/parser-runtime.js` + `web-parsers/` remain as a dormant client-side fallback for offline resilience.
@@ -348,7 +346,7 @@ Nyora does not host any manga. It reads publicly available online sources throug
 The PWA app shell is cached for offline use, and parser bundles ship with bundled fallbacks, so the interface and discovery remain resilient without a connection. There are no offline chapter downloads in the browser — for full offline reading and CBZ export, use one of Nyora's native apps from the platform table above; your synced library comes with you.
 
 **Can I self-host it?**
-Absolutely. The SPA is just static files you can serve from any static host, and the only server-side piece is a small Cloudflare Worker for the CORS/image proxy. See [Build from Source](#build-from-source).
+Absolutely. The SPA is just static files you can serve from any static host; the only server-side dependency is the **Nyora helper** (which handles content, CORS and image proxying). Run the whole thing in one container with [`nyora-selfhost`](https://github.com/Hasan72341/nyora-selfhost), or see [Build from Source](#build-from-source).
 
 **How do I get AI translation and offline downloads?**
 Those engines live in Nyora's native apps. Install one from the [platform table](#nyora-on-every-platform), sign in with the same Nyora Cloud account, and your web library syncs straight over.
@@ -388,8 +386,8 @@ cd web && python3 -m http.server 3000   # → http://127.0.0.1:3000
 
 - Open **`http://127.0.0.1:3000`** (use `127.0.0.1`, not `localhost`, for local development). Sign-in is optional; everything except cross-device sync works without it.
 - The app is authored as **unbundled ES modules**, so you just edit a file under `web/` and reload the tab — there is no watcher or compile step to run.
-- `build.mjs` (run via `npm run build`, requires Node + esbuild) bundles `web/` into `dist/` for production deploys on Cloudflare Pages. **You don't need it for development** — it's only for shipping.
-- To work on the proxy, the Cloudflare Worker lives in `cloudflare-worker/` and deploys with `npx wrangler deploy`.
+- `build.mjs` (run via `npm run build`, requires Node + esbuild) bundles `web/` into `dist/` for production. **You don't need it for development** — it's only for shipping.
+- The `cloudflare-worker/` directory is a **legacy** CORS/image proxy from the old in-browser-parser architecture; the current app relies on the Nyora helper instead and does not use it.
 
 **Where to look first:** start at `web/app.js` (the entry point) and `web/screens/` (one file per screen). To touch source parsing, head to `web/core/web-parsers/`.
 
@@ -419,7 +417,7 @@ web/
       sources.json        ← the source catalogue (one entry per site)
       madara.js · mangareader.js · … ← one file per family
 cloudflare-worker/
-  worker.js               ← CORS + image proxy (the only server-side piece)
+  worker.js               ← legacy CORS + image proxy (unused; helper does this now)
 ```
 
 ### Good first contributions
