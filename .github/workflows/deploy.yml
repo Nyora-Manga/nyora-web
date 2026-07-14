@@ -1,13 +1,15 @@
-name: Deploy web → nyora VM
+name: Deploy web → cluster
 
-# Pushing to the `deploy` branch builds the bundle and rsyncs it straight to the
-# live host (Caddy on the nyora VM, web root /var/www/nyora-web serving
-# web.nyora.xyz). Merge/push to `deploy` = instant deploy.
+# Pushing to the `deploy` branch builds the bundle once and rsyncs it to ALL
+# THREE nodes behind web.nyora.xyz (round-robin DNS): nyora, expo-vm, claw.
+# Each node's Caddy serves the app from /var/www/nyora-web (also fronting the
+# legacy nyoramanga.hasanraza.tech redirect). Deploying only one node leaves the
+# other ⅔ of visitors on a stale build — hence the matrix.
 #
 # Repo secrets required:
-#   DEPLOY_SSH_KEY      — private key of the CI deploy key (installed in the VM's
-#                         ubuntu authorized_keys)
-#   DEPLOY_KNOWN_HOSTS  — `ssh-keyscan` line(s) for the VM host
+#   DEPLOY_SSH_KEY      — private key of the CI cluster deploy key (in each
+#                         node's <user> authorized_keys)
+#   DEPLOY_KNOWN_HOSTS  — ssh-keyscan lines for all three node IPs
 on:
   push:
     branches: [deploy]
@@ -17,25 +19,39 @@ concurrency:
   group: deploy-nyora-web
   cancel-in-progress: true
 
-env:
-  DEPLOY_HOST: REDACTED
-  DEPLOY_USER: ubuntu
-  DEPLOY_PATH: /var/www/nyora-web
-
 jobs:
-  deploy:
+  build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-
       - name: Build — bundle web/ into dist/
         run: |
           npm install --no-audit --no-fund
           npm run build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+          retention-days: 1
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: nyora,   host: REDACTED, user: ubuntu, selinux: false }
+          - { name: expo-vm, host: REDACTED, user: opc,    selinux: true }
+          - { name: claw,    host: REDACTED,  user: ubuntu, selinux: false }
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
 
       - name: Configure SSH
         run: |
@@ -45,15 +61,38 @@ jobs:
           printf '%s\n' "${{ secrets.DEPLOY_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
           chmod 644 ~/.ssh/known_hosts
 
-      - name: Rsync dist/ → VM web root
+      - name: Rsync dist/ → ${{ matrix.name }}
         run: |
           rsync -az --delete \
             --exclude='env.js.bak*' \
             --exclude='_*.html' \
             -e "ssh -i ~/.ssh/id_ed25519 -o IdentitiesOnly=yes" \
-            dist/ "${DEPLOY_USER}@${DEPLOY_HOST}:${DEPLOY_PATH}/"
+            dist/ "${{ matrix.user }}@${{ matrix.host }}:/var/www/nyora-web/"
 
-      - name: Smoke check (both hosts respond)
+      - name: SELinux restorecon
+        if: ${{ matrix.selinux }}
+        run: |
+          ssh -i ~/.ssh/id_ed25519 -o IdentitiesOnly=yes \
+            "${{ matrix.user }}@${{ matrix.host }}" \
+            'sudo restorecon -R /var/www/nyora-web || true'
+
+      - name: Smoke check ${{ matrix.name }} directly
+        run: |
+          for i in 1 2 3 4 5; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 \
+              --resolve web.nyora.xyz:443:${{ matrix.host }} https://web.nyora.xyz/ || true)
+            echo "  ${{ matrix.name }} (${{ matrix.host }}) attempt $i → HTTP $code"
+            [ "$code" = "200" ] && exit 0
+            sleep 3
+          done
+          echo "::error::${{ matrix.name }} (${{ matrix.host }}) not serving after deploy"
+          exit 1
+
+  verify:
+    needs: deploy
+    runs-on: ubuntu-latest
+    steps:
+      - name: Public hosts respond
         run: |
           check() {
             for i in 1 2 3 4 5; do
@@ -65,6 +104,4 @@ jobs:
             echo "::error::$1 did not return 200 after deploy"
             return 1
           }
-          # The VM web root serves the app at web.nyora.xyz and the legacy
-          # nyoramanga.hasanraza.tech (which redirects here), so one deploy covers both.
           check https://web.nyora.xyz/ && check https://nyoramanga.hasanraza.tech/
