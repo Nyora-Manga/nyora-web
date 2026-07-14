@@ -301,8 +301,8 @@ cloudflare-worker/    ← legacy CORS / image proxy (unused by the hosted app)
 ```
 
 - **Content via the Nyora helper.** `core/api.js` reads the catalogue, search, details and pages from the Nyora helper (the Kotatsu engine). `core/parser-runtime.js` + `web-parsers/` remain as a dormant client-side fallback for offline resilience.
-- **CORS bypass is the Cloudflare worker.** Manga sites typically don't send CORS headers, so HTML and images are fetched through `<proxy>/proxy?url=…` and `<proxy>/image?u=…` (the latter adds the source `Referer`/`UA`). The app always tries a direct fetch first and only falls back to the worker when needed.
-- **Account sync is client-side.** The flow is email + password → Nyora Cloud (OAuth2 + JWT) → per-row library and source-preference sync, using last-write-wins. The only server pieces are the Cloudflare proxy worker and your Nyora Cloud account.
+- **CORS + images come from the helper.** Manga sites typically don't send CORS headers and hotlink-protect their images, so the Nyora helper fetches them server-side and re-serves them with permissive CORS via `<helper>/image?u=…` (adding the source `Referer`/`UA`). The browser talks only to the helper — there is no separate CORS proxy.
+- **Account sync is client-side.** The flow is email + password → Nyora Cloud (OAuth2 + JWT) → per-row library and source-preference sync, using last-write-wins. The only server pieces are the Nyora helper and — if you sign in — your Nyora Cloud account.
 
 ## Nyora on Every Platform
 
