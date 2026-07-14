@@ -35,18 +35,9 @@ Open-source and auditable · no ads · no tracking · your library stays yours.
 
 <div align="center">
 
-### Mobile
+![Nyora Web — Discover](docs/screenshots/desktop/discover-dark.png)
 
-| Welcome | Discover | Library | Settings |
-|:-:|:-:|:-:|:-:|
-| ![Welcome](docs/screenshots/mobile/welcome.png)<br/>**Welcome** — Start reading instantly on mobile web. | ![Discover](docs/screenshots/mobile/discover.png)<br/>**Discover** — Trending titles tuned for a phone screen. | ![Library](docs/screenshots/mobile/library.png)<br/>**Library** — The same library, responsive down to mobile. | ![Settings](docs/screenshots/mobile/settings.png)<br/>**Settings** — Full settings in the mobile web app. |
-
-### Desktop
-
-| Discover | Settings |
-|:-:|:-:|
-| ![Discover](docs/screenshots/desktop/discover.png)<br/>**Discover** — Trending manga the moment the page loads. | ![Settings](docs/screenshots/desktop/settings.png)<br/>**Settings** — Reader, sync and appearance, right in the browser. |
-| ![Welcome](docs/screenshots/desktop/welcome.png)<br/>**Welcome** — Sign in with email, continue as guest, or restore a backup — no account required. | ![Library](docs/screenshots/desktop/library.png)<br/>**Library** — Your shelf in any browser, with nothing to install. |
+<em>Discover on desktop — real content, straight from the browser. More below: <a href="#screenshots">light & dark, phone · tablet · desktop</a>.</em>
 
 </div>
 
@@ -54,7 +45,7 @@ Open-source and auditable · no ads · no tracking · your library stays yours.
 
 ## About
 
-Nyora Web is the browser-native edition of Nyora — a free, ad-free, open-source manga, manhwa and manhua reader. No app store, no download, no sign-up wall: open a tab and you are reading, on a laptop, a phone, or anything with a modern browser. It is a lightweight **browser client over the Nyora helper** — the same [Kotatsu](https://github.com/KotatsuApp/kotatsu-parsers) parser engine (`api.hasanraza.tech`) that powers every Nyora platform — so the source catalogue, search and reading stay current with **no scraper to maintain in the browser**. The UI, your library and reading state run on your device. Add it to your home screen and Nyora becomes a real PWA with an offline app shell. Create a free Nyora Cloud account with an email and password and your library and source preferences follow you to every other Nyora platform. The server-side pieces are the shared **Nyora helper** (used by every platform), an optional image/CORS proxy, and — only if you sign in — the Nyora Cloud sync backend; the app itself is just static files you can host anywhere.
+Nyora Web is the browser-native edition of Nyora — a free, ad-free, open-source manga, manhwa and manhua reader. No app store, no download, no sign-up wall: open a tab and you are reading, on a laptop, a phone, or anything with a modern browser. It is a lightweight **browser client over the Nyora helper** — the same [Kotatsu](https://github.com/KotatsuApp/kotatsu-parsers) parser engine (`api.nyora.xyz`) that powers every Nyora platform — so the source catalogue, search and reading stay current with **no scraper to maintain in the browser**. The UI, your library and reading state run on your device. Add it to your home screen and Nyora becomes a real PWA with an offline app shell. Create a free Nyora Cloud account with an email and password and your library and source preferences follow you to every other Nyora platform. The server-side pieces are the shared **Nyora helper** (used by every platform), an optional image/CORS proxy, and — only if you sign in — the Nyora Cloud sync backend; the app itself is just static files you can host anywhere.
 
 ## Why you'll love it
 
@@ -115,7 +106,7 @@ Nyora Web is the browser-native edition of Nyora — a free, ad-free, open-sourc
 
 ### Sources & Discovery
 
-Nyora Web reads from the catalogue of **~960 online sources** spanning manga, manhwa and manhua through the **Nyora helper** — the [Kotatsu](https://github.com/KotatsuApp/kotatsu-parsers) engine at `api.hasanraza.tech`, the same content backend the native apps and SDKs use — so sources stay current without shipping fragile scrapers to the browser. Dead / Cloudflare-walled sources are filtered out, leaving the live, health-checked set. (A dormant in-browser parser fallback ships for offline resilience but is not the primary path.)
+Nyora Web reads from the catalogue of **~960 online sources** spanning manga, manhwa and manhua through the **Nyora helper** — the [Kotatsu](https://github.com/KotatsuApp/kotatsu-parsers) engine at `api.nyora.xyz`, the same content backend the native apps and SDKs use — so sources stay current without shipping fragile scrapers to the browser. Dead / Cloudflare-walled sources are filtered out, leaving the live, health-checked set. (A dormant in-browser parser fallback ships for offline resilience but is not the primary path.)
 
 ### Reader
 
@@ -123,7 +114,7 @@ The reader handles every kind of series. It supports a **standard paged mode and
 
 ### Cloud Sync
 
-Create a free **Nyora Cloud** account with an **email and password** and your **library and source preferences** follow you everywhere. Sync is implemented **per-row** with a last-write-wins strategy, so the manga you favourited on the web is waiting on **Android, iOS, macOS, Windows and Linux** — and vice-versa. Accounts run on **Nyora Cloud**, a self-hosted FastAPI backend (OAuth2 password flow + JWT) at `stream.hasanraza.tech`; it stores only the reading data tied to your account. Sync is free.
+Create a free **Nyora Cloud** account with an **email and password** and your **library and source preferences** follow you everywhere. Sync is implemented **per-row** with a last-write-wins strategy, so the manga you favourited on the web is waiting on **Android, iOS, macOS, Windows and Linux** — and vice-versa. Accounts run on **Nyora Cloud**, a self-hosted FastAPI backend (OAuth2 password flow + JWT) at `sync.nyora.xyz`; it stores only the reading data tied to your account. Sync is free.
 
 ### Trackers
 
@@ -177,18 +168,53 @@ Nyora Web is deliberately a pure client-side reader. Honest constraints to know 
 
 ## Screenshots
 
-### Mobile
-
-| Welcome | Discover | Library | Settings |
-|:-:|:-:|:-:|:-:|
-| ![Welcome](docs/screenshots/mobile/welcome.png)<br/>**Welcome** — Start reading instantly on mobile web. | ![Discover](docs/screenshots/mobile/discover.png)<br/>**Discover** — Trending titles tuned for a phone screen. | ![Library](docs/screenshots/mobile/library.png)<br/>**Library** — The same library, responsive down to mobile. | ![Settings](docs/screenshots/mobile/settings.png)<br/>**Settings** — Full settings in the mobile web app. |
+Real screenshots from the app — both **light and dark** themes, responsive across **phone, tablet and desktop**. The same UI adapts from a floating bottom nav on a phone to a full sidebar on a tablet or desktop.
 
 ### Desktop
 
-| Discover | Settings |
+| Discover | Explore sources |
 |:-:|:-:|
-| ![Discover](docs/screenshots/desktop/discover.png)<br/>**Discover** — Trending manga the moment the page loads. | ![Settings](docs/screenshots/desktop/settings.png)<br/>**Settings** — Reader, sync and appearance, right in the browser. |
-| ![Welcome](docs/screenshots/desktop/welcome.png)<br/>**Welcome** — Sign in with email, continue as guest, or restore a backup — no account required. | ![Library](docs/screenshots/desktop/library.png)<br/>**Library** — Your shelf in any browser, with nothing to install. |
+| ![Discover — desktop, dark](docs/screenshots/desktop/discover-dark.png) | ![Explore — desktop, dark](docs/screenshots/desktop/explore-dark.png) |
+| **Discover** — trending & popular rails on load. | **Explore** — ~960 sources by language. |
+
+| Title & chapters | Global search |
+|:-:|:-:|
+| ![Details — desktop, dark](docs/screenshots/desktop/details-dark.png) | ![Search — desktop, dark](docs/screenshots/desktop/search-dark.png) |
+| **Details** — description, tags, full chapter list. | **Search** — one query across all your sources. |
+
+<details>
+<summary><b>Light theme &amp; more</b></summary>
+
+| Discover — light | Settings — light |
+|:-:|:-:|
+| ![Discover — desktop, light](docs/screenshots/desktop/discover-light.png) | ![Settings — desktop, light](docs/screenshots/desktop/settings-light.png) |
+
+| Settings — dark | Welcome / onboarding |
+|:-:|:-:|
+| ![Settings — desktop, dark](docs/screenshots/desktop/settings-dark.png) | ![Welcome — desktop, dark](docs/screenshots/desktop/welcome-dark.png) |
+
+</details>
+
+### Tablet
+
+| Discover | Explore |
+|:-:|:-:|
+| ![Discover — tablet, dark](docs/screenshots/tablet/discover-dark.png) | ![Explore — tablet, dark](docs/screenshots/tablet/explore-dark.png) |
+
+| Search | Settings |
+|:-:|:-:|
+| ![Search — tablet, dark](docs/screenshots/tablet/search-dark.png) | ![Settings — tablet, dark](docs/screenshots/tablet/settings-dark.png) |
+
+### Mobile
+
+| Discover | Explore | Reader |
+|:-:|:-:|:-:|
+| ![Discover — mobile, dark](docs/screenshots/mobile/discover-dark.png) | ![Explore — mobile, dark](docs/screenshots/mobile/explore-dark.png) | ![Reader — mobile, dark](docs/screenshots/mobile/reader-dark.png) |
+| **Discover** | **Explore** | **Reader** — immersive webtoon/paged |
+
+| Welcome | Search | Settings | Discover — light |
+|:-:|:-:|:-:|:-:|
+| ![Welcome — mobile, dark](docs/screenshots/mobile/welcome-dark.png) | ![Search — mobile, dark](docs/screenshots/mobile/search-dark.png) | ![Settings — mobile, dark](docs/screenshots/mobile/settings-dark.png) | ![Discover — mobile, light](docs/screenshots/mobile/discover-light.png) |
 
 ## Installation
 
@@ -223,7 +249,7 @@ A current version of any major browser (Chromium-based, Firefox, or Safari) with
 
 ### Troubleshooting
 
-- **Self-hosting sign-in.** Sign-in is email + password against Nyora Cloud and is not origin-bound; just make sure your build can reach `stream.hasanraza.tech`.
+- **Self-hosting sign-in.** Sign-in is email + password against Nyora Cloud and is not origin-bound; just make sure your build can reach `sync.nyora.xyz`.
 - **A source won't load images or pages.** Manga sites frequently omit CORS headers; the app tries a direct fetch first and only then routes through the Cloudflare proxy. If you are self-hosting, make sure your worker is deployed and reachable (see below).
 - **A source looks broken.** Sources are served by the Nyora helper, so fixes ship server-side with no app update — just reload. (A dormant in-browser parser fallback ships for offline resilience.)
 
