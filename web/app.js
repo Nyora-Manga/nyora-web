@@ -74,9 +74,11 @@ const NAV_GROUPS = [
     { key: 'downloads', label: 'Downloads', icon: 'download' },
   ] },
   { label: 'Discover', items: [
+    // Single Discover: AniList-primary feed with a MangaBaka fallback (see discover.js).
+    // The old second "Discover" (suggestions.js, MangaBaka grid) was removed from the nav
+    // to avoid two Discover entries; it stays as the "Show all" drill-down only.
     { key: 'discover', label: 'Discover', icon: 'home' },
     { key: 'explore', label: 'Explore', icon: 'compass' },
-    { key: 'suggestions', label: 'Discover', icon: 'trending' },
     { key: 'updates', label: 'Updates', icon: 'bell' },
     { key: 'browser', label: 'Browser', icon: 'globe' },
   ] },

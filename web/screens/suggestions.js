@@ -24,8 +24,10 @@ import {
 import { router } from '../core/store.js';
 
 export const meta = {
-  title: 'Discover',
-  nav: true,
+  // Not a nav destination anymore — Discover (discover.js, AniList + MangaBaka fallback)
+  // is the single Discover. This screen only serves the "Show all" drill-down grid.
+  title: 'Popular',
+  nav: false,
   icon: 'trending',
   order: 5,
 };
