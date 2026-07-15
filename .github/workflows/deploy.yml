@@ -42,13 +42,20 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
-      # Node list (IPs / SSH users) lives in the DEPLOY_MATRIX repo variable, not in
-      # this public workflow. Format: [{ name, host, user, selinux }, …].
+      # Matrix carries only harmless node NAMES (they become the public job name).
+      # Each node's IP/user/etc. is looked up from the DEPLOY_NODES secret at runtime
+      # and the IP is masked in logs — so nothing sensitive appears in the workflow,
+      # the job name, or the run logs.
       matrix:
-        include: ${{ fromJson(vars.DEPLOY_MATRIX) }}
+        node: [nyora, expo-vm, claw]
     steps:
-      - name: Mask node host in logs
-        run: echo "::add-mask::${{ matrix.host }}"
+      - name: Resolve node from DEPLOY_NODES (mask IP in logs)
+        run: |
+          host=$(jq -r --arg n "${{ matrix.node }}" '.[$n].host'    <<<'${{ secrets.DEPLOY_NODES }}')
+          user=$(jq -r --arg n "${{ matrix.node }}" '.[$n].user'    <<<'${{ secrets.DEPLOY_NODES }}')
+          selinux=$(jq -r --arg n "${{ matrix.node }}" '.[$n].selinux' <<<'${{ secrets.DEPLOY_NODES }}')
+          echo "::add-mask::$host"
+          { echo "HOST=$host"; echo "SSH_USER=$user"; echo "SELINUX=$selinux"; } >> "$GITHUB_ENV"
 
       - uses: actions/download-artifact@v4
         with:
@@ -63,31 +70,31 @@ jobs:
           printf '%s\n' "${{ secrets.DEPLOY_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
           chmod 644 ~/.ssh/known_hosts
 
-      - name: Rsync dist/ → ${{ matrix.name }}
+      - name: Rsync dist/ → ${{ matrix.node }}
         run: |
           rsync -az --delete \
             --exclude='env.js.bak*' \
             --exclude='_*.html' \
             -e "ssh -i ~/.ssh/id_ed25519 -o IdentitiesOnly=yes" \
-            dist/ "${{ matrix.user }}@${{ matrix.host }}:/var/www/nyora-web/"
+            dist/ "$SSH_USER@$HOST:/var/www/nyora-web/"
 
       - name: SELinux restorecon
-        if: ${{ matrix.selinux }}
+        if: ${{ env.SELINUX == 'true' }}
         run: |
           ssh -i ~/.ssh/id_ed25519 -o IdentitiesOnly=yes \
-            "${{ matrix.user }}@${{ matrix.host }}" \
+            "$SSH_USER@$HOST" \
             'sudo restorecon -R /var/www/nyora-web || true'
 
-      - name: Smoke check ${{ matrix.name }} directly
+      - name: Smoke check ${{ matrix.node }} directly
         run: |
           for i in 1 2 3 4 5; do
             code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 \
-              --resolve web.nyora.xyz:443:${{ matrix.host }} https://web.nyora.xyz/ || true)
-            echo "  ${{ matrix.name }} (${{ matrix.host }}) attempt $i → HTTP $code"
+              --resolve web.nyora.xyz:443:"$HOST" https://web.nyora.xyz/ || true)
+            echo "  ${{ matrix.node }} attempt $i → HTTP $code"
             [ "$code" = "200" ] && exit 0
             sleep 3
           done
-          echo "::error::${{ matrix.name }} (${{ matrix.host }}) not serving after deploy"
+          echo "::error::${{ matrix.node }} not serving after deploy"
           exit 1
 
   verify:
