@@ -42,12 +42,14 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
+      # Node list (IPs / SSH users) lives in the DEPLOY_MATRIX repo variable, not in
+      # this public workflow. Format: [{ name, host, user, selinux }, …].
       matrix:
-        include:
-          - { name: nyora,   host: REDACTED, user: ubuntu, selinux: false }
-          - { name: expo-vm, host: REDACTED, user: opc,    selinux: true }
-          - { name: claw,    host: REDACTED,  user: ubuntu, selinux: false }
+        include: ${{ fromJson(vars.DEPLOY_MATRIX) }}
     steps:
+      - name: Mask node host in logs
+        run: echo "::add-mask::${{ matrix.host }}"
+
       - uses: actions/download-artifact@v4
         with:
           name: dist
