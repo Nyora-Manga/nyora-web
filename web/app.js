@@ -189,6 +189,7 @@ function buildSidebar() {
       'data-route': item.key,
       role: 'button',
       tabindex: '0',
+      title: item.label, // rail mode hides labels — the tooltip still names it
       onClick: () => {
         document.body.classList.remove('nav-open');
         if (item.continue) continueReading();
@@ -365,19 +366,11 @@ function syncTabbar(name) {
 // next load instead of getting stuck behind a stale cached build.
 function registerSW() {
   if (!('serviceWorker' in navigator)) return;
-  // Local development: never use the service worker — it caches aggressively and
-  // makes edits to web/ appear stale. Tear down any existing registration + caches
-  // so every reload serves the latest source. No effect on production hosts.
-  const host = location.hostname;
-  if (host === 'localhost' || host === '127.0.0.1' || host === '[::1]') {
-    navigator.serviceWorker.getRegistrations()
-      .then((regs) => regs.forEach((r) => r.unregister()))
-      .catch(() => {});
-    if (window.caches && caches.keys) {
-      caches.keys().then((keys) => keys.forEach((k) => caches.delete(k))).catch(() => {});
-    }
-    return;
-  }
+  // Local development uses the service worker too: sw.js serves same-origin
+  // code network-first on localhost (edits are never stale) while still
+  // injecting the COOP/COEP headers the translator needs for wasm threads.
+  // Do NOT tear it down / clear caches here — the old localhost teardown wiped
+  // 'nyora-tl-models' on every reload, re-downloading ~125 MB of AI models.
   // If this page is already controlled by a SW, a controllerchange means a NEW
   // worker took over (an update) — reload once so the fresh app/assets are used.
   const wasControlled = !!navigator.serviceWorker.controller;

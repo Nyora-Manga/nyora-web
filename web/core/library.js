@@ -275,6 +275,8 @@ export const library = {
     // Respect "Keep 18+ out of history" — never persist adult manga when enabled.
     try {
       const prefs = JSON.parse(localStorage.getItem('nyora.prefs') || '{}');
+      // Incognito: don't record ANY reading history while enabled.
+      if (prefs.incognito) return;
       const mangaNsfw = manga &&
         (manga.isNsfw === true || /adult|porn|erotic|hentai|nsfw/i.test(String(manga.contentRating || '')));
       // body.sourceNsfw = the source itself is adult (airtight: catches titles
@@ -294,8 +296,14 @@ export const library = {
       : (total > 0 ? clampPercent((page + 1) / total) : 0);
 
     const prev = _data.history[id] || {};
+    // Never let a cover-less details object clobber a cover we already stored.
+    const nextManga = manga ? clone(manga) : (prev.manga || null);
+    if (nextManga && !nextManga.coverUrl && !nextManga.largeCoverUrl && prev.manga) {
+      nextManga.coverUrl = prev.manga.coverUrl || '';
+      nextManga.largeCoverUrl = prev.manga.largeCoverUrl || '';
+    }
     _data.history[id] = {
-      manga: manga ? clone(manga) : (prev.manga || null),
+      manga: nextManga,
       sourceId,
       chapterUrl: body.chapterUrl != null ? body.chapterUrl : (prev.chapterUrl || ''),
       chapterId: body.chapterId != null ? body.chapterId

@@ -39,15 +39,38 @@ export function schemeById(id) {
 const FALLBACK_ACCENT = '#6366f1'; // Matches the CSS default --accent; used when the OS/browser exposes no accent (e.g. most mobile browsers) instead of a stray green.
 
 const DEFAULT_PREFS = {
-  appearance: 'DARK', // 'DARK' | 'LIGHT'
+  appearance: 'DARK', // 'DARK' | 'LIGHT' | 'SYSTEM'
   accent: 'sakura',
+  gridSize: 'M',        // cover grid density: 'S' | 'M' | 'L'
+  showCardTitles: true, // titles under covers in grids
+  reduceMotion: false,  // dampen page/app animations
+  darkStyle: 'BLACK',   // dark theme surfaces: 'BLACK' (pure) | 'SOFT' (M3 grey)
+  uiScale: 'M',         // interface scale: 'S' | 'M' | 'L'
+  navRail: false,       // desktop sidebar as an icon-only rail
+  noBlur: false,        // disable backdrop blur (low-power devices)
   showNsfw: false,
   noNsfwHistory: false, // when true, 18+ manga are never written to history
+  incognito: false,     // when true, NO reading history is recorded
+  searchScope: 'pinned', // universal search: 'pinned' sources only | 'all' installed
+  // Optional LLM refinement for the in-image translator (mirrors Android's
+  // AI Translate settings). Key stays in this browser's localStorage only.
+  // Empty endpoint/model fall back to the provider's default at call time.
+  aiProvider: 'openai', // 'openai' | 'anthropic' (compatible APIs)
+  aiEndpoint: '',
+  aiApiKey: '',
+  aiModel: '',
+  aiFandom: false,      // fetch series/fandom context (AniList) before refining
   reader: {
     mode: 'WEBTOON', // 'WEBTOON' | 'PAGED' | 'PAGED_RTL'
     fit: 'WIDTH', // 'WIDTH' | 'HEIGHT'
     prefetch: true,
     webtoonWidth: 70,
+    translate: false,   // in-image AI translation (client-side models)
+    translateTo: 'en',
+    translateFrom: 'auto', // OCR language: auto (from source) | ja | zh | ko | en
+    keepAwake: true,     // hold a screen wake lock while reading
+    tapZones: true,      // paged modes: tap left/right edges to turn pages
+    edgeGestures: true,  // webtoon: wheel/swipe past a boundary rolls chapters
   },
 };
 
@@ -238,9 +261,24 @@ function createStore() {
   /** Toggle body/root data-theme + set the --accent CSS variable. */
   function applyTheme() {
     const root = document.documentElement;
-    const theme = prefs.appearance === 'LIGHT' ? 'LIGHT' : 'DARK';
+    // SYSTEM follows the OS; a change listener below re-applies live.
+    const theme = prefs.appearance === 'SYSTEM'
+      ? (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches ? 'LIGHT' : 'DARK')
+      : (prefs.appearance === 'LIGHT' ? 'LIGHT' : 'DARK');
     root.setAttribute('data-theme', theme);
     if (document.body) document.body.setAttribute('data-theme', theme);
+    // Cover-grid density + card title visibility + reduced motion.
+    const GRID = { S: '124px', M: '158px', L: '196px' };
+    root.style.setProperty('--card-min', GRID[prefs.gridSize] || GRID.M);
+    root.classList.toggle('soft-dark', prefs.darkStyle === 'SOFT');
+    // Interface scale via zoom (layout-aware, unlike transform).
+    root.style.zoom = ({ S: '0.92', L: '1.08' })[prefs.uiScale] || '';
+    if (document.body) {
+      document.body.classList.toggle('hide-card-titles', prefs.showCardTitles === false);
+      document.body.classList.toggle('reduce-motion', prefs.reduceMotion === true);
+      document.body.classList.toggle('nav-rail', prefs.navRail === true);
+      document.body.classList.toggle('no-blur', prefs.noBlur === true);
+    }
     const accent = resolveAccent(prefs.accent, theme);
     root.style.setProperty('--accent', accent);
     
@@ -260,6 +298,14 @@ function createStore() {
   }
 
   store.applyTheme = applyTheme;
+  // Follow OS theme changes live while in SYSTEM mode.
+  if (typeof window !== 'undefined' && window.matchMedia) {
+    try {
+      window.matchMedia('(prefers-color-scheme: light)').addEventListener('change', () => {
+        if (prefs.appearance === 'SYSTEM') applyTheme();
+      });
+    } catch { /* older browsers */ }
+  }
   return store;
 }
 

@@ -18,7 +18,7 @@ import { api } from '../core/api.js';
 import {
   el, $, proxyImage, toast, spinner, skeletonCard, icon, btn, iconBtn, chip,
   sectionHeader, emptyState, errorBox, card, modal, segmented, langLabel,
-  languageOptions,
+  languageOptions, menuSelect,
 } from '../core/ui.js';
 import { store, router } from '../core/store.js';
 
@@ -134,14 +134,13 @@ export function render(view, params) {
   function buildLangSelect(onChange) {
     const opts = languageOptions(installedVisible());
     if (!new Set(['all', ...opts.map((o) => o.code || '')]).has(state.lang)) state.lang = 'all';
-    const sel = el('select', {
-      class: 'lang-select', 'aria-label': 'Filter sources by language',
-      onChange: (e) => { state.lang = e.target.value; onChange(); },
-    }, el('option', { value: 'all' }, `All languages (${installedVisible().length})`));
-    for (const o of opts) {
-      sel.appendChild(el('option', { value: o.code || '' }, `${o.label} (${o.count})`));
-    }
-    sel.value = state.lang;
+    const items = [
+      { value: 'all', label: `All languages (${installedVisible().length})` },
+      ...opts.map((o) => ({ value: o.code || '', label: `${o.label} (${o.count})` })),
+    ];
+    const sel = menuSelect(items, state.lang, (v) => { state.lang = v; onChange(); },
+      { label: 'Filter sources by language' });
+    sel.classList.add('lang-select');
     return { el: sel, langCount: opts.length };
   }
 

@@ -185,11 +185,26 @@ function buildDetails(view, sid, url, manga, chapters, params) {
   const ascByNumber = readingOrder.slice().sort((a, b) => (Number(a.number) || 0) - (Number(b.number) || 0));
 
   // ── read-state resolution (history-derived + explicit overrides) ──────────
+  // Read-state follows CHAPTER NUMBER, never list position — the chapter list
+  // can be sorted newest- or oldest-first, but "read" always means "this
+  // chapter and everything before it". Sources that omit numbers fall back to
+  // reading-order position as a last resort.
   const overrides = readOverrides(mangaId);
   function derivedRead() {
     const lastReadUrl = lastReadChapterUrl(mangaId, readingOrder);
-    const lastReadIdx = readingOrder.findIndex((c) => c.url === lastReadUrl);
-    return (c) => lastReadIdx >= 0 && readingOrder.indexOf(c) <= lastReadIdx;
+    const last = readingOrder.find((c) => c.url === lastReadUrl);
+    if (!last) return () => false;
+    const lastNum = Number(last.number);
+    if (Number.isFinite(lastNum)) {
+      return (c) => {
+        const n = Number(c.number);
+        return Number.isFinite(n) ? n <= lastNum : false;
+      };
+    }
+    // No usable numbers — fall back to position within reading order (oldest =
+    // last element), marking the last-read chapter and everything older read.
+    const lastIdx = readingOrder.indexOf(last);
+    return (c) => readingOrder.indexOf(c) >= lastIdx;
   }
   let isDerived = derivedRead();
   function isRead(c) {
@@ -483,7 +498,19 @@ function openDownloadDialog(sid, url, mangaId, title, chapters) {
   let close = () => {};
 
   const lastUrl = lastReadChapterUrl(mangaId, readingOrder);
+  const lastReadEntry = chapters.find((c) => c.url === lastUrl);
+  const lastReadNum = lastReadEntry ? Number(lastReadEntry.number) : NaN;
   const lastReadOldIdx = chapters.findIndex((c) => c.url === lastUrl);
+  // A chapter is "unread" if its number is above the last-read number (or, when
+  // numbers are missing, if it comes after the last-read chapter in the source
+  // order) — never a raw list-position assumption.
+  const isUnreadChapter = (c, i) => {
+    if (Number.isFinite(lastReadNum)) {
+      const n = Number(c.number);
+      return Number.isFinite(n) ? n > lastReadNum : (lastReadOldIdx < 0 || i > lastReadOldIdx);
+    }
+    return lastReadOldIdx < 0 || i > lastReadOldIdx;
+  };
 
   function updateFooter() {
     countText.textContent = `${selected.size} of ${chapters.length} selected`;
@@ -499,7 +526,7 @@ function openDownloadDialog(sid, url, mangaId, title, chapters) {
   function selectNone() { selected.clear(); refreshChecks(); }
   function selectUnread() {
     selected.clear();
-    chapters.forEach((c, i) => { if (lastReadOldIdx < 0 || i > lastReadOldIdx) selected.add(c.url); });
+    chapters.forEach((c, i) => { if (isUnreadChapter(c, i)) selected.add(c.url); });
     refreshChecks();
   }
   function selectUndownloaded() {

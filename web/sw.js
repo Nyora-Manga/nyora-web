@@ -7,7 +7,15 @@
  *   - proxied cover/page images               -> cache-first (immutable-ish)
  *   - everything else / API                   -> network-first, cache fallback
  */
-const VERSION = 'nyora-v2.2.1';
+const VERSION = 'nyora-v2.4.0';
+// Local dev serves web/ unbundled — stale-while-revalidate would keep the
+// browser one edit behind forever. Bypass the code caches on localhost.
+// "Dev" = not one of the production hosts. Covers localhost AND accessing the
+// dev server from a phone over the LAN (192.168.x / 10.x / 172.16-31.x / *.local
+// / raw IP), where stale-while-revalidate would otherwise serve one-reload-old
+// code. Only the real deployed domains keep the aggressive caching.
+const PROD_HOSTS = /(?:^|\.)(?:nyora\.xyz|nyoraweb\.pages\.dev|nyoramanga\.hasanraza\.tech)$/;
+const DEV = !PROD_HOSTS.test(self.location.hostname);
 const SHELL = `${VERSION}-shell`;
 const RUNTIME = `${VERSION}-runtime`;
 const IMAGES = `${VERSION}-img`;
@@ -40,10 +48,17 @@ self.addEventListener('install', (event) => {
   self.skipWaiting();
 });
 
+// Caches that must SURVIVE service-worker upgrades. The AI-translation models
+// (~125 MB) live in 'nyora-tl-models' — wiping it on every version bump forces
+// users to re-download the models after each deploy.
+const PERSISTENT_CACHES = new Set(['nyora-tl-models']);
+
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys()
-      .then((keys) => Promise.all(keys.filter((k) => !k.startsWith(VERSION)).map((k) => caches.delete(k))))
+      .then((keys) => Promise.all(
+        keys.filter((k) => !k.startsWith(VERSION) && !PERSISTENT_CACHES.has(k)).map((k) => caches.delete(k)),
+      ))
       .then(() => self.clients.claim()),
   );
 });
@@ -79,11 +94,24 @@ function cacheFirst(request, cacheName) {
 // re-requested. This is what makes already-viewed chapters read offline.
 function cacheFirstImage(request, cacheName) {
   return caches.open(cacheName).then((cache) =>
-    cache.match(request).then((cached) => cached || fetch(request).then((res) => {
+    cache.match(request).then((cached) => cached || fetch(coiSafe(request)).then((res) => {
       if (res && (res.ok || res.type === 'opaque')) cache.put(request, res.clone());
       return res;
     }).catch(() => cached)),
   );
+}
+
+// Under COEP:credentialless (see withCoi below) an opaque response relayed by
+// this SW only passes the embedder check if its request carried no credentials.
+// Manga CDNs don't use cookies, so re-issue cross-origin image fetches
+// credential-free; without this, every direct-CDN page image breaks the moment
+// the app becomes cross-origin isolated.
+function coiSafe(request) {
+  try {
+    return new Request(request, { credentials: 'omit' });
+  } catch {
+    return request;
+  }
 }
 
 // Network-first with cache fallback — fresh when online, last-seen when offline.
@@ -95,6 +123,22 @@ function networkFirst(request, cacheName) {
     }).catch(() => cache.match(request)),
   );
 }
+
+// --- cross-origin isolation (multi-threaded wasm) --------------------------
+// Inject COOP/COEP on same-origin documents and scripts so the app becomes
+// crossOriginIsolated — onnxruntime's wasm backend can then use SharedArrayBuffer
+// worker threads and the on-device translator gets real multi-core speed.
+// COEP:credentialless keeps no-cors CDN page images loading (they're fetched
+// without credentials, which manga CDNs don't need); browsers that don't know
+// the value fall back to unisolated single-thread — nothing breaks.
+function withCoi(res) {
+  if (!res || res.status === 0 || (res.status >= 300 && res.status < 400)) return res;
+  const headers = new Headers(res.headers);
+  headers.set('Cross-Origin-Opener-Policy', 'same-origin');
+  headers.set('Cross-Origin-Embedder-Policy', 'credentialless');
+  return new Response(res.body, { status: res.status, statusText: res.statusText, headers });
+}
+const coi = (p) => p.then(withCoi);
 
 self.addEventListener('fetch', (event) => {
   const { request } = event;
@@ -117,17 +161,24 @@ self.addEventListener('fetch', (event) => {
     return; // everything else passes through
   }
 
+  // Dev: always-fresh code, offline fallback only; COI headers still applied
+  // so wasm threads work locally too.
+  if (DEV) {
+    event.respondWith(coi(fetch(request).catch(() => caches.match(request))));
+    return;
+  }
+
   // App shell navigations -> shell cache, fall back to index for SPA routes.
   if (request.mode === 'navigate') {
     event.respondWith(
-      staleWhileRevalidate(request, SHELL).catch(() => caches.match('/index.html')),
+      coi(staleWhileRevalidate(request, SHELL).catch(() => caches.match('/index.html'))),
     );
     return;
   }
 
   // Static app modules -> stale-while-revalidate.
   if (/\.(?:js|css|json|webmanifest|png|svg|ico|woff2?)$/.test(url.pathname) || url.pathname === '/') {
-    event.respondWith(staleWhileRevalidate(request, RUNTIME));
+    event.respondWith(coi(staleWhileRevalidate(request, RUNTIME)));
     return;
   }
 

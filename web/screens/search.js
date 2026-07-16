@@ -8,7 +8,7 @@
 
 import { api } from '../core/api.js';
 import {
-  el, card, spinner, emptyState, errorBox, langLabel, langCode, languageOptions,
+  el, card, spinner, emptyState, errorBox, langLabel, langCode, languageOptions, menuSelect, btn,
 } from '../core/ui.js';
 import { router, store } from '../core/store.js';
 
@@ -52,20 +52,17 @@ export function render(view, params) {
   // No in-page search field — the global top-bar search (#searchInput) is the
   // single entry; it's prefilled with the active query below so you refine there.
 
-  // Language filter row. The <select> is populated once sources load; changing
-  // it re-runs the current search over just that language's sources.
-  const langSelect = el('select', {
-    class: 'lang-select', 'aria-label': 'Filter sources by language',
-    onChange: (e) => {
-      lang = e.target.value;
-      setLangPref(lang);
-      if (query) runSearch(); else renderEmpty();
-    },
-  }, el('option', { value: 'all' }, 'All languages'));
-  langSelect.value = 'all';
+  // Language filter row — a Material dropdown, rebuilt once sources load.
+  const langHost = el('span', { class: 'search-lang-host' });
+  const onLangChange = (v) => {
+    lang = v;
+    setLangPref(lang);
+    if (query) runSearch(); else renderEmpty();
+  };
+  langHost.appendChild(menuSelect([{ value: 'all', label: 'All languages' }], 'all', onLangChange));
   const filters = el('div', { class: 'search-filters' },
     el('span', { class: 'search-filters-label' }, 'Language'),
-    langSelect,
+    langHost,
   );
 
   const status = el('div', { class: 'search-status', style: { marginBottom: '24px' } });
@@ -93,15 +90,13 @@ export function render(view, params) {
   // persisted selection if it's still available (else falling back to 'all').
   function populateLangSelect() {
     const opts = languageOptions(allSources || []);
-    langSelect.replaceChildren(
-      el('option', { value: 'all' }, `All languages (${(allSources || []).length})`),
-    );
-    for (const o of opts) {
-      langSelect.appendChild(el('option', { value: o.code || '' }, `${o.label} (${o.count})`));
-    }
     const available = new Set(['all', ...opts.map((o) => o.code || '')]);
     if (!available.has(lang)) { lang = 'all'; setLangPref('all'); }
-    langSelect.value = lang;
+    const items = [
+      { value: 'all', label: `All languages (${(allSources || []).length})` },
+      ...opts.map((o) => ({ value: o.code || '', label: `${o.label} (${o.count})` })),
+    ];
+    langHost.replaceChildren(menuSelect(items, lang, onLangChange, { label: 'Filter sources by language' }));
     filters.style.display = opts.length > 1 ? '' : 'none';
   }
 
@@ -144,10 +139,27 @@ export function render(view, params) {
       el('span', { class: 'chip btn-sm' }, list.length + (list.length >= PER_SOURCE_LIMIT ? '+' : '')),
     );
     const grid = el('div', { class: 'grid dense' });
-    for (const manga of list) {
-      grid.appendChild(card(manga, (m) => router.navigate('details', { sid, url: m.url })));
-    }
-    results.appendChild(el('section', { class: 'search-source-card-minimal' }, head, grid));
+    const section = el('section', { class: 'search-source-card-minimal' }, head, grid);
+    results.appendChild(section);
+    const renderCards = (items) => {
+      for (const manga of items) {
+        grid.appendChild(card(manga, (m) => router.navigate('details', { sid, url: m.url })));
+      }
+    };
+    // Keep sections scannable: two rows per source, expandable on demand.
+    requestAnimationFrame(() => {
+      const cols = (getComputedStyle(grid).gridTemplateColumns || '')
+        .split(' ').filter(Boolean).length || 3;
+      const cap = cols * 2;
+      if (list.length <= cap) { renderCards(list); return; }
+      renderCards(list.slice(0, cap));
+      const more = btn(`Show all (${list.length}${list.length >= PER_SOURCE_LIMIT ? '+' : ''})`, {
+        variant: 'ghost', class: 'btn-sm',
+        onClick: () => { moreRow.remove(); renderCards(list.slice(cap)); },
+      });
+      const moreRow = el('div', { class: 'row', style: { justifyContent: 'center', marginTop: '12px' } }, more);
+      section.appendChild(moreRow);
+    });
   }
 
   async function searchOne(src, token) {
@@ -191,7 +203,10 @@ export function render(view, params) {
       // behaviour (pinned = the user's curated search set); a specific language
       // means "search that language", so it spans all its sources, not just pinned.
       sources = inLang(allSources);
-      if (lang === 'all') {
+      // Search scope preference: 'pinned' = the user's curated set (when any
+      // are pinned); 'all' = every installed source. A specific language always
+      // spans all of that language's sources.
+      if (lang === 'all' && (store.get().searchScope || 'pinned') === 'pinned') {
         const pinned = sources.filter((s) => s.isPinned);
         if (pinned.length) sources = pinned;
       }

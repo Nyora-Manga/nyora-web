@@ -308,24 +308,31 @@ button { cursor: pointer; }
 }
 .nav-group { display: flex; flex-direction: column; gap: 1px; }
 .nav-group.bottom { margin-top: auto; padding-top: 12px; border-top: 1px solid var(--border); }
+/* M3 navigation drawer: section headers are quiet labels separated by inset
+   hairline dividers (no decorative ticks); items are full-pill rows with a
+   tonal active indicator. */
 .nav-label {
-  position: relative;
-  font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em; font-weight: 700;
-  color: var(--text-faint); padding: 18px 12px 6px 22px;
+  font-size: 11px; text-transform: uppercase; letter-spacing: 0.09em; font-weight: 700;
+  color: var(--text-faint);
+  padding: 14px 16px 8px;
+  margin-top: 10px;
+  border-top: 1px solid var(--border);
 }
-.nav-label::before {
-  content: ""; position: absolute; inset-inline-start: 11px; inset-block-start: calc(50% + 6px); transform: translateY(-50%);
-  width: 3px; height: 12px; border-radius: 2px; background: var(--accent);
-}
+.brand + .nav-label { border-top: none; margin-top: 0; padding-top: 6px; }
 .nav-item {
   position: relative;
-  display: flex; align-items: center; gap: 12px;
-  padding: 7px 12px; margin: 1px 0; border-radius: var(--radius-sm);
+  display: flex; align-items: center; gap: 14px;
+  min-height: 44px;
+  padding: 9px 16px; margin: 2px 0;
+  border-radius: 999px;
   color: var(--text-dim); cursor: pointer;
   font-weight: 600; white-space: nowrap;
   transition: background 0.16s var(--ease), color 0.16s var(--ease);
 }
-.nav-item:hover { background: var(--surface1); color: var(--text); }
+.nav-item:hover {
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  color: var(--text);
+}
 .nav-item .icon {
   width: 24px; height: 24px; flex: 0 0 24px;
   display: grid; place-items: center; color: var(--text-dim);
@@ -336,17 +343,11 @@ button { cursor: pointer; }
 .nav-item:hover .icon { color: var(--text); }
 .nav-item.active {
   color: var(--text);
-  background: linear-gradient(90deg,
-    color-mix(in oklab, var(--accent) 26%, transparent) 0%,
-    color-mix(in oklab, var(--accent) 9%, transparent) 56%,
-    transparent 100%);
-}
-.nav-item.active::before {
-  content: ""; position: absolute; inset-inline-start: -14px; inset-block-start: 50%; transform: translateY(-50%);
-  width: 3px; height: 64%; border-radius: 0 3px 3px 0;
-  background: var(--accent); box-shadow: 0 0 10px color-mix(in oklab, var(--accent) 70%, transparent);
+  font-weight: 700;
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
 }
 .nav-item.active .icon { color: var(--accent); background: none; }
+.nav-item:focus-visible { outline: 2px solid var(--accent); outline-offset: -1px; }
 
 .main {
   flex: 1 1 auto;
@@ -454,7 +455,7 @@ body.hide-search .search-form { display: none; }
 /* ---- card grid ------------------------------------------------------- */
 .grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(158px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(var(--card-min, 158px), 1fr));
   gap: 20px;
 }
 .grid.dense { grid-template-columns: repeat(auto-fill, minmax(124px, 1fr)); gap: 14px; }
@@ -1061,8 +1062,12 @@ body[data-route="details"] .view > .details { height: 100%; min-height: 0; }
 .discover-rail-track {
   display: flex; gap: 14px; overflow-x: auto; padding-bottom: 6px;
   scroll-snap-type: x proximity;
+  /* Material carousel: no visible scrollbar — the peeking next card is the
+     scroll affordance. Overrides the app-wide thin scrollbar for this rail. */
+  scrollbar-width: none;
+  -ms-overflow-style: none;
 }
-.discover-rail-track::-webkit-scrollbar { height: 6px; }
+.discover-rail-track::-webkit-scrollbar { height: 0; width: 0; display: none; }
 .discover-rail-card { flex: 0 0 138px; width: 138px; scroll-snap-align: start; }
 
 @media (max-width: 760px) {
@@ -1172,11 +1177,6 @@ body.reader-active .view {
   position: relative; flex: 1; min-height: 0;
   display: grid; place-items: center; padding: 22px;
 }
-.reader-loading-page {
-  grid-area: 1 / 1;
-  width: min(64vw, 320px); aspect-ratio: 2 / 3; max-height: 80vh;
-  border-radius: 16px;
-}
 .reader-loading-badge {
   grid-area: 1 / 1; z-index: 1;
   display: flex; flex-direction: column; align-items: center; gap: 14px;
@@ -1197,9 +1197,16 @@ body.reader-active .view {
   pointer-events: none;
   visibility: hidden;
 }
+/* Material motion: bars glide off toward their edge as they hide. */
+.reader-view.controls-hidden .reader-bar.top { transform: translateY(-12px); }
+.reader-view.controls-hidden .reader-bar.bottom { transform: translateY(12px); }
 
 .reader-bar, .reader-progress {
-  transition: opacity 0.2s var(--ease), visibility 0.2s;
+  transition: opacity 0.25s var(--ease), visibility 0.25s, transform 0.25s var(--ease);
+}
+@media (prefers-reduced-motion: reduce) {
+  .reader-view.controls-hidden .reader-bar.top,
+  .reader-view.controls-hidden .reader-bar.bottom { transform: none; }
 }
 
 /* thin chapter-position bar pinned to the very top */
@@ -1207,35 +1214,80 @@ body.reader-active .view {
   position: absolute;
   inset-block-start: 0;
   inset-inline-start: 0;
-  height: 4px;
+  height: 3px;
+  border-radius: 0 999px 999px 0;
   background: var(--accent);
   z-index: 22;
   box-shadow: 0 0 10px color-mix(in oklab, var(--accent) 50%, transparent);
 }
 
-/* solid/blurred bars with a border so they read over any artwork */
+/* Material 3 chrome: floating tonal pills detached from the edges (the
+   Mihon-reader idiom), hovering over the artwork on a blurred surface. */
 .reader-view .reader-bar {
   position: absolute;
-  inset-inline-start: 0;
-  inset-inline-end: 0;
+  inset-inline-start: 12px;
+  inset-inline-end: 12px;
   z-index: 20;
   display: flex;
   align-items: center;
-  gap: 16px;
-  padding: 12px 20px;
-  background: color-mix(in srgb, var(--bg-elev) 88%, transparent);
+  gap: 12px;
+  padding: 8px 12px;
+  border-radius: 26px;
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg-elev) 84%, transparent);
   backdrop-filter: blur(20px) saturate(1.6);
   -webkit-backdrop-filter: blur(20px) saturate(1.6);
+  box-shadow:
+    0 2px 6px color-mix(in srgb, #000 22%, transparent),
+    0 12px 32px color-mix(in srgb, #000 26%, transparent);
 }
+/* Top bar = TWO detached clusters (title pill / actions pill) with the page
+   visible between them; the bar element itself is an invisible layout row. */
 .reader-view .reader-bar.top {
-  inset-block-start: 0;
-  padding-top: max(12px, env(safe-area-inset-top));
-  border-bottom: 1px solid var(--border-strong);
+  inset-block-start: max(10px, env(safe-area-inset-top));
+  justify-content: space-between;
+  padding: 0;
+  border: none;
+  background: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  box-shadow: none;
+  pointer-events: none;
+}
+.reader-bar .reader-title-group,
+.reader-bar.top .reader-actions {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px;
+  border-radius: 26px;
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg-elev) 84%, transparent);
+  backdrop-filter: blur(20px) saturate(1.6);
+  -webkit-backdrop-filter: blur(20px) saturate(1.6);
+  box-shadow:
+    0 2px 6px color-mix(in srgb, #000 22%, transparent),
+    0 12px 32px color-mix(in srgb, #000 26%, transparent);
+}
+.reader-bar .reader-title-group {
+  min-width: 0;
+  padding-inline-end: 18px;
+}
+@media (max-width: 760px) {
+  .reader-bar.top .reader-actions { gap: 2px; }
+  .reader-bar.top .reader-btn { width: 40px; height: 40px; }
 }
 .reader-view .reader-bar.bottom {
-  inset-block-end: 0;
-  padding-bottom: max(12px, env(safe-area-inset-bottom));
-  border-top: 1px solid var(--border-strong);
+  inset-block-end: max(10px, env(safe-area-inset-bottom));
+  inset-inline-start: 50%;
+  transform: translateX(-50%);
+  inset-inline-end: auto;
+  width: min(460px, calc(100% - 32px));
+}
+.reader-view.controls-hidden .reader-bar.bottom { transform: translateX(-50%) translateY(12px); }
+@media (prefers-reduced-motion: reduce) {
+  .reader-view.controls-hidden .reader-bar.bottom { transform: translateX(-50%); }
 }
 
 /* End-of-chapter tail card (webtoon), also the auto-scroll landing spot. */
@@ -1244,7 +1296,12 @@ body.reader-active .view {
   flex-direction: column;
   align-items: center;
   gap: 16px;
-  padding: 48px 20px calc(96px + env(safe-area-inset-bottom));
+  width: min(420px, calc(100% - 32px));
+  margin: 28px auto calc(96px + env(safe-area-inset-bottom));
+  padding: 32px 24px;
+  border-radius: 24px;
+  border: 1px solid var(--border);
+  background: var(--surface1);
   text-align: center;
 }
 .reader-end-title {
@@ -1296,7 +1353,8 @@ body.reader-active .view {
   flex: 0 0 auto;
 }
 
-/* every reader control: a real, visible, tappable icon button on a surface */
+/* Material icon buttons: circular, borderless on the pill surface; hover is
+   an accent-tonal wash, selected is a filled accent circle. */
 .reader-bar .reader-btn {
   display: inline-flex;
   align-items: center;
@@ -1305,17 +1363,21 @@ body.reader-active .view {
   width: 44px;
   height: 44px;
   padding: 0;
-  border-radius: 12px;
-  border: 1px solid var(--border-strong);
-  background: var(--surface1);
+  border-radius: 50%;
+  border: none;
+  background: transparent;
   color: var(--text);
   cursor: pointer;
-  transition: all 0.15s var(--ease);
+  transition: background 0.15s var(--ease), color 0.15s var(--ease), transform 0.15s var(--ease);
 }
 .reader-bar .reader-btn .icon { width: 24px; height: 24px; }
 .reader-bar .reader-btn .icon svg { width: 24px; height: 24px; }
-.reader-bar .reader-btn:hover:not(:disabled) { background: var(--surface2); border-color: var(--accent); transform: translateY(-1px); }
-.reader-bar .reader-btn:active:not(:disabled) { transform: scale(0.95); }
+.reader-bar .reader-btn:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--accent);
+}
+.reader-bar .reader-btn:active:not(:disabled) { transform: scale(0.92); }
+.reader-bar .reader-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .reader-bar .reader-btn:disabled { opacity: 0.35; cursor: not-allowed; }
 .reader-bar .reader-btn.active {
   background: var(--accent);
@@ -1334,60 +1396,31 @@ body.reader-active .view {
   filter: brightness(1.08);
 }
 
-/* big readable page counter */
+/* page counter as a Material tonal chip */
 .reader-bar .reader-counter {
   flex: 0 0 auto;
-  min-width: 90px;
+  min-width: 84px;
   text-align: center;
-  font-size: 17px;
+  padding: 8px 16px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  font-size: 14px;
   font-weight: 800;
   font-variant-numeric: tabular-nums;
   color: var(--text);
+  cursor: pointer;
+  transition: background 0.15s var(--ease);
 }
+.reader-bar .reader-counter:hover { background: color-mix(in srgb, var(--accent) 22%, transparent); }
 
-/* visible, draggable page slider (paged modes only) */
+/* draggable page slider (all modes) — visuals come from .m3-range */
 .reader-bar .reader-slider {
   flex: 1 1 auto;
-  min-width: 90px;
-  height: 24px;
-  margin: 0;
-  cursor: pointer;
-  accent-color: var(--accent);
-  -webkit-appearance: none;
-  appearance: none;
-  background: transparent;
+  min-width: 56px;
 }
-.reader-bar .reader-slider::-webkit-slider-runnable-track {
-  height: 6px;
-  border-radius: 999px;
-  background: var(--surface3);
-  border: 1px solid var(--border-strong);
-}
-.reader-bar .reader-slider::-moz-range-track {
-  height: 6px;
-  border-radius: 999px;
-  background: var(--surface3);
-  border: 1px solid var(--border-strong);
-}
-.reader-bar .reader-slider::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  appearance: none;
-  width: 18px;
-  height: 18px;
-  margin-top: -7px;
-  border-radius: 50%;
-  background: var(--accent);
-  border: 2px solid var(--on-accent);
-  box-shadow: var(--shadow-sm);
-}
-.reader-bar .reader-slider::-moz-range-thumb {
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  background: var(--accent);
-  border: 2px solid var(--on-accent);
-  box-shadow: var(--shadow-sm);
-}
+/* the M3 handle gap should match the pill surface, not the modal's */
+.reader-bar input.m3-range::-webkit-slider-thumb { box-shadow: 0 0 0 4px color-mix(in srgb, var(--bg-elev) 92%, transparent); }
+.reader-bar input.m3-range::-moz-range-thumb { box-shadow: 0 0 0 4px color-mix(in srgb, var(--bg-elev) 92%, transparent); }
 
 @media (max-width: 760px) {
   .reader-view .reader-bar {
@@ -1398,10 +1431,10 @@ body.reader-active .view {
   }
   .reader-view .reader-bar.top { padding-top: max(12px, env(safe-area-inset-top)); }
   .reader-view .reader-bar.bottom {
-    flex-wrap: wrap;
-    padding-bottom: max(12px, env(safe-area-inset-bottom));
+    padding: 6px 10px;
+    gap: 6px;
   }
-  .reader-bar .reader-btn { width: 42px; height: 42px; border-radius: var(--radius-sm); }
+  .reader-bar .reader-btn { width: 42px; height: 42px; }
   .reader-bar .reader-counter { font-size: 16px; min-width: 72px; }
   /* De-clutter the top-right on phones: the sidebar toggle has no sidebar to
      toggle here, and native fullscreen is unreliable on mobile browsers — drop
@@ -2081,27 +2114,8 @@ body.reader-active .view {
   text-transform: uppercase;
   color: var(--text-faint);
 }
-.lang-select {
-  height: 38px;
-  padding: 0 34px 0 14px;
-  border-radius: var(--radius-sm);
-  background: var(--bg-elev);
-  border: 1px solid var(--border);
-  color: var(--text);
-  font-size: 13px;
-  font-weight: 550;
-  cursor: pointer;
-  min-width: 170px;
-  max-width: 260px;
-  appearance: none;
-  -webkit-appearance: none;
-  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23a1a1a6' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 12 15 18 9'/></svg>");
-  background-repeat: no-repeat;
-  background-position: right 12px center;
-  transition: border-color 0.15s var(--ease);
-}
-.lang-select:hover { border-color: var(--border-strong); }
-.lang-select:focus { border-color: var(--accent); outline: none; }
+/* Language filter is a menuSelect trigger now — only sizing lives here. */
+.lang-select { min-width: 170px; max-width: 260px; }
 @media (max-width: 760px) {
   .lang-select { flex: 1 1 auto; max-width: none; }
 }
@@ -2864,4 +2878,936 @@ body.reader-active .view {
 /* Details chapter list: last chapter (Ch 1) must clear the floating tabbar+FAB. */
 @media (max-width: 760px) {
   .d2-chapter-scroll { padding-bottom: calc(104px + env(safe-area-inset-bottom)); }
+}
+
+/* ---- in-image AI translation overlay --------------------------------- */
+/* Overlays are absolutely-positioned siblings of the page <img>; their
+   containers must be positioned for offsetLeft/Top to line up. */
+.reader.webtoon { position: relative; }
+.reader-slide { position: relative; }
+.tl-overlay { position: absolute; z-index: 4; pointer-events: none; }
+.tl-block {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  overflow: hidden;
+  box-sizing: border-box;
+  border-radius: 10px;
+  padding: 2px 4px;
+  font-family: 'Comic Sans MS', 'Chalkboard SE', 'Segoe Print', 'Comic Neue', cursive, sans-serif;
+  font-weight: 600;
+  line-height: 1.22;
+  word-break: break-word;
+}
+.tl-block.tl-pending {
+  background: rgba(128, 128, 255, 0.10);
+  outline: 1px dashed rgba(150, 150, 255, 0.45);
+  border-radius: 8px;
+}
+
+/* ---- settings hub (Android-style preference screens) ------------------ */
+.settings-nav { display: flex; flex-direction: column; gap: 10px; margin-top: 8px; }
+.settings-nav-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 18px;
+  background: var(--surface-grad, var(--surface1));
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg, 14px);
+  cursor: pointer;
+  transition: border-color 0.15s var(--ease), background 0.15s var(--ease), transform 0.15s var(--ease);
+}
+.settings-nav-row:hover { border-color: var(--accent); transform: translateX(2px); }
+.settings-nav-row:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.settings-nav-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px; height: 40px;
+  flex: 0 0 auto;
+  border-radius: 12px;
+  background: var(--surface2);
+  color: var(--accent);
+}
+.settings-nav-row .row-main { flex: 1; min-width: 0; }
+.settings-nav-row .name { font-weight: 700; font-size: 14px; }
+.settings-nav-row .sub { color: var(--text-dim); font-size: 12px; margin-top: 2px; }
+.settings-nav-chevron { color: var(--text-faint); display: inline-flex; flex: 0 0 auto; }
+.settings-subheader { display: flex; align-items: center; gap: 12px; margin: 4px 0 18px; }
+.settings-subheader h1 { font-size: 22px; font-weight: 800; margin: 0; }
+
+/* Themed <select class="input"> (reader translate modal + settings pages). */
+select.input {
+  appearance: none;
+  -webkit-appearance: none;
+  background-color: var(--surface2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 8px 32px 8px 12px;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23999' stroke-width='2.4'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+}
+select.input:focus { border-color: var(--accent); outline: none; }
+select.input option { background: var(--surface1); color: var(--text); }
+
+/* Per-page translation status pill (top-right of the page). */
+.tl-progress {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: rgba(12, 12, 18, 0.78);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  pointer-events: none;
+}
+.tl-progress::before {
+  content: '';
+  width: 11px;
+  height: 11px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top-color: #fff;
+  animation: reader-spin 0.8s linear infinite;
+}
+
+/* Overlay visibility toggle — peek at the original page. */
+.reader-view.tl-hidden .tl-overlay { display: none; }
+
+/* ---- Material 3 range sliders (reader settings) ----------------------- */
+input.m3-range {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 36px;
+  margin: 2px 0;
+  background: transparent;
+  cursor: pointer;
+}
+input.m3-range::-webkit-slider-runnable-track {
+  height: 14px;
+  border-radius: 999px;
+  background: linear-gradient(to right,
+    var(--accent) var(--p, 50%),
+    color-mix(in srgb, var(--accent) 16%, var(--surface2)) var(--p, 50%));
+}
+input.m3-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 6px;
+  height: 30px;
+  margin-top: -8px;
+  border: none;
+  border-radius: 4px;
+  background: var(--accent);
+  box-shadow: 0 0 0 4px var(--surface1); /* the M3 handle gap */
+  transition: transform 0.12s var(--ease);
+}
+input.m3-range:active::-webkit-slider-thumb { transform: scaleY(1.12); }
+input.m3-range:focus-visible { outline: none; }
+input.m3-range:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 4px var(--surface1), 0 0 0 7px color-mix(in srgb, var(--accent) 30%, transparent); }
+input.m3-range::-moz-range-track {
+  height: 14px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 16%, var(--surface2));
+}
+input.m3-range::-moz-range-progress {
+  height: 14px;
+  border-radius: 999px;
+  background: var(--accent);
+}
+input.m3-range::-moz-range-thumb {
+  width: 6px;
+  height: 30px;
+  border: none;
+  border-radius: 4px;
+  background: var(--accent);
+  box-shadow: 0 0 0 4px var(--surface1);
+}
+
+/* ---- Material 3 dialog polish ----------------------------------------- */
+.modal {
+  border: none;
+  border-radius: 28px;
+  box-shadow:
+    0 6px 16px color-mix(in srgb, #000 24%, transparent),
+    0 28px 72px color-mix(in srgb, #000 36%, transparent);
+}
+.modal-head h3 { font-size: 20px; font-weight: 800; letter-spacing: -0.01em; }
+.modal .settings-section h2 {
+  font-size: 12.5px;
+  font-weight: 800;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin: 0 0 14px;
+}
+.modal-actions { padding: 10px 22px 22px; }
+.modal-actions .btn { border-radius: 999px; }
+.modal-body {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--accent) 45%, var(--surface3)) transparent;
+}
+.modal-body::-webkit-scrollbar { width: 8px; }
+.modal-body::-webkit-scrollbar-track { background: transparent; }
+.modal-body::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--accent) 40%, var(--surface3));
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+/* ---- Material scrollbar for the webtoon reader ------------------------ */
+.reader.webtoon {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--accent) 55%, var(--surface3)) transparent;
+}
+.reader.webtoon::-webkit-scrollbar { width: 10px; }
+.reader.webtoon::-webkit-scrollbar-track { background: transparent; }
+.reader.webtoon::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--accent) 50%, var(--surface3));
+  border-radius: 999px;
+  border: 3px solid transparent;
+  background-clip: padding-box;
+}
+
+/* ---- Material 3 filter chips (reader settings presets) ---------------- */
+.modal .chips { gap: 10px; margin-top: 4px; }
+.modal .chips .chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 42px;
+  padding: 0 20px;
+  border-radius: 12px;
+  border: 1px solid var(--border-strong);
+  background: transparent;
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s var(--ease), border-color 0.15s var(--ease), color 0.15s var(--ease);
+}
+.modal .chips .chip:hover {
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  border-color: var(--accent);
+  color: var(--text);
+}
+.modal .chips .chip.active {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  border-color: transparent;
+  color: var(--text);
+  font-weight: 700;
+}
+.modal .chips .chip.active::before {
+  content: '✓';
+  margin-inline-end: 8px;
+  font-weight: 800;
+  color: var(--accent);
+}
+.modal .chips .chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* In the reader, toasts must not cover the floating top bars — show them as a
+   bottom snackbar above the page pill instead. */
+body.reader-active .toast {
+  inset-block-start: auto;
+  inset-block-end: calc(84px + env(safe-area-inset-bottom));
+}
+
+/* =====================================================================
+   Material 3 sweep — shared primitives, so every screen inherits it.
+   ===================================================================== */
+
+/* Buttons: default = filled tonal pill; accent = filled; ghost = text button. */
+.btn {
+  border-radius: 999px;
+  border: 1px solid transparent;
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface1));
+}
+.btn:hover {
+  background: color-mix(in srgb, var(--accent) 22%, var(--surface1));
+  border-color: transparent;
+}
+.btn.btn-accent { border-radius: 999px; }
+.btn.btn-ghost { background: transparent; }
+.btn.btn-ghost:hover { background: color-mix(in srgb, var(--accent) 10%, transparent); border-color: transparent; }
+.btn.btn-danger { background: transparent; }
+.btn:active { transform: scale(0.97); }
+
+/* Segmented controls: M3 connected button group. */
+.seg { border-radius: 999px; padding: 4px; }
+.seg button { border-radius: 999px; }
+.seg button.active {
+  background: color-mix(in srgb, var(--accent) 20%, transparent);
+  color: var(--text);
+  box-shadow: none;
+}
+
+/* Chips app-wide: taller, softer, tonal when active. */
+.chip {
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  border-radius: 10px;
+  padding: 4px 14px;
+}
+.chip.active {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  border-color: transparent;
+  color: var(--text);
+  font-weight: 650;
+}
+
+/* Text fields: M3 filled style with a rounded container. */
+.field input[type="text"], .field input[type="number"], .field input[type="password"],
+.field input[type="email"], .field input[type="url"], .field input[type="search"], .field input:not([type]),
+.field select, .field textarea, input.field, select.field, input.input, select.input {
+  border-radius: 12px;
+}
+.search-form input { background: color-mix(in srgb, var(--accent) 6%, var(--surface1)); }
+
+/* Switch: M3 proportions — outlined track when off, filled when on. */
+.switch { width: 52px; height: 32px; flex: 0 0 52px; }
+.switch .slider { background: var(--surface2); border: 2px solid var(--border-strong); box-sizing: border-box; }
+.switch .slider::before {
+  width: 16px; height: 16px;
+  inset-inline-start: 6px; inset-block-start: 6px;
+  background: var(--text-dim);
+  box-shadow: none;
+}
+.switch input:checked + .slider { border-color: transparent; }
+.switch input:checked + .slider::before {
+  width: 24px; height: 24px;
+  inset-inline-start: 2px; inset-block-start: 2px;
+  transform: translateX(22px);
+  background: var(--pure-white);
+}
+
+/* Toast → M3 snackbar voice: tonal elevated pill (position handled above). */
+.toast { border: none; box-shadow: 0 4px 12px color-mix(in srgb, #000 30%, transparent), 0 12px 32px color-mix(in srgb, #000 22%, transparent); }
+
+/* Thin, rounded, accent-tinted scrollbars everywhere. */
+* { scrollbar-width: thin; scrollbar-color: color-mix(in srgb, var(--accent) 40%, var(--surface3)) transparent; }
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--accent) 40%, var(--surface3));
+  border-radius: 999px;
+  border: 3px solid transparent;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-corner { background: transparent; }
+
+/* ---- Material list rows + linear progress (history/updates/downloads) - */
+.row-item {
+  border: none;
+  border-radius: 16px;
+  background: var(--surface1);
+  transition: background 0.15s var(--ease), transform 0.1s var(--ease);
+}
+.row-item:hover {
+  border-color: transparent;
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface1));
+}
+.row-item .thumb { border-radius: 10px; }
+.progress {
+  height: 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 16%, var(--surface2));
+}
+.progress > span { border-radius: 999px; background: var(--accent); }
+/* icon buttons app-wide: M3 circular */
+.icon-btn { border-radius: 999px; }
+
+/* Monogram tile when a list row has no cover art. */
+.thumb-fallback {
+  display: grid;
+  place-items: center;
+  font-weight: 800;
+  font-size: 18px;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface2));
+}
+
+/* ---- Material cards: elevation instead of hairline borders ------------ */
+.card .cover {
+  border: none;
+  border-radius: 16px;
+  box-shadow: 0 1px 3px color-mix(in srgb, #000 16%, transparent), 0 1px 2px color-mix(in srgb, #000 10%, transparent);
+}
+.card:hover .cover {
+  border-color: transparent;
+  box-shadow: 0 8px 20px color-mix(in srgb, #000 26%, transparent), 0 3px 8px color-mix(in srgb, #000 14%, transparent);
+}
+.card:focus-visible .cover { box-shadow: 0 0 0 2px var(--accent), 0 4px 14px color-mix(in srgb, #000 20%, transparent); }
+.stat-card { border: none; border-radius: 16px; box-shadow: 0 1px 3px color-mix(in srgb, #000 14%, transparent); }
+.settings-nav-row { border: none; box-shadow: 0 1px 3px color-mix(in srgb, #000 12%, transparent); }
+.settings-nav-row:hover { box-shadow: 0 4px 12px color-mix(in srgb, #000 18%, transparent); background: color-mix(in srgb, var(--accent) 6%, var(--surface1)); }
+
+/* ---- Material dropdown (menuSelect) ------------------------------------ */
+.menu-select {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 40px;
+  padding: 8px 12px 8px 16px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface1);
+  color: var(--text);
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s var(--ease), border-color 0.15s var(--ease);
+}
+.menu-select:hover { background: color-mix(in srgb, var(--accent) 8%, var(--surface1)); border-color: var(--accent); }
+.menu-select .icon { transform: rotate(90deg); color: var(--text-faint); }
+.menu-select .icon svg { width: 16px; height: 16px; }
+.menu-select-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 220px; }
+.menu-select-pop {
+  z-index: 400;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: min(420px, 60vh);
+  overflow-y: auto;
+  padding: 8px;
+  border-radius: 18px;
+  background: var(--bg-elev);
+  box-shadow:
+    0 4px 12px color-mix(in srgb, #000 24%, transparent),
+    0 16px 44px color-mix(in srgb, #000 32%, transparent);
+}
+.menu-select-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px 10px 10px;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 550;
+  text-align: start;
+  cursor: pointer;
+  transition: background 0.12s var(--ease);
+}
+.menu-select-item:hover { background: color-mix(in srgb, var(--accent) 10%, transparent); }
+.menu-select-item.active { background: color-mix(in srgb, var(--accent) 16%, transparent); font-weight: 700; }
+.menu-select-check { width: 18px; height: 18px; flex: 0 0 18px; display: grid; place-items: center; color: var(--accent); }
+.menu-select-check .icon svg { width: 16px; height: 16px; }
+
+/* ---- Material top app bar --------------------------------------------- */
+.topbar { border-bottom: none; }
+.search-form input {
+  height: 46px;
+  border: none;
+  background: color-mix(in srgb, var(--accent) 7%, var(--surface1));
+  font-size: 14px;
+}
+.search-form input:focus {
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface1));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 45%, transparent);
+}
+
+/* Appearance prefs: card titles + reduced motion. */
+body.hide-card-titles .card .title { display: none; }
+body.reduce-motion *, body.reduce-motion *::before, body.reduce-motion *::after {
+  transition-duration: 0.01ms !important;
+  animation-duration: 0.01ms !important;
+  scroll-behavior: auto !important;
+}
+
+/* ---- appearance options ------------------------------------------------ */
+/* Soft dark: M3-style grey dark surfaces instead of pure black. */
+html.soft-dark[data-theme="DARK"] {
+  --bg: #111116;
+  --bg-elev: #17171c;
+  --surface1: #1c1c22;
+  --surface2: #26262d;
+  --surface3: #303038;
+}
+/* Disable backdrop blur (low-power devices). */
+body.no-blur *, body.no-blur *::before, body.no-blur *::after {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+/* Icon-only navigation rail (desktop). */
+@media (min-width: 761px) {
+  body.nav-rail .sidebar { width: 84px; flex-basis: 84px; padding: 18px 10px; }
+  body.nav-rail .brand span { display: none; }
+  body.nav-rail .brand { justify-content: center; padding-inline: 0; }
+  body.nav-rail .nav-label { height: 0; padding: 8px 0 0; margin-top: 8px; overflow: hidden; color: transparent; }
+  body.nav-rail .nav-item { justify-content: center; padding: 9px 0; gap: 0; }
+  body.nav-rail .nav-item span:not(.icon) { display: none; }
+}
+/* Custom accent color swatch (settings). */
+.accent-picker {
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 2px solid var(--border-strong);
+  border-radius: 50%;
+  background: none;
+  cursor: pointer;
+}
+.accent-picker::-webkit-color-swatch-wrapper { padding: 3px; }
+.accent-picker::-webkit-color-swatch { border: none; border-radius: 50%; }
+.accent-picker::-moz-color-swatch { border: none; border-radius: 50%; }
+
+/* ---- Material 3 Expressive phone chrome (Android 16/17 style) --------- */
+.discover-hero {
+  border: none;
+  border-radius: 28px;
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--accent) 10%, var(--bg-elev)), var(--bg-elev) 70%);
+}
+.discover-hero-cover { border: none; border-radius: 18px; }
+
+@media (max-width: 760px) {
+  /* Top-row actions as tonal circles. */
+  .nav-toggle, .mobile-search-action {
+    width: 44px; height: 44px; flex-basis: 44px;
+    border: none; border-radius: 50%;
+    background: color-mix(in srgb, var(--accent) 10%, var(--surface1));
+  }
+  .nav-toggle:active, .mobile-search-action:active {
+    background: color-mix(in srgb, var(--accent) 20%, var(--surface1));
+  }
+
+  /* Navigation bar: M3E active indicator — a tonal capsule around the ICON,
+     bold label beneath. */
+  .tabbar-pill { padding: 10px 8px; border: none; }
+  .tabbar-pill a { gap: 4px; font-size: 11px; font-weight: 600; background: transparent; }
+  .tabbar-pill a .icon {
+    width: auto; height: auto;
+    padding: 5px 18px;
+    border-radius: 999px;
+    transition: background 0.2s var(--ease), color 0.2s var(--ease), transform 0.18s var(--ease);
+  }
+  .tabbar-pill a .icon svg { width: 22px; height: 22px; }
+  .tabbar-pill a.active { background: transparent; color: var(--text); font-weight: 800; }
+  .tabbar-pill a.active .icon {
+    background: color-mix(in srgb, var(--accent) 22%, transparent);
+    color: var(--accent);
+  }
+
+  /* FAB: M3E large-corner square. */
+  .tabbar-fab { border-radius: 20px; }
+}
+
+/* ---- kill browser-native touch chrome (Material replaces it) ---------- */
+* { -webkit-tap-highlight-color: transparent; }
+img, .card, .card .cover, .reader-page, .thumb {
+  -webkit-user-drag: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+.card, .nav-item, .chip, .btn, .tabbar-pill a, .seg button, .row-item {
+  -webkit-touch-callout: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.ctx-menu .menu-select-item.danger { color: var(--danger, #e5484d); }
+.ctx-menu .menu-select-item.danger .menu-select-check { color: var(--danger, #e5484d); }
+
+/* ---- Material card redesign: elevated container, image + title inside - */
+.card {
+  background: var(--surface1);
+  border-radius: 20px;
+  overflow: hidden;
+  gap: 0;
+  box-shadow: 0 1px 3px color-mix(in srgb, #000 16%, transparent), 0 1px 2px color-mix(in srgb, #000 10%, transparent);
+  transition: transform 0.28s var(--ease), box-shadow 0.28s var(--ease);
+}
+.card .cover {
+  border-radius: 0;
+  border: none;
+  box-shadow: none;
+  transition: none;
+}
+.card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 10px 24px color-mix(in srgb, #000 26%, transparent), 0 3px 8px color-mix(in srgb, #000 14%, transparent);
+}
+.card:hover .cover { transform: none; box-shadow: none; border-color: transparent; }
+.card:active { transform: translateY(-1px) scale(0.985); }
+.card:active .cover { transform: none; }
+.card:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--accent), 0 6px 16px color-mix(in srgb, #000 22%, transparent); }
+.card:focus-visible .cover { box-shadow: none; border-color: transparent; }
+.card .title {
+  padding: 10px 12px 12px;
+  margin: 0;
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1.35;
+}
+body.hide-card-titles .card { background: transparent; box-shadow: none; overflow: visible; }
+body.hide-card-titles .card .cover {
+  border-radius: 20px;
+  box-shadow: 0 1px 3px color-mix(in srgb, #000 16%, transparent);
+}
+
+/* ---- card fixes: clamp-safe title, softer elevation, scrim chips ------ */
+/* line-clamped boxes leak clipped lines into bottom PADDING — keep the
+   bottom space as margin instead. */
+.card .title {
+  padding: 10px 12px 0;
+  margin-bottom: 12px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+/* softer resting elevation (light theme was reading as a grey halo) */
+.card {
+  box-shadow: 0 1px 2px color-mix(in srgb, #000 10%, transparent), 0 1px 3px color-mix(in srgb, #000 6%, transparent);
+}
+/* genre/score chips overlaid on the cover: scrim style, not paper squares */
+.card .chips { gap: 6px; }
+.card .chips .chip {
+  min-height: 26px;
+  padding: 2px 12px;
+  font-size: 11px;
+  font-weight: 650;
+  border: none;
+  border-radius: 999px;
+  background: color-mix(in srgb, #0c0c12 62%, transparent);
+  color: #fff;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+/* rails: equal-height cards */
+.discover-rail-track { align-items: stretch; }
+.discover-rail-card .card { height: 100%; }
+
+/* ---- Material loading state for covers (no more pure-black tiles) ----- */
+.card .cover {
+  background: linear-gradient(150deg,
+    color-mix(in srgb, var(--accent) 10%, var(--surface2)),
+    var(--surface2) 65%);
+}
+.card .cover::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background: linear-gradient(100deg,
+    transparent 32%,
+    color-mix(in srgb, var(--accent) 12%, transparent) 50%,
+    transparent 68%);
+  transform: translateX(-100%);
+  animation: shimmer 1.5s infinite;
+  pointer-events: none;
+}
+.card .cover.img-loaded::before { display: none; animation: none; }
+.card .cover-media { position: relative; z-index: 1; }
+.cover-fallback {
+  background: linear-gradient(150deg,
+    color-mix(in srgb, var(--accent) 14%, var(--surface2)),
+    var(--surface2));
+  color: var(--accent);
+  z-index: 1;
+}
+.row-item .thumb { background: color-mix(in srgb, var(--accent) 10%, var(--surface2)); }
+/* reader page slots: tonal instead of flat surface */
+.reader.webtoon .reader-page { background: color-mix(in srgb, var(--accent) 6%, var(--surface1)); }
+.reader.webtoon .reader-page.loaded { background: none; }
+
+/* Skeletons: tonal Material shimmer, never pure black. */
+.skeleton {
+  background: color-mix(in srgb, var(--accent) 9%, var(--surface2)) !important;
+}
+.skeleton::after {
+  background: linear-gradient(90deg,
+    transparent,
+    color-mix(in srgb, var(--accent) 16%, var(--skeleton-shimmer)),
+    transparent);
+}
+
+/* search filter row: quiet M3 label + menu trigger */
+.search-filters { display: flex; align-items: center; gap: 12px; margin: 4px 0 16px; }
+.search-filters-label {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+/* ---- Material 3 welcome / onboarding ---------------------------------- */
+.wlc-auth, .wlc-prefs {
+  border: none;
+  border-radius: 28px;
+  box-shadow:
+    0 6px 16px color-mix(in srgb, #000 22%, transparent),
+    0 28px 72px color-mix(in srgb, #000 34%, transparent);
+}
+.wlc-auth-head, .wlc-prefs-kicker {
+  color: var(--accent);
+  letter-spacing: 0.12em;
+  font-weight: 800;
+}
+.wlc-input {
+  height: 52px;
+  border: none;
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--accent) 7%, var(--surface2));
+  color: var(--text);
+}
+.wlc-input:focus {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 55%, transparent);
+}
+/* Primary action → filled accent pill */
+.wlc-google {
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--on-accent);
+  box-shadow: 0 4px 14px color-mix(in srgb, var(--accent) 30%, transparent);
+}
+.wlc-google:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px color-mix(in srgb, var(--accent) 38%, transparent);
+  filter: brightness(1.05);
+}
+.wlc-google.is-busy::after { border-top-color: var(--on-accent); }
+/* Secondary actions → tonal pills */
+.wlc-ghost {
+  border: none;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface1));
+  color: var(--text);
+}
+.wlc-ghost:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent) 18%, var(--surface1));
+  transform: none;
+}
+
+/* The welcome stage is always dark — pin its fields/pills to dark surfaces so
+   the light theme doesn't leak pale tokens onto the dark card. */
+.wlc-input {
+  background: color-mix(in srgb, var(--accent) 8%, #1b1b21);
+  color: #f2f2f5;
+}
+.wlc-input::placeholder { color: #9a9aa3; opacity: 1; }
+.wlc-ghost {
+  background: color-mix(in srgb, var(--accent) 12%, #191920);
+  color: #ececf1;
+}
+.wlc-ghost:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 20%, #191920); }
+
+/* onboarding: appearance picks (theme segmented + accent swatches) */
+.wlc-theme-seg {
+  display: inline-flex;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 999px;
+  background: #17171d;
+  margin-bottom: 14px;
+}
+.wlc-seg-btn {
+  border: none;
+  border-radius: 999px;
+  padding: 8px 18px;
+  background: transparent;
+  color: #a6a6b0;
+  font-size: 13px;
+  font-weight: 650;
+  cursor: pointer;
+  transition: background 0.15s var(--ease), color 0.15s var(--ease);
+}
+.wlc-seg-btn.active {
+  background: color-mix(in srgb, var(--accent) 24%, #17171d);
+  color: #fff;
+}
+.wlc-swatches { display: flex; flex-wrap: wrap; gap: 12px; }
+.wlc-swatch {
+  width: 34px;
+  height: 34px;
+  border: none;
+  border-radius: 50%;
+  background: var(--sw);
+  cursor: pointer;
+  transition: transform 0.15s var(--ease), box-shadow 0.15s var(--ease);
+  box-shadow: 0 0 0 2px color-mix(in srgb, #fff 14%, transparent);
+}
+.wlc-swatch:hover { transform: scale(1.12); }
+.wlc-swatch.active {
+  box-shadow: 0 0 0 3px #0f0f14, 0 0 0 6px var(--sw);
+  transform: scale(1.05);
+}
+
+/* ---- welcome: LIGHT theme variant — picking "Light" during onboarding
+   must visibly transform the screen, not just the app behind it. ---------- */
+:root {
+  --wlc-field: #1b1b21;
+  --wlc-field-text: #f2f2f5;
+  --wlc-field-ph: #9a9aa3;
+  --wlc-tonal: #191920;
+  --wlc-tonal-text: #ececf1;
+  --wlc-seg: #17171d;
+}
+:root[data-theme="LIGHT"] {
+  --wlc-text: #1c1c21;
+  --wlc-sky-1: #f4f4f6;
+  --wlc-sky-2: #ececef;
+  --wlc-sky-3: #e2e2e6;
+  --wlc-mist-1: rgba(0, 0, 0, 0.04);
+  --wlc-mist-2: rgba(0, 0, 0, 0.03);
+  --wlc-drop: rgba(0, 0, 0, 0.26);
+  --wlc-flash: rgba(255, 255, 255, 0.7);
+  --wlc-vignette: rgba(255, 255, 255, 0.35);
+  --wlc-wordmark: #232327;
+  --wlc-eyebrow: #6b6b72;
+  --wlc-title: #141418;
+  --wlc-title-shadow: rgba(255, 255, 255, 0.45);
+  --wlc-sub: #4c4c55;
+  --wlc-feature: #63636b;
+  --wlc-card-top: rgba(255, 255, 255, 0.97);
+  --wlc-card-bottom: rgba(250, 250, 252, 0.95);
+  --wlc-card-border: rgba(0, 0, 0, 0.10);
+  --wlc-card-shadow: 0 30px 80px rgba(0, 0, 0, 0.16);
+  --wlc-card-inner: rgba(255, 255, 255, 0.65);
+  --wlc-head: #74747c;
+  --wlc-or: #8a8a92;
+  --wlc-ghost-border: rgba(0, 0, 0, 0.12);
+  --wlc-ghost-border-hover: rgba(0, 0, 0, 0.22);
+  --wlc-ghost-bg: rgba(0, 0, 0, 0.04);
+  --wlc-ghost-bg-hover: rgba(0, 0, 0, 0.08);
+  --wlc-ghost-text: #26262c;
+  --wlc-status-error: #c62f38;
+  --wlc-foot: #84848c;
+  --wlc-feature-card-border: rgba(0, 0, 0, 0.08);
+  --wlc-feature-card-bg: rgba(0, 0, 0, 0.03);
+  --wlc-field: #ececf0;
+  --wlc-field-text: #1d1d22;
+  --wlc-field-ph: #75757e;
+  --wlc-tonal: #e9e9ef;
+  --wlc-tonal-text: #232329;
+  --wlc-seg: #e6e6eb;
+}
+/* Re-point the pinned components at the theme tokens. */
+.wlc-input {
+  background: color-mix(in srgb, var(--accent) 8%, var(--wlc-field));
+  color: var(--wlc-field-text);
+}
+.wlc-input::placeholder { color: var(--wlc-field-ph); }
+.wlc-ghost {
+  background: color-mix(in srgb, var(--accent) 12%, var(--wlc-tonal));
+  color: var(--wlc-tonal-text);
+}
+.wlc-ghost:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 20%, var(--wlc-tonal)); }
+.wlc-theme-seg { background: var(--wlc-seg); }
+.wlc-seg-btn { color: var(--wlc-sub); }
+.wlc-seg-btn.active {
+  background: color-mix(in srgb, var(--accent) 24%, var(--wlc-seg));
+  color: var(--wlc-text);
+}
+.wlc-swatch { box-shadow: 0 0 0 2px var(--wlc-card-border); }
+.wlc-swatch.active { box-shadow: 0 0 0 3px var(--wlc-card-top), 0 0 0 6px var(--sw); }
+
+/* onboarding scheme cards: wrap instead of horizontal scroll */
+.wlc-scheme-cards { flex-wrap: wrap; overflow: visible; margin-bottom: 4px; }
+
+/* Calmer loading shimmer: slower sweep, softer highlight, gentle pause. */
+.card .cover::before {
+  background: linear-gradient(100deg,
+    transparent 36%,
+    color-mix(in srgb, var(--accent) 7%, transparent) 50%,
+    transparent 64%);
+  animation: shimmer 3s ease-in-out infinite;
+}
+.skeleton::after {
+  animation-duration: 2.8s;
+  animation-timing-function: ease-in-out;
+  background: linear-gradient(90deg,
+    transparent,
+    color-mix(in srgb, var(--accent) 9%, var(--skeleton-shimmer)),
+    transparent);
+}
+
+/* Checked switch thumb must contrast the accent track (white-accent schemes
+   like Kanade/Yuki made a white thumb invisible on a white track). */
+.switch input:checked + .slider::before {
+  background: var(--on-accent);
+}
+
+/* ---- Material 3 filled text field (standalone input.input) ------------- */
+input.input {
+  height: 44px;
+  padding: 0 16px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--accent) 6%, var(--surface1));
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+  transition: border-color 0.15s var(--ease), background 0.15s var(--ease), box-shadow 0.15s var(--ease);
+}
+input.input::placeholder { color: var(--text-faint); }
+input.input:hover { border-color: var(--border-strong); }
+input.input:focus {
+  outline: none;
+  border-color: transparent;
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface1));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 55%, transparent);
+}
+
+/* ---- info dot (circled "!") + Material tooltip ------------------------- */
+.setting-row .name {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.info-dot {
+  display: inline-grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  flex: 0 0 18px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+  color: var(--accent);
+  cursor: pointer;
+  transition: background 0.15s var(--ease);
+}
+.info-dot:hover { background: color-mix(in srgb, var(--accent) 34%, transparent); }
+.info-dot-glyph { font-size: 12px; font-weight: 800; line-height: 1; font-family: Georgia, 'Times New Roman', serif; }
+.info-tip {
+  position: fixed;
+  z-index: 500;
+  max-width: 300px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: var(--bg-elev);
+  color: var(--text);
+  font-size: 12.5px;
+  line-height: 1.5;
+  box-shadow:
+    0 4px 12px color-mix(in srgb, #000 24%, transparent),
+    0 12px 32px color-mix(in srgb, #000 30%, transparent);
 }
