@@ -112,6 +112,49 @@ function helperBase() {
   return String(u).replace(/\/+$/, '');
 }
 
+// Client-side load balancing across helper nodes for the JSON API (browse/search/
+// details/pages). Configure globalThis.NYORA_HELPER_URLS = ['https://api.nyora.xyz',
+// 'https://<owner>-<space>.hf.space', …]; with a single entry this is a no-op and
+// behaves exactly like helperBase(). List a node more than once to weight it lower.
+//
+// IMAGES intentionally stay on helperBase() (the primary VM cluster) — a lean node
+// without WARP can't fetch some CDNs, so routing covers through it would break them.
+function apiBases() {
+  const list = globalThis.NYORA_HELPER_URLS;
+  if (Array.isArray(list) && list.length) return list.map((u) => String(u).replace(/\/+$/, ''));
+  return [helperBase()];
+}
+
+let _apiRR = 0;
+// Nodes to try for one request: a rotating primary followed by the rest as failover.
+function apiTryOrder() {
+  const bases = apiBases();
+  if (bases.length < 2) return bases;
+  const start = _apiRR++ % bases.length;
+  return bases.slice(start).concat(bases.slice(0, start));
+}
+
+// fetch a helper route, trying each node in rotation. Falls over to the next node
+// on a network error or a gateway status (502/503/504) — a sleeping/overloaded node
+// transparently defers to a healthy one. Real 4xx and parsed {error} pass through.
+async function helperFetch(path, init) {
+  const order = apiTryOrder();
+  let lastErr;
+  for (let i = 0; i < order.length; i++) {
+    try {
+      const res = await fetch(order[i] + helperPath(path), init);
+      if (i < order.length - 1 && (res.status === 502 || res.status === 503 || res.status === 504)) {
+        lastErr = new Error('HTTP ' + res.status);
+        continue;
+      }
+      return res;
+    } catch (err) {
+      lastErr = err; // network failure → try the next node
+    }
+  }
+  throw lastErr || new Error('all helper nodes unreachable');
+}
+
 // Given a proxied "…/image?u=<encoded-cdn-url>" URL, derive a { Referer } of the
 // image's own origin. Hotlink/Cloudflare-protected CDNs (e.g. AnisaScans) 403 a
 // refererless fetch, which makes the helper's /image return 502 (blank cover).
@@ -152,7 +195,7 @@ function helperGetRoute(path) {
 }
 
 async function helperGet(path) {
-  const res = await fetch(helperBase() + helperPath(path), { headers: { Accept: 'application/json' } });
+  const res = await helperFetch(path, { headers: { Accept: 'application/json' } });
   const data = await parseBody(res);
   return ensureOk(res, data);
 }
@@ -163,7 +206,7 @@ async function helperPost(path, body) {
     init.headers['Content-Type'] = 'application/json';
     init.body = typeof body === 'string' ? body : JSON.stringify(body);
   }
-  const res = await fetch(helperBase() + helperPath(path), init);
+  const res = await helperFetch(path, init);
   const data = await parseBody(res);
   return ensureOk(res, data);
 }
