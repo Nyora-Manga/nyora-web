@@ -26,6 +26,7 @@ import { meta as searchMeta, render as searchRender } from './screens/search.js'
 import { meta as browserMeta, render as browserRender } from './screens/browser.js';
 import { shouldShowWelcome, showWelcome } from './screens/welcome.js';
 import { shouldShowChangelog, showChangelog, markChangelogSeen } from './core/changelog.js';
+import { runMigrations } from './core/migrations.js';
 
 const routes = {
   discover: discoverRender,
@@ -529,6 +530,19 @@ function hideSplash() {
   setTimeout(done, 800);
 }
 requestAnimationFrame(() => requestAnimationFrame(hideSplash));
+
+// One-time local data repairs. Deliberately after first paint and idle-deferred
+// so they never delay the UI; they re-render the current screen only if they
+// actually changed something.
+function startMigrations() {
+  runMigrations().catch(() => { /* best-effort by design */ });
+}
+window.addEventListener('nyora:migrated', () => {
+  // Repaired rows are already on screen — refresh so they pick up the metadata.
+  try { router.reload ? router.reload() : dispatch(); } catch { /* ignore */ }
+});
+if (typeof requestIdleCallback === 'function') requestIdleCallback(startMigrations, { timeout: 8000 });
+else setTimeout(startMigrations, 4000);
 
 // Splash failsafes: #splash is a fixed full-screen overlay, so any boot throw or
 // failed module load that skips the rAF above would leave it covering the app

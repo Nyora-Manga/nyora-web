@@ -323,6 +323,33 @@ export const library = {
     save();
   },
 
+  // Repair metadata on an existing history entry WITHOUT touching updatedAt,
+  // page or percent — a migration must not reshuffle the user's history order
+  // or claim they re-read something. Only fills fields that are currently
+  // empty, so it can never overwrite something the user has.
+  patchHistoryManga(mangaId, fields) {
+    const id = String(mangaId || '');
+    const entry = _data.history[id];
+    if (!id || !entry || !fields) return false;
+    const manga = entry.manga ? clone(entry.manga) : {};
+    let changed = false;
+    for (const k of ['title', 'coverUrl', 'largeCoverUrl', 'author', 'url']) {
+      if (!manga[k] && fields[k]) { manga[k] = fields[k]; changed = true; }
+    }
+    if (!changed) return false;
+    entry.manga = manga;
+    save();
+    return true;
+  },
+
+  // History entries whose display metadata is incomplete (see migrations.js).
+  brokenHistoryEntries() {
+    return Object.entries(_data.history)
+      .filter(([, e]) => e && e.manga
+        && (!e.manga.title || (!e.manga.coverUrl && !e.manga.largeCoverUrl)))
+      .map(([id, e]) => ({ id, sourceId: e.sourceId, manga: clone(e.manga) }));
+  },
+
   removeHistory(body) {
     const id = asMangaId(body && (body.mangaId != null ? body.mangaId : body.manga));
     if (!id) return;
