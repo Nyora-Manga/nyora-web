@@ -298,9 +298,14 @@ export const library = {
     const prev = _data.history[id] || {};
     // Never let a cover-less details object clobber a cover we already stored.
     const nextManga = manga ? clone(manga) : (prev.manga || null);
-    if (nextManga && !nextManga.coverUrl && !nextManga.largeCoverUrl && prev.manga) {
-      nextManga.coverUrl = prev.manga.coverUrl || '';
-      nextManga.largeCoverUrl = prev.manga.largeCoverUrl || '';
+    // A details response that comes back thin (some sources/helper versions omit
+    // fields) must never blank out metadata we already have — that's how an
+    // entry ended up rendering as "Untitled" with no artwork after a re-read.
+    // The cover was already protected; title/url/author need the same guard.
+    if (nextManga && prev.manga) {
+      for (const k of ['title', 'coverUrl', 'largeCoverUrl', 'url', 'author']) {
+        if (!nextManga[k] && prev.manga[k]) nextManga[k] = prev.manga[k];
+      }
     }
     _data.history[id] = {
       manga: nextManga,

@@ -456,14 +456,37 @@ export function render(view, params) {
     const manga = details && details.manga;
     st.manga = manga || st.manga
       || { id: st.mangaUrl, title: 'Reading', url: st.mangaUrl, __placeholder: true };
-    // Some sources omit the cover in details — recover it from the card grid's
-    // manga cache so history entries record with artwork.
-    if (st.manga && !st.manga.coverUrl && !st.manga.largeCoverUrl && st.manga.url) {
+    // Some sources omit the cover (and occasionally the title) in details —
+    // recover them from the card grid's manga cache so history records with
+    // artwork and a real name.
+    if (st.manga && st.manga.url) {
       const hint = store.cachedManga(st.manga.url);
-      if (hint && (hint.coverUrl || hint.largeCoverUrl)) {
-        st.manga.coverUrl = hint.coverUrl || '';
-        st.manga.largeCoverUrl = hint.largeCoverUrl || '';
+      if (hint) {
+        if (!st.manga.coverUrl && !st.manga.largeCoverUrl) {
+          st.manga.coverUrl = hint.coverUrl || '';
+          st.manga.largeCoverUrl = hint.largeCoverUrl || '';
+        }
+        if (!st.manga.title && hint.title) st.manga.title = hint.title;
       }
+    }
+    // cachedManga is an in-memory Map, so it's empty after a reload or when the
+    // reader is opened straight from a link — exactly the cases that produced
+    // cover-less "Untitled" rows. Fall back to what we already persisted for
+    // this manga, which survives both.
+    if (st.manga && (!st.manga.title || (!st.manga.coverUrl && !st.manga.largeCoverUrl))) {
+      try {
+        const key = st.manga.id != null ? String(st.manga.id) : '';
+        const url = st.manga.url || '';
+        const prior = (library.history().entries || []).find((e) => e.manga
+          && (String(e.manga.id) === key || (url && e.manga.url === url)));
+        if (prior && prior.manga) {
+          if (!st.manga.title && prior.manga.title) st.manga.title = prior.manga.title;
+          if (!st.manga.coverUrl && !st.manga.largeCoverUrl) {
+            st.manga.coverUrl = prior.manga.coverUrl || '';
+            st.manga.largeCoverUrl = prior.manga.largeCoverUrl || '';
+          }
+        }
+      } catch { /* history unavailable — keep what we have */ }
     }
     st.chapters = (details && details.chapters) || st.chapters || [];
     st.index = st.chapters.findIndex((c) => c.url === st.chapterUrl);
