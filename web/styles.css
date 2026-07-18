@@ -2978,12 +2978,16 @@ body.reader-active .view {
   font-family: 'Comic Sans MS', 'Chalkboard SE', 'Segoe Print', 'Comic Neue', cursive, sans-serif;
   font-weight: 600;
   line-height: 1.18;
-  /* CJK targets break between characters naturally; long Latin words break only
-     when they'd overflow; balance distributes lines evenly for a tidy bubble. */
+  /* NEVER split a word. `hyphens: auto` + `overflow-wrap: anywhere` let the
+     browser letter "remember" as "remem-/ber", and worse, it made the fitter
+     think the text fit at a large size instead of shrinking it — real lettering
+     shrinks to fit whole words. word-break: normal still lets CJK wrap between
+     characters, which is correct for those targets. fitAll() re-enables
+     breaking per block only if a word can't fit even at the minimum size. */
   word-break: normal;
-  overflow-wrap: anywhere;
+  overflow-wrap: normal;
   text-wrap: balance;
-  hyphens: auto;
+  hyphens: none;
 }
 .tl-block.tl-pending {
   background: rgba(128, 128, 255, 0.10);

@@ -103,6 +103,10 @@ export function attachOverlay(img) {
       // large bubbles from ballooning. Never below the floor.
       const hi0 = Math.max(MIN, Math.min(64, boxH * 0.92));
       let lo = MIN, hi = hi0, best = MIN;
+      // Words are unbreakable by default (see .tl-block) so the search shrinks
+      // to fit whole words instead of hyphenating them. Reset per pass: a
+      // previous fit at a narrower zoom may have turned breaking on.
+      d.style.overflowWrap = 'normal';
       d.style.fontSize = hi0 + 'px';
       if (fits(d)) { best = hi0; } // common case: it already fits at the cap
       else {
@@ -113,6 +117,10 @@ export function attachOverlay(img) {
         }
       }
       d.style.fontSize = best.toFixed(1) + 'px';
+      // Last resort: a single word wider than the bubble even at the floor
+      // (a URL, a long compound). Breaking it is ugly, but silently clipping
+      // it to overflow:hidden is worse — the reader would lose the word.
+      if (!fits(d)) d.style.overflowWrap = 'anywhere';
     }
   }
 
