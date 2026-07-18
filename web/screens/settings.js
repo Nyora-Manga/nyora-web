@@ -366,7 +366,7 @@ function buildExpTranslation() {
   const select = (opts, val, onChange) => menuSelect(opts, val, onChange);
 
   section.append(settingRow('Translate pages',
-    { info: 'Show manga pages with speech bubbles translated in place. Runs on-device — pages never leave your browser. Also toggleable per manga in the reader. Models download on first use (Japanese ~125 MB; Chinese/Korean/English ~20 MB).' },
+    { info: 'Show manga pages with speech bubbles translated in place. Runs on-device — pages never leave your browser. Also toggleable per manga in the reader. Models download on first use (Japanese ~123 MB; Chinese/English ~32 MB; Korean ~24 MB).' },
     switchToggle(r.translate, (v) => store.set({ reader: { translate: v } }))));
   section.append(settingRow('Translate from',
     { info: 'Text-recognition language. Auto follows the manga source’s language.' },
@@ -451,10 +451,10 @@ function buildExpColorization() {
     czRow.classList.toggle('is-locked', !ready);
     bar.style.display = 'none';
     if (ready) {
-      state.textContent = 'Downloaded — manga-colorization-v2 (~62 MB), cached on this device.';
+      state.textContent = 'Downloaded — manga-colorization-v2 (59 MB), cached on this device.';
       dlBtn.style.display = 'none';
     } else {
-      state.textContent = 'manga-colorization-v2 · ~62 MB — download once to enable colorization.';
+      state.textContent = 'manga-colorization-v2 · 59 MB — download once to enable colorization.';
       dlBtn.style.display = '';
       dlBtn.disabled = false;
     }
@@ -481,8 +481,26 @@ function buildExpColorization() {
 
   colorizeModelReady().then(setReady).catch(() => setReady(false));
 
+  // Credit the people whose work this runs on, and link both the original
+  // model and the ONNX export actually downloaded. No claims beyond what the
+  // pipeline does — the denoising step this used to describe was removed.
   section.append(el('p', { class: 'exp-note' },
-    'Powered by manga-colorization-v2, a GAN trained on manga/anime art, running entirely on this device — pages never leave your browser. Screentone is denoised before colouring, and line art stays crisp because only colour comes from the model.'));
+    'Runs entirely on this device — pages never leave your browser. Line art stays '
+    + 'crisp because only colour comes from the model; the original page supplies '
+    + 'the luminance. Colour is generated at a lower resolution and upscaled, so '
+    + 'expect soft or occasionally wrong hues — this is a beta.'));
+
+  section.append(el('p', { class: 'exp-note' },
+    'Model: ',
+    el('a', { href: 'https://github.com/qweasdd/manga-colorization-v2', target: '_blank', rel: 'noopener noreferrer' },
+      'manga-colorization-v2'),
+    ' by qweasdd (MIT). ONNX build from ',
+    el('a', { href: 'https://huggingface.co/Faridzar/manga-colorization-v2-onnx', target: '_blank', rel: 'noopener noreferrer' },
+      'Faridzar/manga-colorization-v2-onnx'),
+    '. Inference by ',
+    el('a', { href: 'https://github.com/microsoft/onnxruntime', target: '_blank', rel: 'noopener noreferrer' },
+      'ONNX Runtime'),
+    ' (MIT).'));
 
   section.append(el('h3', { class: 'exp-h3' }, 'Storage'));
   section.append(expModelStorageRow());

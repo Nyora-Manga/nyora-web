@@ -18,3 +18,29 @@ export const MODEL_BYTES = 61_650_260; // ~62 MB
 // reach the ONNX parser (a native wasm protobuf reader).
 export const MODEL_SHA256 = '39660d0047ea6f1a0ddee6aa89054997f95ea566f4d56ff762f66dbcf1a1a7ef';
 export const MODEL_CACHE = 'nyora-tl-models'; // shared persistent bucket (survives SW upgrades)
+
+// Pinning the URL to a commit changed the Cache API KEY, which is the URL — so
+// everyone who had already downloaded the model suddenly looked like they
+// hadn't: the settings re-locked the toggle and the reader cleared the pref.
+// The bytes are identical (the pin is the commit `main` pointed at), so re-key
+// the existing entry instead of making people fetch 62 MB again. The hash is
+// still verified on read, so a migrated entry is no less trusted.
+export function legacyUrlFor(url) {
+  return url.replace(/\/resolve\/[0-9a-f]{40}\//, '/resolve/main/');
+}
+
+// Move a legacy-keyed entry to the current URL. Returns true if the model is
+// present under `url` afterwards.
+export async function migrateCachedModel(cache, url) {
+  if (!cache) return false;
+  if (await cache.match(url)) return true;
+  const legacy = legacyUrlFor(url);
+  if (legacy === url) return false;
+  const hit = await cache.match(legacy).catch(() => null);
+  if (!hit) return false;
+  try {
+    await cache.put(url, hit.clone());
+    await cache.delete(legacy).catch(() => {});
+    return true;
+  } catch { return false; }
+}

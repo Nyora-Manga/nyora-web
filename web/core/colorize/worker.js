@@ -18,7 +18,7 @@
 // Protocol: {type:'init'} → progress*/ready|init-error
 //           {type:'page', id, bitmap} → color {id,width,height,data} | color-error
 
-import { MODEL_URL, MODEL_BYTES, MODEL_CACHE, MODEL_SHA256 } from './model.js';
+import { MODEL_URL, MODEL_BYTES, MODEL_CACHE, MODEL_SHA256, migrateCachedModel } from './model.js';
 
 // onnxruntime is SELF-HOSTED (web/vendor/ort/). It used to load from jsDelivr,
 // but a dynamic import() cannot carry an integrity attribute and neither can
@@ -76,6 +76,7 @@ async function verifyDigest(buf, label) {
 async function fetchWithProgress(url, label, sizeHint) {
   const cache = await caches.open(MODEL_CACHE).catch(() => null);
   if (cache) {
+    await migrateCachedModel(cache, url).catch(() => {});
     const hit = await cache.match(url).catch(() => null);
     if (hit) {
       // Re-verify cached bytes: this cache survives service worker cleanup, so

@@ -4,15 +4,18 @@
 // of the coloured page. Results are cached per page url for the session.
 
 import { api } from '../api.js';
-import { MODEL_URL, MODEL_BYTES, MODEL_CACHE, MODEL_SHA256 } from './model.js';
+import { MODEL_URL, MODEL_BYTES, MODEL_CACHE, MODEL_SHA256, migrateCachedModel } from './model.js';
 
 const WORKER_PATH = '/core/colorize/worker.js';
 
 // Is the colorizer model already downloaded (cached)? Lets the settings gate the
 // Colorize toggle until it's present.
 export async function colorizeModelReady() {
-  try { const c = await caches.open(MODEL_CACHE); return !!(await c.match(MODEL_URL)); }
-  catch { return false; }
+  try {
+    const c = await caches.open(MODEL_CACHE);
+    // Re-keys a pre-pin download rather than reporting "not downloaded".
+    return await migrateCachedModel(c, MODEL_URL);
+  } catch { return false; }
 }
 
 // Download + cache the model on the MAIN thread with progress (0..100), so the
@@ -20,7 +23,7 @@ export async function colorizeModelReady() {
 // Resolves once cached; the reader's worker then loads it instantly from cache.
 export async function downloadColorizeModel(onProgress) {
   const cache = await caches.open(MODEL_CACHE).catch(() => null);
-  if (cache) { const hit = await cache.match(MODEL_URL); if (hit) { if (onProgress) onProgress(100); return; } }
+  if (cache && await migrateCachedModel(cache, MODEL_URL)) { if (onProgress) onProgress(100); return; }
   try { navigator.storage && navigator.storage.persist && navigator.storage.persist(); } catch { /* ignore */ }
   const res = await fetch(MODEL_URL);
   if (!res.ok || !res.body) throw new Error(`Model download failed (${res.status})`);

@@ -1696,7 +1696,7 @@ export function render(view, params) {
       inlineRow('Translate to', tlLangSelect),
       el('div', { style: { fontSize: '12px', color: 'var(--text-dim)', lineHeight: '1.5' } },
         'Runs entirely in your browser — AI models download on first use and are '
-        + 'cached (Japanese ~125 MB; Chinese/Korean/English ~20 MB).'),
+        + 'cached (Japanese ~123 MB; Chinese/English ~32 MB; Korean ~24 MB).'),
     );
 
     const colorSection = el('div', { class: 'settings-section' }, el('h2', null, 'Colour'));
