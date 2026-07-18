@@ -54,4 +54,7 @@ jobs:
       - name: Bundle builds cleanly (resolves all imports)
         run: |
           npm install --no-audit --no-fund
+          # web/vendor/ort/ is fetched, not committed, and build.mjs refuses to
+          # build without it — so the check needs it here too, same as deploy.
+          npm run fetch:ort
           npm run build
