@@ -27,6 +27,9 @@ import {
   sectionHeader, chip, btn, applyImage,
 } from '../core/ui.js';
 import { router } from '../core/store.js';
+import {
+  fetchFromAniList, feedNonEmpty, mediaUsable, EMPTY_FEED,
+} from '../core/discover-feed.js';
 
 export const meta = {
   title: 'Discover',
@@ -39,10 +42,6 @@ export const meta = {
 // real trending/popularity, and recognizable titles. `countryOfOrigin` splits the
 // same MANGA type into manga (JP), manhwa (KR) and manhua (CN). AniList media is
 // already the exact shape the hero/rail renderers consume, so no normalization.
-const ANILIST_API = 'https://graphql.anilist.co';
-const MEDIA_FIELDS = 'id title { romaji english native } '
-  + 'coverImage { large extraLarge } bannerImage genres averageScore countryOfOrigin';
-
 // Bump on every render() so a slow fetch from a previous view can't overwrite
 // the screen after the user has navigated away and back.
 let renderToken = 0;
@@ -149,10 +148,6 @@ function paint(body, feed, token) {
   body.replaceChildren(...children);
 }
 
-// Keep only entries with a real cover (the renderers need one).
-function mediaUsable(m) {
-  return m && m.coverImage && (m.coverImage.extraLarge || m.coverImage.large);
-}
 
 // Build the whole Discover feed in ONE AniList GraphQL request: currently-trending
 // across all formats (hero + first rail), plus popularity-ranked manhwa (KR),
@@ -175,8 +170,6 @@ const FEED_MAX_AGE = 7 * 24 * 60 * 60 * 1000; // still worth SHOWING while we re
 // Discover instant on second and later visits.
 const FEED_CACHE_KEY = 'nyora.discover.feed.v2';
 let feedCache = null; // { at:number, feed }
-
-function feedNonEmpty(f) { return !!(f && Array.isArray(f.trending) && f.trending.length); }
 
 function readFeedCache() {
   if (feedCache) return feedCache;
@@ -204,11 +197,42 @@ export function feedIsFresh() {
   return !!c && (Date.now() - c.at) < FEED_TTL;
 }
 
+// The snapshot our own cluster ships (scripts/prerender-discover.mjs bakes it
+// into dist/ at deploy time). Same-origin, so it rides the already-open
+// connection with no extra DNS/TLS — a first-ever visitor gets content without
+// waiting on a cross-origin AniList round trip. Only used when this browser has
+// nothing cached; after that, localStorage is newer and wins.
+const SNAPSHOT_URL = '/discover-feed.json';
+let snapshotTried = false;
+async function fetchSnapshot() {
+  if (snapshotTried) return null;
+  snapshotTried = true;
+  try {
+    const res = await fetch(SNAPSHOT_URL, { cache: 'no-cache' });
+    if (!res.ok) return null;
+    const obj = await res.json();
+    if (!obj || typeof obj.at !== 'number' || !feedNonEmpty(obj.feed)) return null;
+    if (Date.now() - obj.at > FEED_MAX_AGE) return null; // deploy is ancient — refetch live
+    // Seed the browser cache with the snapshot's OWN timestamp, not now(): the
+    // feed is as old as the deploy, so this still revalidates on schedule
+    // instead of pretending it is fresh for another 15 minutes.
+    writeFeedCache(obj.feed, obj.at);
+    return obj.feed;
+  } catch { return null; }
+}
+
 // AniList is PRIMARY. Fresh cache → served instantly; live fetch → cached; on a
 // rate-limit/outage we reuse ANY cached AniList feed before touching MangaBaka.
 async function fetchAnilistFeed() {
   const cached = readFeedCache();
   if (cached && (Date.now() - cached.at) < FEED_TTL) return cached.feed;
+
+  // No local cache at all (first ever visit) — try our cluster's snapshot
+  // before going cross-origin.
+  if (!cached) {
+    const snap = await fetchSnapshot();
+    if (snap) return snap;
+  }
 
   try {
     const feed = await fetchFromAniList();
@@ -221,41 +245,10 @@ async function fetchAnilistFeed() {
   try {
     return await fetchFromMangaBaka();
   } catch {
-    return { trending: [], manhwa: [], manhua: [], manga: [], action: [], romance: [], fantasy: [] };
+    return EMPTY_FEED;
   }
 }
 
-async function fetchFromAniList() {
-  const page = (alias, filter, sort) =>
-    `${alias}: Page(perPage: 30) { media(type: MANGA, isAdult: false, ${filter}sort: ${sort}) { ${MEDIA_FIELDS} } }`;
-  const query = `query {
-    ${page('trending', '', 'TRENDING_DESC')}
-    ${page('manhwa', 'countryOfOrigin: KR, ', 'POPULARITY_DESC')}
-    ${page('manhua', 'countryOfOrigin: CN, ', 'POPULARITY_DESC')}
-    ${page('manga', 'countryOfOrigin: JP, ', 'POPULARITY_DESC')}
-    ${page('action', 'genre: "Action", ', 'TRENDING_DESC')}
-    ${page('romance', 'genre: "Romance", ', 'TRENDING_DESC')}
-    ${page('fantasy', 'genre: "Fantasy", ', 'TRENDING_DESC')}
-  }`;
-  const res = await fetch(ANILIST_API, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-    body: JSON.stringify({ query }),
-  });
-  if (!res.ok) throw new Error(`AniList HTTP ${res.status}`);
-  const json = await res.json();
-  const d = (json && json.data) || {};
-  const pick = (k) => (((d[k] && d[k].media) || []).filter(mediaUsable));
-  return {
-    trending: pick('trending'),
-    manhwa: pick('manhwa'),
-    manhua: pick('manhua'),
-    manga: pick('manga'),
-    action: pick('action'),
-    romance: pick('romance'),
-    fantasy: pick('fantasy'),
-  };
-}
 
 // ---- MangaBaka fallback (only used when AniList is unreachable) -------------
 const MB_SEARCH = 'https://api.mangabaka.dev/v1/series/search';

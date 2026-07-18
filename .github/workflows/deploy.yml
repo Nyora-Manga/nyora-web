@@ -38,6 +38,13 @@ jobs:
         run: |
           npm install --no-audit --no-fund
           npm run build
+
+      # Bake the Discover feed into dist/ so the cluster serves it as a static
+      # file — a first-ever visitor gets content same-origin instead of waiting
+      # on a cross-origin AniList call. Runs AFTER build (build wipes dist/).
+      # Non-fatal by design: on failure clients just fetch AniList as before.
+      - name: Prerender Discover feed
+        run: npm run prerender:discover
       - uses: actions/upload-artifact@v4
         with:
           name: dist

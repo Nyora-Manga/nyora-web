@@ -3,6 +3,12 @@
 /sw.js
   Cache-Control: no-cache, no-store, must-revalidate
 
+# The prerendered Discover feed is regenerated on every deploy — revalidate so a
+# node never serves a snapshot from an older deploy, but allow the 304 so it
+# costs nothing when unchanged.
+/discover-feed.json
+  Cache-Control: no-cache
+
 # ---- Security headers ----------------------------------------------------
 #
 # script-src is 'self' with NO third-party origin: onnxruntime is vendored under

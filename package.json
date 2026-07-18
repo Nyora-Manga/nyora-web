@@ -6,7 +6,8 @@
   "description": "Nyora Web \u2014 production build (bundles web/ into dist/ for Cloudflare Pages).",
   "scripts": {
     "build": "node build.mjs",
-    "fetch:ort": "node scripts/fetch-ort.mjs"
+    "fetch:ort": "node scripts/fetch-ort.mjs",
+    "prerender:discover": "node scripts/prerender-discover.mjs"
   },
   "devDependencies": {
     "esbuild": "^0.24.0"
