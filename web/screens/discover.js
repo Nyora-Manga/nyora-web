@@ -17,8 +17,9 @@
 // which resolves the AniList title against whatever sources are installed and
 // opens it. "Show all" jumps to the full AniList grid (suggestions).
 //
-// Loading paints a hero skeleton + skeleton rails (never a blank screen); a
-// failed fetch lands on an inline errorBox with Retry. A per-render token guards
+// A cached feed paints INSTANTLY (no skeleton, no await) and revalidates in the
+// background; only a genuinely cold start shows hero/rail skeletons. A failed
+// cold fetch lands on an inline errorBox with Retry. A per-render token guards
 // against a slow response from a previous view painting over a newer one.
 
 import {
@@ -58,9 +59,28 @@ export function render(view, _params) {
   load(body);
 }
 
-async function load(body) {
+async function load(body, { forceRefresh = false } = {}) {
   const token = ++renderToken;
 
+  // Stale-while-revalidate. Anything cached within FEED_MAX_AGE paints NOW,
+  // synchronously — no skeleton, no await, no network on the critical path.
+  // If it's past FEED_TTL we still refresh underneath and swap the content in
+  // when it lands, so the user sees instant content that is also current.
+  const cached = forceRefresh ? null : cachedFeed();
+  if (cached) {
+    paint(body, cached, token);
+    if (feedIsFresh()) return;
+    try {
+      const fresh = await fetchAnilistFeed();
+      // Only repaint if this view is still on screen AND something changed —
+      // a needless replaceChildren would scroll rails back to the start under
+      // someone who is already browsing them.
+      if (token === renderToken && feedNonEmpty(fresh) && !sameFeed(fresh, cached)) paint(body, fresh, token);
+    } catch { /* stale content is already on screen — nothing to report */ }
+    return;
+  }
+
+  // Nothing cached: first ever visit (or cache cleared) — skeletons it is.
   body.replaceChildren(
     heroSkeleton(),
     railSkeleton('Trending now'),
@@ -77,7 +97,7 @@ async function load(body) {
     body.replaceChildren(
       errorBox("Couldn't load discovery right now."),
       el('div', { class: 'center', style: { marginTop: '14px' } },
-        btn('Retry', { variant: 'ghost', icon: 'refresh', onClick: () => load(body) }),
+        btn('Retry', { variant: 'ghost', icon: 'refresh', onClick: () => load(body, { forceRefresh: true }) }),
       ),
     );
     return;
@@ -91,12 +111,26 @@ async function load(body) {
     body.replaceChildren(
       emptyState('Nothing to discover right now — check back soon.', 'trending'),
       el('div', { class: 'center', style: { marginTop: '14px' } },
-        btn('Retry', { variant: 'ghost', icon: 'refresh', onClick: () => load(body) }),
+        btn('Retry', { variant: 'ghost', icon: 'refresh', onClick: () => load(body, { forceRefresh: true }) }),
       ),
     );
     return;
   }
 
+  paint(body, feed, token);
+}
+
+// Cheap identity check so a background revalidate that returns the same ranking
+// doesn't tear down and rebuild the DOM under the user.
+function sameFeed(a, b) {
+  const ids = (f) => Object.keys(f).sort().map((k) => (
+    Array.isArray(f[k]) ? k + ':' + f[k].map((m) => m && m.id).join(',') : '')).join('|');
+  try { return ids(a) === ids(b); } catch { return false; }
+}
+
+function paint(body, feed, token) {
+  if (token !== renderToken) return;
+  const trending = feed.trending || [];
   const children = [];
   if (trending.length) children.push(heroCard(trending[0]));
   // Ordered rails — each is skipped if AniList returned nothing for it.
@@ -128,39 +162,57 @@ function mediaUsable(m) {
 
 // AniList's public API is capped at ~30 requests/min. To keep AniList as the REAL
 // source of Discover (instead of tripping the limit and silently degrading), the
-// whole feed is cached in-memory + sessionStorage for 15 min. Revisits are instant
-// and cost zero requests; when AniList is rate-limited we reuse the cached feed
-// rather than falling back. MangaBaka is only a last resort if AniList has never
-// answered this session.
-const FEED_TTL = 15 * 60 * 1000;
-const FEED_CACHE_KEY = 'nyora.discover.feed.v1';
+// whole feed is cached in-memory + localStorage and served stale-while-revalidate:
+// under FEED_TTL it's used as-is with no request at all; between TTL and
+// FEED_MAX_AGE it paints immediately and refreshes in the background. When
+// AniList is rate-limited we keep showing the cached feed rather than falling
+// back. MangaBaka is only a last resort if AniList has never answered.
+const FEED_TTL = 15 * 60 * 1000;          // considered fresh — no refetch at all
+const FEED_MAX_AGE = 7 * 24 * 60 * 60 * 1000; // still worth SHOWING while we revalidate
+// localStorage, not sessionStorage: session storage dies with the tab, so every
+// returning visitor paid a cold AniList round trip and stared at skeletons. The
+// feed is public, non-personal ranking data — persisting it is what makes
+// Discover instant on second and later visits.
+const FEED_CACHE_KEY = 'nyora.discover.feed.v2';
 let feedCache = null; // { at:number, feed }
 
 function feedNonEmpty(f) { return !!(f && Array.isArray(f.trending) && f.trending.length); }
 
-function readSessionCache() {
+function readFeedCache() {
   if (feedCache) return feedCache;
   try {
-    const raw = sessionStorage.getItem(FEED_CACHE_KEY);
+    const raw = localStorage.getItem(FEED_CACHE_KEY);
     const obj = raw ? JSON.parse(raw) : null;
     if (obj && typeof obj.at === 'number' && feedNonEmpty(obj.feed)) { feedCache = obj; return obj; }
   } catch { /* private mode / bad JSON — ignore */ }
   return null;
 }
-function writeSessionCache(feed, at) {
+function writeFeedCache(feed, at) {
   feedCache = { at, feed };
-  try { sessionStorage.setItem(FEED_CACHE_KEY, JSON.stringify(feedCache)); } catch { /* ignore quota */ }
+  try { localStorage.setItem(FEED_CACHE_KEY, JSON.stringify(feedCache)); } catch { /* ignore quota */ }
+}
+
+// Cached feed good enough to paint immediately, or null. Kept separate from the
+// fetch so load() can render it synchronously — awaiting even a resolved promise
+// costs a frame and reintroduces the skeleton flash we're removing.
+export function cachedFeed() {
+  const c = readFeedCache();
+  return c && (Date.now() - c.at) < FEED_MAX_AGE ? c.feed : null;
+}
+export function feedIsFresh() {
+  const c = readFeedCache();
+  return !!c && (Date.now() - c.at) < FEED_TTL;
 }
 
 // AniList is PRIMARY. Fresh cache → served instantly; live fetch → cached; on a
 // rate-limit/outage we reuse ANY cached AniList feed before touching MangaBaka.
 async function fetchAnilistFeed() {
-  const cached = readSessionCache();
+  const cached = readFeedCache();
   if (cached && (Date.now() - cached.at) < FEED_TTL) return cached.feed;
 
   try {
     const feed = await fetchFromAniList();
-    if (feedNonEmpty(feed)) { writeSessionCache(feed, Date.now()); return feed; }
+    if (feedNonEmpty(feed)) { writeFeedCache(feed, Date.now()); return feed; }
   } catch {
     // Rate-limited or offline — a stale AniList feed still beats MangaBaka.
     if (cached) return cached.feed;
