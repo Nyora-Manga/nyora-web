@@ -51,6 +51,9 @@ jobs:
           fi
           echo "env.js points at production hosts."
 
+      - name: Discover rails agree (app / prerenderer / node cron script)
+        run: npm run check:rails
+
       - name: Bundle builds cleanly (resolves all imports)
         run: |
           npm install --no-audit --no-fund

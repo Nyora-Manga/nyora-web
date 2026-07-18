@@ -1,0 +1,15 @@
+[Unit]
+Description=Refresh the Nyora Discover feed periodically
+
+[Timer]
+# Every 3 hours. Trending rankings move on the order of a day, so this is
+# comfortably fresh while staying far under AniList's ~30 req/min public cap
+# (3 nodes x 8 runs/day = 24 requests per DAY).
+OnBootSec=5min
+OnUnitActiveSec=3h
+# Stagger the three nodes so they don't all hit AniList in the same second.
+RandomizedDelaySec=10min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

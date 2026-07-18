@@ -1,0 +1,18 @@
+[Unit]
+Description=Refresh the prerendered Nyora Discover feed
+# Don't fire before the box has networking, or the first run after boot just
+# fails (harmlessly) and waits for the next timer tick.
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/refresh-discover-feed.sh
+Environment=WEBROOT=/var/www/nyora-web
+
+# It only needs to write one file into the webroot.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ReadWritePaths=/var/www/nyora-web
+ProtectHome=true
