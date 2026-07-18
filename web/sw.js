@@ -7,7 +7,7 @@
  *   - proxied cover/page images               -> cache-first (immutable-ish)
  *   - everything else / API                   -> network-first, cache fallback
  */
-const VERSION = 'nyora-v2.4.0';
+const VERSION = 'nyora-v2.6.0';
 // Local dev serves web/ unbundled — stale-while-revalidate would keep the
 // browser one edit behind forever. Bypass the code caches on localhost.
 // "Dev" = not one of the production hosts. Covers localhost AND accessing the
@@ -162,9 +162,13 @@ self.addEventListener('fetch', (event) => {
   }
 
   // Dev: always-fresh code, offline fallback only; COI headers still applied
-  // so wasm threads work locally too.
+  // so wasm threads work locally too. `cache: 'no-store' ` bypasses the BROWSER's
+  // HTTP cache as well — plain fetch(request) still served stale unversioned
+  // modules (e.g. /screens/*.js) from disk cache, leaving dev one edit behind.
   if (DEV) {
-    event.respondWith(coi(fetch(request).catch(() => caches.match(request))));
+    let req = request;
+    try { req = new Request(request, { cache: 'no-store' }); } catch { /* keep original if not re-constructable */ }
+    event.respondWith(coi(fetch(req).catch(() => caches.match(request))));
     return;
   }
 

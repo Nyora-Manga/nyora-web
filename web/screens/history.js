@@ -99,8 +99,7 @@ function paint(body, clearBtn, search) {
     body.replaceChildren(
       errorBox(`Couldn't load history: ${err.message || err}`),
       el('div', { class: 'center', style: { marginTop: '12px' } },
-        el('button', { class: 'btn btn-ghost', onClick: () => paint(body, clearBtn, search) },
-          icon('refresh'), el('span', null, 'Retry')),
+        btn('Retry', { variant: 'ghost', icon: 'refresh', onClick: () => paint(body, clearBtn, search) }),
       ),
     );
     return;
@@ -226,21 +225,24 @@ function rowItem(row, body, clearBtn, search) {
 
   const main = el(
     'div',
-    { class: 'row-main' },
+    { class: 'row-main', role: 'button', tabindex: '0', 'aria-label': `Resume ${title}` },
     el('div', { class: 'name', title }, title),
     el('div', { class: 'sub', title: chapter }, `${subParts.join(' · ')} · ${pct}%`),
     progress,
   );
   main.style.cursor = 'pointer';
 
-  // Tapping the row body (or thumb) RESUMES in the reader at the stored spot.
+  // row-main is the SINGLE resume target. The cover img is swapped out for a
+  // fallback tile when it errors (applyImage -> replaceWith), so a handler on
+  // the img would be lost on broken covers; bind click + keyboard here instead.
   const resume = () => resumeReading(row);
   main.addEventListener('click', resume);
-  const thumb = $('.thumb', item);
-  if (thumb) {
-    thumb.style.cursor = 'pointer';
-    thumb.addEventListener('click', resume);
-  }
+  main.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') {
+      e.preventDefault();
+      resume();
+    }
+  });
 
   const actions = el(
     'div',

@@ -30,6 +30,7 @@ export function render(view, _params) {
     class: 'field',
     type: 'url',
     placeholder: 'Enter a website address…',
+    'aria-label': 'Website address',
     spellcheck: 'false',
     autocapitalize: 'off',
     autocomplete: 'off',
@@ -73,7 +74,14 @@ async function loadSources(host) {
     ...installed.map((s) => {
       const url = s.baseUrl || (s.domain ? `https://${s.domain}` : '');
       const lang = (s.lang || '').toUpperCase().slice(0, 2) || '??';
-      return el('div', { class: 'row-item', onClick: () => openUrl(url) },
+      return el('div', {
+        class: 'row-item',
+        role: 'button',
+        tabindex: '0',
+        'aria-label': `Open ${s.name}`,
+        onClick: () => openUrl(url),
+        onKeydown: (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openUrl(url); } },
+      },
         el('div', { class: 'thumb', style: { display: 'grid', placeItems: 'center', fontWeight: '800', fontSize: '12px' } }, lang),
         el('div', { class: 'row-main' },
           el('div', { class: 'name' }, s.name || 'Source'),

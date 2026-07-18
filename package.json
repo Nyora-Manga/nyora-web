@@ -3,11 +3,15 @@
   "version": "2.0.0",
   "private": true,
   "type": "module",
-  "description": "Nyora Web — production build (bundles web/ into dist/ for Cloudflare Pages).",
+  "description": "Nyora Web \u2014 production build (bundles web/ into dist/ for Cloudflare Pages).",
   "scripts": {
-    "build": "node build.mjs"
+    "build": "node build.mjs",
+    "fetch:ort": "node scripts/fetch-ort.mjs"
   },
   "devDependencies": {
     "esbuild": "^0.24.0"
+  },
+  "dependencies": {
+    "@material/web": "^2.5.0"
   }
 }

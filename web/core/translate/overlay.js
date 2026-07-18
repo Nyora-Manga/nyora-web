@@ -39,6 +39,24 @@ export function attachOverlay(img) {
   const ro = new ResizeObserver(sync);
   ro.observe(img);
 
+  // In webtoon mode the ResizeObserver only fires when THIS image's own box
+  // changes; when a sibling page above reflows it shifts our offsetTop without
+  // resizing us, so the observer never fires and the bubbles drift. Re-sync on
+  // scroll of the webtoon scroll container (throttled to one call per frame)
+  // and on window resize.
+  const scrollTarget =
+    img.closest('.reader.webtoon') || img.closest('.reader') || window;
+  let rafPending = 0;
+  function onScroll() {
+    if (rafPending) return;
+    rafPending = requestAnimationFrame(() => {
+      rafPending = 0;
+      sync();
+    });
+  }
+  scrollTarget.addEventListener('scroll', onScroll, { passive: true });
+  window.addEventListener('resize', sync);
+
   function renderBlocks() {
     ov.replaceChildren();
     blocks.forEach((b, i) => {
@@ -61,26 +79,40 @@ export function attachOverlay(img) {
     });
   }
 
-  // findBestFitLayout, webified: start at 0.34 × displayed block height,
-  // capped so the longest word fits the block width (Android's
-  // WIDTH_FILL_TARGET_RATIO — avoids mid-word breaks in tall narrow bubbles),
-  // then shrink until the text no longer overflows the box.
+  // Typeset each block to the largest font that actually fits the bubble in
+  // BOTH dimensions. We binary-search on measured overflow instead of guessing
+  // from glyph widths, so it's language-agnostic: it copes with space-separated
+  // Latin, space-less CJK (Chinese/Japanese/Korean targets, where the old
+  // longest-word heuristic collapsed the text to the floor), single short
+  // words in huge bubbles, long unbreakable strings, and many-line paragraphs
+  // in tiny bubbles — every case converges to the true best fit.
+  function fits(d) {
+    return d.scrollHeight <= d.clientHeight + 1 && d.scrollWidth <= d.clientWidth + 1;
+  }
   function fitAll() {
     if (!texts) return;
-    const scale = (ov.clientWidth || 1) / natW;
+    const scale = (ov.clientWidth || 1) / natW || 1;
+    const MIN = 6; // readable floor; smaller than this is clipped by overflow:hidden
     for (const d of ov.children) {
       const b = d.__block;
       if (!b || !d.textContent) continue;
-      const longest = d.textContent.split(/\s+/).reduce((m, w) => Math.max(m, w.length), 1);
-      const maxByWidth = (b.w * scale * 0.96) / (longest * 0.6); // ~0.6em avg glyph width
-      let fs = Math.max(9, Math.min(40, b.h * scale * 0.34, maxByWidth));
-      d.style.fontSize = fs + 'px';
-      let guard = 34;
-      while (guard-- > 0 && fs > 7 &&
-             (d.scrollHeight > d.clientHeight + 1 || d.scrollWidth > d.clientWidth + 1)) {
-        fs -= 1;
-        d.style.fontSize = fs + 'px';
+      const boxW = b.w * scale;
+      const boxH = b.h * scale;
+      if (boxW < 1 || boxH < 1) continue;
+      // Upper bound: a single line can't exceed the box height; cap keeps very
+      // large bubbles from ballooning. Never below the floor.
+      const hi0 = Math.max(MIN, Math.min(64, boxH * 0.92));
+      let lo = MIN, hi = hi0, best = MIN;
+      d.style.fontSize = hi0 + 'px';
+      if (fits(d)) { best = hi0; } // common case: it already fits at the cap
+      else {
+        for (let i = 0; i < 12 && hi - lo > 0.4; i++) {
+          const mid = (lo + hi) / 2;
+          d.style.fontSize = mid + 'px';
+          if (fits(d)) { best = mid; lo = mid; } else { hi = mid; }
+        }
       }
+      d.style.fontSize = best.toFixed(1) + 'px';
     }
   }
 
@@ -116,6 +148,9 @@ export function attachOverlay(img) {
     },
     destroy() {
       ro.disconnect();
+      scrollTarget.removeEventListener('scroll', onScroll);
+      window.removeEventListener('resize', sync);
+      if (rafPending) cancelAnimationFrame(rafPending);
       ov.remove();
     },
   };

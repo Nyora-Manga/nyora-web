@@ -27,11 +27,16 @@
 //                page-result {id, blocks:[{x,y,w,h,text,bg}]}
 //              | page-error {id, error}
 
-const ORT_VERSION = '1.21.0';
-const ORT_URL = `https://cdn.jsdelivr.net/npm/onnxruntime-web@${ORT_VERSION}/dist/ort.min.mjs`;
-const ORT_WASM_PATH = `https://cdn.jsdelivr.net/npm/onnxruntime-web@${ORT_VERSION}/dist/`;
+// onnxruntime is SELF-HOSTED (web/vendor/ort/). It used to load from jsDelivr,
+// but a dynamic import() cannot carry an integrity attribute and neither can
+// ORT's own wasm fetches — so the runtime AND its wasm binaries were entirely
+// unverified third-party code, in a worker that sees every page image. Serving
+// them from our own origin makes that code same-origin and lets the CSP pin
+// script-src to 'self'. Update via web/vendor/ort/README.txt.
+const ORT_URL = '/vendor/ort/ort.min.mjs';
+const ORT_WASM_PATH = '/vendor/ort/';
 
-const DETECTOR_URL = 'https://huggingface.co/Kiuyha/Manga-Bubble-YOLO/resolve/main/onnx/yolo26n.onnx';
+const DETECTOR_URL = 'https://huggingface.co/Kiuyha/Manga-Bubble-YOLO/resolve/fb646500455e8a8a3a807fd27b855c8e4fc63766/onnx/yolo26n.onnx';
 const DETECTOR_SIZE = 1280;      // yolo26n was trained at 1280×1280
 // Bubbles score high (0.8+), but free text — credit pages, shouts, signs —
 // often lands at 0.2–0.5. Keep the bar low and let IoU-dedupe + the
@@ -40,10 +45,10 @@ const DETECTOR_THRESHOLD = 0.2;
 
 // -- manga-ocr (ja). uint8 (QDQ) variants — the "quantized" (QOperator)
 //    exports use ConvInteger, which onnxruntime-web's wasm EP has no kernel for.
-const MANGA_OCR_BASE = 'https://huggingface.co/onnx-community/manga-ocr-base-ONNX/resolve/main/onnx/';
+const MANGA_OCR_BASE = 'https://huggingface.co/onnx-community/manga-ocr-base-ONNX/resolve/f9023406bb2f6b17df67bc4a327c56ecd20611f0/onnx/';
 const MANGA_OCR_ENCODER_URL = MANGA_OCR_BASE + 'encoder_model_uint8.onnx';
 const MANGA_OCR_DECODER_URL = MANGA_OCR_BASE + 'decoder_model_uint8.onnx';
-const MANGA_OCR_VOCAB_URL = 'https://huggingface.co/kha-white/manga-ocr-base/resolve/main/vocab.txt';
+const MANGA_OCR_VOCAB_URL = 'https://huggingface.co/kha-white/manga-ocr-base/resolve/aa6573bd10b0d446cbf622e29c3e084914df9741/vocab.txt';
 const MANGA_OCR_SIZE = 224;      // ViTImageProcessor: 224×224, (x/255 − .5)/.5
 const MANGA_OCR_START = 2n;      // [CLS] (decoder_start_token_id)
 const MANGA_OCR_EOS = 3n;        // [SEP] (eos_token_id)
@@ -55,16 +60,16 @@ const MANGA_OCR_MAX_TOKENS = 64; // bubbles are short; generation cap
 //    (x/255−.5)/.5, output [1,W/8,C] softmaxed; table = ['blank']+dict+[' '].
 //    zh/en use PP-OCRv6 small rec (Printed-EN 93.3 / CN 90.5 — the model
 //    comic-translate ships); ko keeps korean_PP-OCRv5 (v6's dict has no Hangul).
-const PADDLE_DET_URL = 'https://huggingface.co/PaddlePaddle/PP-OCRv5_mobile_det_onnx/resolve/main/inference.onnx';
+const PADDLE_DET_URL = 'https://huggingface.co/PaddlePaddle/PP-OCRv5_mobile_det_onnx/resolve/e6f4fa85f00e168c862bc462aebca69eef9b3d3d/inference.onnx';
 const PADDLE = {
   zh: {
-    model: 'https://huggingface.co/ogkalu/ppocr-v6-onnx/resolve/main/PP-OCRv6_small_rec.onnx',
-    dict: 'https://huggingface.co/ogkalu/ppocr-v6-onnx/resolve/main/PP-OCRv6_small_rec.txt',
+    model: 'https://huggingface.co/ogkalu/ppocr-v6-onnx/resolve/8caf024d9ec9df361c3b89adc812a68ae803ea1b/PP-OCRv6_small_rec.onnx',
+    dict: 'https://huggingface.co/ogkalu/ppocr-v6-onnx/resolve/8caf024d9ec9df361c3b89adc812a68ae803ea1b/PP-OCRv6_small_rec.txt',
     label: 'Chinese/English OCR model', size: 21_200_000, joiner: '',
   },
   ko: {
-    model: 'https://huggingface.co/PaddlePaddle/korean_PP-OCRv5_mobile_rec_onnx/resolve/main/inference.onnx',
-    dict: 'https://raw.githubusercontent.com/PaddlePaddle/PaddleOCR/main/ppocr/utils/dict/ppocrv5_korean_dict.txt',
+    model: 'https://huggingface.co/PaddlePaddle/korean_PP-OCRv5_mobile_rec_onnx/resolve/5c6f574b8e2230adf4287b33e736d71b9fabd28e/inference.onnx',
+    dict: 'https://raw.githubusercontent.com/PaddlePaddle/PaddleOCR/0a8a6354f10388ecd601f9a86639dd3c44d95057/ppocr/utils/dict/ppocrv5_korean_dict.txt',
     label: 'Korean OCR model', size: 13_400_000, joiner: ' ',
   },
 };
@@ -169,11 +174,48 @@ async function loadPaddle(key) {
   return { kind: 'paddle', rec, lineDet, table };
 }
 
+// Expected SHA-256 for every model artefact, from Hugging Face's LFS oid (which
+// IS the content hash), keyed by the pinned URL. The URLs above are pinned to
+// COMMIT SHAs rather than /main/ so the bytes can't be swapped under us, and
+// verifyDigest() below re-checks them anyway before any of it reaches the ONNX
+// parser — a poisoned model is attacker-controlled input to a native wasm
+// protobuf reader, and it would otherwise be cached persistently.
+// Files with no entry (the plain-text dicts) are small non-LFS blobs already
+// made immutable by the commit pin.
+const MODEL_SHA256 = {
+  'yolo26n.onnx': 'b45c2e12cf0c3c1d2abfbbb9123c9f96f040f2ac36a0842382ecd9d859c851c7',
+  'encoder_model_uint8.onnx': 'a73e7a9959f3412f4d0ab60c8cd0f71c29e7e29a2e52a1e184ad6f2be3b892e3',
+  'decoder_model_uint8.onnx': 'cc7a42534759864c7b6937aaacc4cc91b37c9207eeae05ee359a04e6d4d222a5',
+  'PP-OCRv5_mobile_det_onnx/inference.onnx': 'a431985659dc921974177a95adcfbb90fd9e51989a5e04d70d0b75f597b6e61d',
+  'PP-OCRv6_small_rec.onnx': '5435fd747c9e0efe15a96d0b378d5bd157e9492ed8fd80edf08f30d02fa24634',
+  'korean_PP-OCRv5_mobile_rec_onnx/inference.onnx': '92f0b7785e64fc9090106a241cf4c1eb97472824558272751b88a2a4476d3a08',
+};
+
+// Two files are both named inference.onnx, so key on enough of the path.
+function expectedDigest(url) {
+  for (const [k, v] of Object.entries(MODEL_SHA256)) if (url.includes(k)) return v;
+  return null;
+}
+
+async function verifyDigest(buf, url, label) {
+  const want = expectedDigest(url);
+  if (!want) return;
+  const got = [...new Uint8Array(await crypto.subtle.digest('SHA-256', buf))]
+    .map((b) => b.toString(16).padStart(2, '0')).join('');
+  if (got !== want) throw new Error(`${label} failed integrity check — refusing to load it`);
+}
+
 async function fetchWithProgress(url, label, sizeHint) {
   const cache = await caches.open(MODEL_CACHE).catch(() => null);
   if (cache) {
     const hit = await cache.match(url).catch(() => null);
-    if (hit) return hit.arrayBuffer();
+    if (hit) {
+      // Re-verify cached bytes too: nyora-tl-models is exempt from the service
+      // worker's version cleanup, so a bad copy would otherwise be sticky.
+      const cached = await hit.arrayBuffer();
+      try { await verifyDigest(cached, url, label); return cached; }
+      catch (e) { await cache.delete(url).catch(() => {}); throw e; }
+    }
   }
   const res = await fetch(url);
   if (!res.ok) throw new Error(`${label} download failed (${res.status})`);
@@ -189,8 +231,10 @@ async function fetchWithProgress(url, label, sizeHint) {
     if (total) post({ type: 'progress', label: `Downloading ${label}`, pct: Math.min(100, Math.round((got / total) * 100)) });
   }
   const blob = new Blob(chunks);
+  const buf = await blob.arrayBuffer();
+  await verifyDigest(buf, url, label); // BEFORE caching, so bad bytes never persist
   if (cache) await cache.put(url, new Response(blob)).catch(() => { /* best-effort */ });
-  return blob.arrayBuffer();
+  return buf;
 }
 
 // ---- detection -----------------------------------------------------------
@@ -289,6 +333,20 @@ function dedupe(boxes) {
 
 // ---- OCR: manga-ocr (ja) — manual greedy VisionEncoderDecoder loop ---------
 
+// manga-ocr's own post_process (kha-white/manga-ocr), which we were missing:
+// strip whitespace → '…' to '...' → collapse ・/. runs to that many dots →
+// jaconv.h2z(ascii, digit): HALF-WIDTH to FULL-WIDTH. The model reads "LINK!",
+// "30", "!!", "?" but proper Japanese text is "ＬＩＮＫ！", "３０", "！！", "？".
+// Measured on manga-ocr's own 12-image test set: exact matches 5/12 → 8/12 and
+// mean CER 12.37% → 6.39%. JA path only — never apply to the latin zh/en/ko
+// output, where full-width letters would be wrong.
+function mangaOcrPostprocess(t) {
+  t = t.replace(/\s+/g, '');
+  t = t.replace(/…/g, '...');
+  t = t.replace(/[・.]{2,}/g, (m) => '.'.repeat(m.length));
+  return t.replace(/[!-~]/g, (c) => String.fromCharCode(c.charCodeAt(0) + 0xFEE0));
+}
+
 function mangaOcrPreprocess(crop) {
   const cv = new OffscreenCanvas(MANGA_OCR_SIZE, MANGA_OCR_SIZE);
   const cx = cv.getContext('2d', { willReadFrequently: true });
@@ -317,68 +375,77 @@ async function mangaOcrBatch(eng, crops, onOneDone) {
   for (let base = 0; base < crops.length; base += MANGA_OCR_BATCH) {
     const chunk = crops.slice(base, base + MANGA_OCR_BATCH);
     const n = chunk.length;
+    // Per-chunk resilience (mirrors the paddle per-crop try/catch): a decoder
+    // throw mid-batch must not sink the whole page. On failure the chunk's
+    // entries stay '' (pre-filled) and the partially-decoded array is still
+    // returned; balance the progress ticks so the bar still reaches total.
+    let fired = 0;
+    const fire = () => { fired++; if (onOneDone) onOneDone(); };
+    try {
+      // Encode each crop (sequential — bounded memory), stack hidden states [n,T,C].
+      let T = 0;
+      let C = 0;
+      const encoded = [];
+      for (const crop of chunk) {
+        const enc = await eng.encoder.run({ [eng.encoder.inputNames[0]]: mangaOcrPreprocess(crop) });
+        const h = enc[eng.encoder.outputNames[0]];
+        T = h.dims[1];
+        C = h.dims[2];
+        encoded.push(h.data);
+      }
+      const hid = new Float32Array(n * T * C);
+      encoded.forEach((d, i) => hid.set(d, i * T * C));
+      const hidden = new ort.Tensor('float32', hid, [n, T, C]);
 
-    // Encode each crop (sequential — bounded memory), stack hidden states [n,T,C].
-    let T = 0;
-    let C = 0;
-    const encoded = [];
-    for (const crop of chunk) {
-      const enc = await eng.encoder.run({ [eng.encoder.inputNames[0]]: mangaOcrPreprocess(crop) });
-      const h = enc[eng.encoder.outputNames[0]];
-      T = h.dims[1];
-      C = h.dims[2];
-      encoded.push(h.data);
-    }
-    const hid = new Float32Array(n * T * C);
-    encoded.forEach((d, i) => hid.set(d, i * T * C));
-    const hidden = new ort.Tensor('float32', hid, [n, T, C]);
-
-    const seqs = Array.from({ length: n }, () => [MANGA_OCR_START]);
-    const finished = new Array(n).fill(false);
-    for (let step = 0; step < MANGA_OCR_MAX_TOKENS && finished.includes(false); step++) {
-      const len = seqs[0].length;
-      const ids = new BigInt64Array(n * len);
-      for (let i = 0; i < n; i++) {
-        for (let j = 0; j < len; j++) ids[i * len + j] = seqs[i][j];
-      }
-      const out = await eng.decoder.run({
-        input_ids: new ort.Tensor('int64', ids, [n, len]),
-        encoder_hidden_states: hidden,
-      });
-      const logits = out[eng.decoder.outputNames[0]]; // [n, len, vocab]
-      const V = logits.dims[2];
-      const d = logits.data;
-      for (let i = 0; i < n; i++) {
-        if (finished[i]) { seqs[i].push(0n); continue; } // [PAD] filler
-        const off = (i * len + (len - 1)) * V;
-        let best = 0;
-        let bestV = -Infinity;
-        for (let v = 0; v < V; v++) {
-          if (d[off + v] > bestV) { bestV = d[off + v]; best = v; }
+      const seqs = Array.from({ length: n }, () => [MANGA_OCR_START]);
+      const finished = new Array(n).fill(false);
+      for (let step = 0; step < MANGA_OCR_MAX_TOKENS && finished.includes(false); step++) {
+        const len = seqs[0].length;
+        const ids = new BigInt64Array(n * len);
+        for (let i = 0; i < n; i++) {
+          for (let j = 0; j < len; j++) ids[i * len + j] = seqs[i][j];
         }
-        const tok = BigInt(best);
-        if (tok === MANGA_OCR_EOS) {
-          finished[i] = true;
-          seqs[i].push(0n);
-          if (onOneDone) onOneDone();
-        } else {
-          seqs[i].push(tok);
+        const out = await eng.decoder.run({
+          input_ids: new ort.Tensor('int64', ids, [n, len]),
+          encoder_hidden_states: hidden,
+        });
+        const logits = out[eng.decoder.outputNames[0]]; // [n, len, vocab]
+        const V = logits.dims[2];
+        const d = logits.data;
+        for (let i = 0; i < n; i++) {
+          if (finished[i]) { seqs[i].push(0n); continue; } // [PAD] filler
+          const off = (i * len + (len - 1)) * V;
+          let best = 0;
+          let bestV = -Infinity;
+          for (let v = 0; v < V; v++) {
+            if (d[off + v] > bestV) { bestV = d[off + v]; best = v; }
+          }
+          const tok = BigInt(best);
+          if (tok === MANGA_OCR_EOS) {
+            finished[i] = true;
+            seqs[i].push(0n);
+            fire();
+          } else {
+            seqs[i].push(tok);
+          }
         }
       }
-    }
-    for (let i = 0; i < n; i++) {
-      if (!finished[i] && onOneDone) onOneDone(); // hit the length cap
-      // Character-level BERT vocab: drop [PAD]/[CLS]/…/<unusedN> specials, strip
-      // wordpiece '##' continuations, join with no spaces (Japanese).
-      let text = '';
-      for (const idb of seqs[i].slice(1)) {
-        const id = Number(idb);
-        if (!id) continue;
-        const t = eng.vocab[id] || '';
-        if (!t || t.startsWith('[') || t.startsWith('<unused')) continue;
-        text += t.startsWith('##') ? t.slice(2) : t;
+      for (let i = 0; i < n; i++) {
+        if (!finished[i]) fire(); // hit the length cap
+        // Character-level BERT vocab: drop [PAD]/[CLS]/…/<unusedN> specials, strip
+        // wordpiece '##' continuations, join with no spaces (Japanese).
+        let text = '';
+        for (const idb of seqs[i].slice(1)) {
+          const id = Number(idb);
+          if (!id) continue;
+          const t = eng.vocab[id] || '';
+          if (!t || t.startsWith('[') || t.startsWith('<unused')) continue;
+          text += t.startsWith('##') ? t.slice(2) : t;
+        }
+        texts[base + i] = mangaOcrPostprocess(text);
       }
-      texts[base + i] = text.replace(/\s+/g, '').trim();
+    } catch { /* one bad chunk must not sink the page — keep the rest */
+      while (fired < n) fire();
     }
   }
   return texts;

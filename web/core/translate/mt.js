@@ -100,13 +100,129 @@ export async function refineBatch(originals, drafts, target, cfg) {
   return parts.length === originals.length ? parts : null;
 }
 
+// --- manga-specific repair of the plain-MT output -------------------------
+// Google is a general-purpose translator, so it mangles a handful of things
+// that are ubiquitous in manga. Every rule below was written against observed
+// live gtx output (see the JSDoc examples), not guessed at.
+
+// Set phrases gtx reliably gets WRONG. It reads these as literal statements
+// instead of the interjections they are: しまった！→"It's gone!",
+// ヤバい→"It's dangerous". Short, high-frequency, and unambiguous in a speech
+// bubble — so we answer them directly and never send them to Google.
+const LEXICON = new Map([
+  ['しまった', 'Damn it'], ['ヤバい', 'This is bad'], ['やばい', 'This is bad'],
+  ['まずい', 'This is bad'], ['くそ', 'Damn'], ['くそっ', 'Damn it'],
+  ['ちくしょう', 'Dammit'], ['やめろ', 'Stop it'], ['まさか', 'No way'],
+  ['さすが', 'As expected'], ['よし', 'All right'], ['なるほど', 'I see'],
+  ['うるさい', 'Shut up'], ['てめえ', 'You bastard'], ['ざけんな', 'Screw you'],
+  ['どういうことだ', 'What do you mean'], ['ありえない', 'Impossible'],
+]);
+
+// gtx renders repeated full-width marks as spaced ASCII — 逃げろ！！ comes back
+// "Run away! !" and なんだと！？ as "What! ?". It also leaves … untouched in
+// some segments while converting it to ... in others.
+const FULLWIDTH = { '！': '!', '？': '?', '。': '.', '、': ',', '．': '.', '，': ',' };
+function asciiPunct(s) {
+  return String(s).replace(/[！？。、．，]/g, (c) => FULLWIDTH[c]);
+}
+
+function fixPunct(s) {
+  return s
+    .replace(/([!?])(\s+[!?])+/g, (m) => m.replace(/\s+/g, '')) // "! ! !" → "!!!"
+    .replace(/…/g, '...')
+    .replace(/\.{4,}/g, '...')
+    .replace(/\s+([,.!?;:])/g, '$1')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+}
+
+// gtx inflates repeated characters far past the source: うわああああ (4 あ)
+// comes back "Uwaaaaaaaaaaaaaaaaaaaa" (20 a). Clamp any run in the output to
+// the longest run in the source so screams keep their original length.
+function clampRuns(en, src) {
+  const m = src.match(/(.)\1+/g);
+  // No run in the source means there is nothing to clamp AGAINST — bailing out
+  // matters, because otherwise a max of 1 would flatten legitimate English
+  // elongation that the translation introduced on its own (ぐっ → "Nnngh" must
+  // not become "Ngh").
+  if (!m) return en;
+  let max = 2;
+  for (const r of m) max = Math.max(max, r.length);
+  return en.replace(/(\p{L})\1{2,}/gu, (run, ch) => ch.repeat(Math.min(run.length, max)));
+}
+
+// A stutter (ま、まさか… / だ、誰だお前は) is a first-mora repeat. Sent as-is,
+// gtx translates the stray mora as its own word — "Well, no way..." and
+// "Who are you?" (stutter dropped). So we strip it before translating and
+// re-apply it to the English, which is what a scanlator would letter:
+// "N-no way..." / "W-who are you?"
+const STUTTER = /^(.)[、,]\s*(?=\1)/;
+function stripStutter(t) {
+  return STUTTER.test(t) ? { text: t.replace(STUTTER, ''), stutter: true } : { text: t, stutter: false };
+}
+function restoreStutter(en) {
+  const m = en.match(/^([A-Za-z])(\w*)/);
+  if (!m) return en;
+  return `${m[1]}-${m[1].toLowerCase()}${en.slice(1)}`;
+}
+
+// gtx leaves subject-less fragments lowercase (俺たちは仲間だろ → "we are friends").
+function capitalize(s) { return s ? s[0].toUpperCase() + s.slice(1) : s; }
+
+function polish(en, src, stutter) {
+  let out = fixPunct(String(en || ''));
+  out = clampRuns(out, src);
+  if (stutter) out = restoreStutter(out);
+  return capitalize(out);
+}
+
+// Split a joined reply back into segments; null when it can't align.
+function splitParts(full, n) {
+  const parts = full.split(/\s*\|\s*\|\s*\|\s*/).map((s) => s.trim());
+  return parts.length === n ? parts : null;
+}
+
+// Translate a run of segments, halving on misalignment. The old fallback went
+// straight to one request per block, so a single bad split on a 30-bubble page
+// cost 30 round trips; bisecting costs ~log2(n) and usually isolates the one
+// segment that confused the splitter.
+async function translateRun(texts, target, source) {
+  if (!texts.length) return [];
+  if (texts.length === 1) {
+    return [await gtx(texts[0], target, source).then((s) => s.trim()).catch(() => '')];
+  }
+  try {
+    const parts = splitParts(await gtx(texts.join(DELIM), target, source), texts.length);
+    if (parts) return parts;
+  } catch { /* bisect below */ }
+  const mid = Math.ceil(texts.length / 2);
+  const [a, b] = await Promise.all([
+    translateRun(texts.slice(0, mid), target, source),
+    translateRun(texts.slice(mid), target, source),
+  ]);
+  return a.concat(b);
+}
+
 export async function translateBatch(texts, target, source = 'auto') {
   if (!texts.length) return [];
   source = GTX_SOURCE[source] || source || 'auto';
-  try {
-    const full = await gtx(texts.join(DELIM), target, source);
-    const parts = full.split(/\s*\|\s*\|\s*\|\s*/).map((s) => s.trim());
-    if (parts.length === texts.length) return parts;
-  } catch { /* fall through to per-block */ }
-  return Promise.all(texts.map((t) => gtx(t, target, source).then((s) => s.trim())));
+
+  // Answer known interjections locally and keep them out of the request; the
+  // lexicon is English-only, so it applies to the en target alone.
+  const prepared = texts.map((raw) => {
+    const t = String(raw || '').trim();
+    const bare = t.replace(/[！？!?。．.…、,\s]+$/g, '');
+    const hit = target === 'en' ? LEXICON.get(bare) : null;
+    // Carry the source's own punctuation across, but as ASCII — the lexicon
+    // bypasses gtx, which is what would normally fold ！？ down for us.
+    if (hit) return { direct: fixPunct(hit + asciiPunct(t.slice(bare.length))), src: t };
+    const { text, stutter } = stripStutter(t);
+    return { send: text, src: t, stutter };
+  });
+
+  const pending = prepared.filter((p) => p.send !== undefined);
+  const got = await translateRun(pending.map((p) => p.send), target, source);
+  pending.forEach((p, i) => { p.out = got[i]; });
+
+  return prepared.map((p) => (p.direct !== undefined ? p.direct : polish(p.out, p.src, p.stutter)));
 }

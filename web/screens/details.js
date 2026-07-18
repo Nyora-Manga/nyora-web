@@ -3,7 +3,7 @@
 import { api } from '../core/api.js';
 import {
   el, $, $$, icon, spinner, proxyImage, applyImage, toast, btn, iconBtn, chip,
-  emptyState, errorBox, modal, fmt,
+  emptyState, errorBox, modal, fmt, menuSelect, checkbox, contextMenu, openExternal,
 } from '../core/ui.js';
 import { router, store } from '../core/store.js';
 import library from '../core/library.js';
@@ -108,7 +108,7 @@ export function render(view, params) {
     const nodes = [backOverlayBar()];
     if (isSourceErr && cachedCover) {
       nodes.push(el('div', { class: 'center', style: { padding: '24px 0 8px' } },
-        el('img', { src: cachedCover, alt: cachedTitle, style: { width: '90px', borderRadius: '10px' } }),
+        el('img', { src: cachedCover, alt: cachedTitle, style: { width: '90px', borderRadius: 'var(--radius-sm)' } }),
       ));
     }
     if (isSourceErr) {
@@ -137,25 +137,6 @@ function saveOverrides(mangaId, ov) {
   const all = loadReadMarks();
   all[mangaId] = { read: [...ov.read], unread: [...ov.unread] };
   saveReadMarks(all);
-}
-
-// ── lightweight anchored dropdown menu ───────────────────────────────────────
-function openMenu(anchor, items) {
-  const menu = el('div', { class: 'row-menu' },
-    ...items.filter(Boolean).map((it) => el('button', {
-      class: 'row-menu-item' + (it.danger ? ' danger' : ''), type: 'button',
-      onClick: (e) => { e.stopPropagation(); close(); it.onClick(); },
-    }, it.icon ? icon(it.icon) : null, el('span', null, it.label))));
-  document.body.appendChild(menu);
-  const r = anchor.getBoundingClientRect();
-  const top = Math.min(r.bottom + 6, window.innerHeight - menu.offsetHeight - 10);
-  const left = Math.min(r.right - menu.offsetWidth, window.innerWidth - menu.offsetWidth - 10);
-  menu.style.top = `${Math.max(10, top)}px`;
-  menu.style.left = `${Math.max(10, left)}px`;
-  const close = () => { menu.remove(); document.removeEventListener('mousedown', onDoc, true); document.removeEventListener('keydown', onKey, true); };
-  const onDoc = (e) => { if (!menu.contains(e.target)) close(); };
-  const onKey = (e) => { if (e.key === 'Escape') close(); };
-  setTimeout(() => { document.addEventListener('mousedown', onDoc, true); document.addEventListener('keydown', onKey, true); }, 0);
 }
 
 // The manga's current reading progress entry (for the in-progress bar).
@@ -314,7 +295,9 @@ function buildDetails(view, sid, url, manga, chapters, params) {
     el('div', { class: 'd2-actions d2-actions-sub' },
       downloadAllBtn,
       iconBtn('folder', () => openCategories(manga, mangaId), 'Add to category'),
-      publicUrl ? iconBtn('external', () => window.open(publicUrl, '_blank'), 'Open site') : null,
+      publicUrl ? iconBtn('external', () => {
+        if (!openExternal(publicUrl)) toast('That source link doesn’t look valid.');
+      }, 'Open site') : null,
     ),
     descNode,
     genresNode,
@@ -358,21 +341,21 @@ function buildDetails(view, sid, url, manga, chapters, params) {
   }
 
   // toolbar
-  const filterBtn = iconBtn('filter', (e) => openMenu(e.currentTarget, [
+  const filterBtn = iconBtn('filter', (e) => { const r = e.currentTarget.getBoundingClientRect(); contextMenu([
     { label: 'All chapters', icon: state2.filter === 'all' ? 'check' : null, onClick: () => { state2.filter = 'all'; renderRows(); } },
     { label: 'Unread only', icon: state2.filter === 'unread' ? 'check' : null, onClick: () => { state2.filter = 'unread'; renderRows(); } },
     { label: 'Downloaded only', icon: state2.filter === 'downloaded' ? 'check' : null, onClick: () => { state2.filter = 'downloaded'; renderRows(); } },
-  ]), 'Filter');
-  const sortBtn = iconBtn('sort', (e) => openMenu(e.currentTarget, [
+  ], r.left, r.bottom + 6); }, 'Filter');
+  const sortBtn = iconBtn('sort', (e) => { const r = e.currentTarget.getBoundingClientRect(); contextMenu([
     { label: `By chapter number${state2.sortKey === 'number' ? (state2.asc ? ' ↑' : ' ↓') : ''}`, icon: state2.sortKey === 'number' ? 'check' : null,
       onClick: () => { if (state2.sortKey === 'number') state2.asc = !state2.asc; else { state2.sortKey = 'number'; state2.asc = false; } renderRows(); } },
     { label: `By upload date${state2.sortKey === 'date' ? (state2.asc ? ' ↑' : ' ↓') : ''}`, icon: state2.sortKey === 'date' ? 'check' : null,
       onClick: () => { if (state2.sortKey === 'date') state2.asc = !state2.asc; else { state2.sortKey = 'date'; state2.asc = false; } renderRows(); } },
-  ]), 'Sort');
-  const markAllBtn = iconBtn('check', (e) => openMenu(e.currentTarget, [
+  ], r.left, r.bottom + 6); }, 'Sort');
+  const markAllBtn = iconBtn('check', (e) => { const r = e.currentTarget.getBoundingClientRect(); contextMenu([
     { label: 'Mark all as read', icon: 'check', onClick: () => { for (const c of readingOrder) setRead(c, true); renderRows(); toast('Marked all read'); } },
     { label: 'Mark all as unread', onClick: () => { for (const c of readingOrder) setRead(c, false); renderRows(); toast('Marked all unread'); } },
-  ]), 'Mark');
+  ], r.left, r.bottom + 6); }, 'Mark');
 
   const chapters2 = el('div', { class: 'd2-chapters' },
     el('div', { class: 'd2-toolbar' },
@@ -394,7 +377,7 @@ function buildDetails(view, sid, url, manga, chapters, params) {
 }
 
 function buildCTA(sid, url, mangaId, chapters, ascByNumber, isRead) {
-  if (!ascByNumber.length) return btn('Read', { primary: true, icon: 'play', class: 'd2-cta', onClick: () => {} });
+  if (!ascByNumber.length) return btn('Read', { primary: true, icon: 'play', class: 'd2-cta', disabled: true });
   const lastUrl = lastReadChapterUrl(mangaId, ascByNumber);
   const firstUnread = ascByNumber.find((c) => !isRead(c));
   const started = !!lastUrl;
@@ -447,14 +430,15 @@ function buildChapterRow(ctx, chapter, index) {
 
   const menuBtn = iconBtn('more', (e) => {
     e.stopPropagation();
-    openMenu(e.currentTarget, [
+    const r = e.currentTarget.getBoundingClientRect();
+    contextMenu([
       { label: read ? 'Mark as unread' : 'Mark as read', icon: read ? 'close' : 'check',
         onClick: () => { ctx.setRead(chapter, !read); ctx.rerender(); } },
       { label: 'Mark previous as read', icon: 'check',
         onClick: () => { ctx.markPreviousRead(chapter); ctx.rerender(); } },
       { label: downloaded ? 'Downloaded' : 'Download', icon: 'download',
         onClick: () => { downloads.enqueue([downloadDesc(sid, url, mangaId, mangaTitle, chapter, index)]); toast('Queued ' + title); } },
-    ]);
+    ], r.left, r.bottom + 6);
   }, 'More');
   menuBtn.classList.add('d2-more');
 
@@ -539,14 +523,14 @@ function openDownloadDialog(sid, url, mangaId, title, chapters) {
   }
 
   // ── range row ──
-  const mkOptions = () => readingOrder.map((c) => el('option', { value: c.url }, fmt.chapterTitle(c, chapters.indexOf(c))));
-  const fromSel = el('select', { class: 'field' }, ...mkOptions());
-  const toSel = el('select', { class: 'field' }, ...mkOptions());
-  fromSel.selectedIndex = 0;
-  toSel.selectedIndex = toSel.options.length - 1;
+  const options = readingOrder.map((c) => [c.url, fmt.chapterTitle(c, chapters.indexOf(c))]);
+  let fromValue = options[0][0];
+  let toValue = options.at(-1)[0];
+  const fromSel = menuSelect(options, fromValue, (v) => { fromValue = v; });
+  const toSel = menuSelect(options, toValue, (v) => { toValue = v; });
   function selectRange() {
-    const a = chapters.findIndex((c) => c.url === fromSel.value);
-    const b = chapters.findIndex((c) => c.url === toSel.value);
+    const a = chapters.findIndex((c) => c.url === fromValue);
+    const b = chapters.findIndex((c) => c.url === toValue);
     if (a < 0 || b < 0) return;
     const lo = Math.min(a, b); const hi = Math.max(a, b);
     selected.clear();
@@ -573,18 +557,26 @@ function openDownloadDialog(sid, url, mangaId, title, chapters) {
   const listHost = el('div', { class: 'dl-picklist' });
   for (const c of readingOrder) {
     const oi = chapters.indexOf(c);
-    const cb = el('input', { type: 'checkbox' });
-    cb.addEventListener('change', () => {
-      if (cb.checked) selected.add(c.url); else selected.delete(c.url);
+    const check = checkbox({ checked: selected.has(c.url), onChange: (on) => {
+      if (on) selected.add(c.url); else selected.delete(c.url);
       updateFooter();
-    });
-    cbs.set(c.url, cb);
+    } });
+    const input = check.querySelector('input');
+    cbs.set(c.url, input);
     const st = downloads.statusOf(sid, c.url);
-    listHost.appendChild(el('label', { class: 'dl-pick' },
-      cb,
+    // Not a <label>: checkbox() already returns its own <label class="m3-check">,
+    // so nesting would be an invalid label-in-label. The inner label toggles the
+    // input natively; clicking the rest of the row (name/badge) toggles it here.
+    const row = el('div', { class: 'dl-pick' },
+      check,
       el('span', { class: 'dl-pick-name', title: fmt.chapterTitle(c, oi) }, fmt.chapterTitle(c, oi)),
       st ? statusBadge(st.status, st.warning) : null,
-    ));
+    );
+    row.addEventListener('click', (e) => {
+      if (check.contains(e.target)) return; // native <label class="m3-check"> already handled it
+      input.click();
+    });
+    listHost.appendChild(row);
   }
 
   // ── footer ──
@@ -664,7 +656,7 @@ function openCategories(manga, mangaId) {
     } else {
       for (const cat of list) {
         const isOn = assignedIds.has(cat.id);
-        const toggle = chip(isOn ? '✓ In list' : 'Add', { active: isOn });
+        const toggle = chip(isOn ? 'In list' : 'Add', { active: isOn });
         toggle.addEventListener('click', () => {
           try {
             if (assignedIds.has(cat.id)) {

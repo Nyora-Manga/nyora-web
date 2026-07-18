@@ -27,6 +27,13 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      # The onnxruntime runtime (~35 MB, 24 MB of it wasm) is not committed —
+      # it's fetched here and SHA-256 verified against pinned hashes, so the
+      # deployed bundle self-hosts it without carrying it in git history.
+      # This workflow only runs on `deploy`, so it's the deploy path only.
+      - name: Fetch onnxruntime runtime (verified)
+        run: npm run fetch:ort
+
       - name: Build — bundle web/ into dist/
         run: |
           npm install --no-audit --no-fund

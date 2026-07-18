@@ -5,7 +5,7 @@
 // route name to a screen's render() and mounts it into #view.
 
 import { store, router } from './core/store.js';
-import { el, icon, $, toast } from './core/ui.js';
+import { el, icon, $, toast, btn, errorBox } from './core/ui.js';
 import library from './core/library.js';
 import { revealView } from './core/motion.js';
 
@@ -25,6 +25,7 @@ import { meta as readerMeta, render as readerRender } from './screens/reader.js'
 import { meta as searchMeta, render as searchRender } from './screens/search.js';
 import { meta as browserMeta, render as browserRender } from './screens/browser.js';
 import { shouldShowWelcome, showWelcome } from './screens/welcome.js';
+import { shouldShowChangelog, showChangelog, markChangelogSeen } from './core/changelog.js';
 
 const routes = {
   discover: discoverRender,
@@ -153,7 +154,7 @@ function dispatch(route) {
     fn(view, route.params || {});
     revealView(view, name);
   } catch {
-    view.replaceChildren(el('div', { class: 'error-box' }, 'Something went wrong loading this screen. Please try again.'));
+    view.replaceChildren(errorBox('Something went wrong loading this screen. Please try again.'));
   }
   // Restore this screen's remembered scroll position (0 = fresh navigation).
   const scrollKey = name + '?' + JSON.stringify(route.params || {});
@@ -429,8 +430,8 @@ function setupInstallPrompt() {
         el('span', {}, 'Add it to your home screen — full-screen and offline-ready.'),
       ),
       el('div', { class: 'install-banner-actions' },
-        el('button', { class: 'btn btn-ghost', onClick: dismiss }, 'Later'),
-        el('button', { class: 'btn btn-accent', onClick: doInstall }, 'Install'),
+        btn('Later', { variant: 'ghost', onClick: dismiss }),
+        btn('Install', { variant: 'accent', onClick: doInstall }),
       ),
     );
     document.body.appendChild(banner);
@@ -505,7 +506,37 @@ router.onChange(dispatch);
 // never flashes behind it; only start routing — which renders the first screen
 // into #view — once the user proceeds.
 if (shouldShowWelcome()) {
+  // Genuine first run — the welcome screen is the introduction, so record the
+  // version rather than stacking a "what's new" dialog on top of it.
+  markChangelogSeen();
   showWelcome(() => router.start(routes, 'discover'));
 } else {
   router.start(routes, 'discover');
+  // Existing installs have no stored version, so this fires once for people
+  // already using the app. Wait for the splash to clear so it doesn't animate
+  // in behind it.
+  if (shouldShowChangelog()) setTimeout(() => showChangelog(), 900);
 }
+
+// Fade out the boot splash once the shell + first screen have painted, so the
+// user never sees the empty black shell while modules were loading.
+function hideSplash() {
+  const s = document.getElementById('splash');
+  if (!s) return;
+  s.classList.add('splash-hide');
+  const done = () => { if (s.parentNode) s.remove(); };
+  s.addEventListener('transitionend', done, { once: true });
+  setTimeout(done, 800);
+}
+requestAnimationFrame(() => requestAnimationFrame(hideSplash));
+
+// Splash failsafes: #splash is a fixed full-screen overlay, so any boot throw or
+// failed module load that skips the rAF above would leave it covering the app
+// forever. These belts-and-braces removals guarantee it always clears — the
+// normal successful boot still fades it after first paint (the rAF above wins).
+window.addEventListener('load', hideSplash);
+setTimeout(hideSplash, 5000);
+// A boot error reveals the shell instead of a permanent splash. once:true so
+// these never interfere after the app is up and running.
+window.addEventListener('error', hideSplash, { once: true });
+window.addEventListener('unhandledrejection', hideSplash, { once: true });

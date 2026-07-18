@@ -154,8 +154,13 @@ function trendingCard(item) {
       alt: title,
       src,
     });
-    img.addEventListener('error', () => { img.style.display = 'none'; });
+    img.addEventListener('error', () => {
+      img.style.display = 'none';
+      coverWrap.appendChild(el('div', { class: 'cover-fallback' }, icon('trending')));
+    });
     coverWrap.appendChild(img);
+  } else {
+    coverWrap.appendChild(el('div', { class: 'cover-fallback' }, icon('trending')));
   }
 
   // Score / genre micro-tags over the cover, echoing the desktop caption row.
@@ -164,17 +169,16 @@ function trendingCard(item) {
   if (genre) tags.push(chip(genre));
   if (!tags.length) tags.push(chip('Trending'));
   coverWrap.appendChild(
-    el('div', {
-      class: 'chips',
-      style: { position: 'absolute', left: '8px', right: '8px', bottom: '8px', gap: '6px' },
-    }, ...tags),
+    el('div', { class: 'chips cover-chips' }, ...tags),
   );
 
   const node = el(
-    'div',
+    'md-elevated-card',
     { class: 'card', role: 'button', tabindex: '0' },
-    coverWrap,
-    el('div', { class: 'title', title }, title),
+    el('div', { class: 'card-body' },
+      coverWrap,
+      el('div', { class: 'title', title }, title),
+    ),
   );
   const go = () => router.navigate('search', { q: title });
   node.addEventListener('click', go);

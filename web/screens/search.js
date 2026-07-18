@@ -8,7 +8,7 @@
 
 import { api } from '../core/api.js';
 import {
-  el, card, spinner, emptyState, errorBox, langLabel, langCode, languageOptions, menuSelect, btn,
+  el, card, spinner, emptyState, errorBox, langLabel, langCode, languageOptions, menuSelect, btn, chip,
 } from '../core/ui.js';
 import { router, store } from '../core/store.js';
 
@@ -117,7 +117,7 @@ export function render(view, params) {
         el('span', null, `Searching ${runState.done}/${runState.total} sources · ${runState.hits} with matches`),
       );
     } else {
-      status.replaceChildren(el('span', { class: 'chip' },
+      status.replaceChildren(chip(
         runState.hits > 0
           ? `Found matches in ${runState.hits} of ${runState.total} sources`
           : `No matches found for “${query}”`));
@@ -136,7 +136,7 @@ export function render(view, params) {
           el('div', { class: 'source-sub' }, langLabel(src)),
         ),
       ),
-      el('span', { class: 'chip btn-sm' }, list.length + (list.length >= PER_SOURCE_LIMIT ? '+' : '')),
+      chip(list.length + (list.length >= PER_SOURCE_LIMIT ? '+' : ''), { class: 'btn-sm' }),
     );
     const grid = el('div', { class: 'grid dense' });
     const section = el('section', { class: 'search-source-card-minimal' }, head, grid);
@@ -245,7 +245,7 @@ export function render(view, params) {
   function restoreSearchResults() {
     results.replaceChildren();
     for (const it of searchCache.items) appendResultSection(it.src, it.list);
-    status.replaceChildren(el('span', { class: 'chip' },
+    status.replaceChildren(chip(
       searchCache.hits > 0
         ? `Found matches in ${searchCache.hits} of ${searchCache.total} sources`
         : `No matches found for “${query}”`));

@@ -14,7 +14,7 @@
 // way out — matching the desktop "open details from the update card" flow.
 
 import {
-  el, $, proxyImage, applyImage, toast, spinner, emptyState, errorBox, sectionHeader,
+  el, proxyImage, applyImage, toast, spinner, emptyState, errorBox, sectionHeader,
   btn, iconBtn, chip, fmt, skeletonCard,
 } from '../core/ui.js';
 import { router } from '../core/store.js';
@@ -73,10 +73,7 @@ function load(body, markAllBtn) {
 
   if (!rows.length) {
     body.replaceChildren(
-      emptyState("You're all caught up — no new chapters."),
-      el('div', { class: 'center', style: { marginTop: '4px' } },
-        el('p', { class: 'sub' },
-          'Tap Refresh to scan your favourites and history for new chapters.')),
+      emptyState("You're all caught up — tap Refresh to scan your favourites and history for new chapters.", 'inbox'),
     );
     return;
   }
@@ -121,7 +118,7 @@ function rowItem(row, body, markAllBtn) {
 
   const main = el(
     'div',
-    { class: 'row-main' },
+    { class: 'row-main', role: 'button', tabindex: '0', 'aria-label': `Open ${mangaTitle}` },
     el('div', { class: 'name', title: mangaTitle }, mangaTitle),
     latest
       ? el('div', { class: 'sub', title: latest, style: { color: 'var(--text)' } },
@@ -133,11 +130,9 @@ function rowItem(row, body, markAllBtn) {
   const open = () => openManga(row);
   main.style.cursor = 'pointer';
   main.addEventListener('click', open);
-  const thumb = $('.thumb', item);
-  if (thumb) {
-    thumb.style.cursor = 'pointer';
-    thumb.addEventListener('click', open);
-  }
+  main.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); }
+  });
 
   const actions = el(
     'div',

@@ -52,6 +52,10 @@ const DEFAULT_PREFS = {
   noNsfwHistory: false, // when true, 18+ manga are never written to history
   incognito: false,     // when true, NO reading history is recorded
   searchScope: 'pinned', // universal search: 'pinned' sources only | 'all' installed
+  // Master gate for the beta on-device AI features (translation + colorization).
+  // Off by default: the reader hides the translate/colorize toggles and never
+  // auto-applies them until this is enabled in Settings → Experimental.
+  experimental: false,
   // Optional LLM refinement for the in-image translator (mirrors Android's
   // AI Translate settings). Key stays in this browser's localStorage only.
   // Empty endpoint/model fall back to the provider's default at call time.
@@ -65,6 +69,7 @@ const DEFAULT_PREFS = {
     fit: 'WIDTH', // 'WIDTH' | 'HEIGHT'
     prefetch: true,
     webtoonWidth: 70,
+    colorize: false,    // AI manga colorization (client-side model)
     translate: false,   // in-image AI translation (client-side models)
     translateTo: 'en',
     translateFrom: 'auto', // OCR language: auto (from source) | ja | zh | ko | en
@@ -143,6 +148,9 @@ function deepClone(v) {
 /** Deep-merge `patch` into `target` in place. Arrays/scalars overwrite. */
 function deepMerge(target, patch) {
   for (const [k, v] of Object.entries(patch)) {
+    // JSON.parse produces a real own '__proto__' key, so a crafted prefs blob
+    // could otherwise walk into Object.prototype and pollute it app-wide.
+    if (k === '__proto__' || k === 'constructor' || k === 'prototype') continue;
     if (isPlainObject(v) && isPlainObject(target[k])) {
       deepMerge(target[k], v);
     } else {

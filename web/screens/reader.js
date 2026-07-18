@@ -41,12 +41,14 @@ import { api } from '../core/api.js';
 import {
   el, $, $$, proxyImage, applyImage, toast, spinner, icon, btn, iconBtn,
   emptyState, errorBox, modal, segmented, fmt, menuSelect, m3Range,
+  promptDialog, chip,
 } from '../core/ui.js';
 import { store, router } from '../core/store.js';
 import library from '../core/library.js';
 import { translatePage, onTranslatorStatus } from '../core/translate/engine.js';
 import { attachOverlay } from '../core/translate/overlay.js';
 import { TL_LANGS, TL_SOURCES } from '../core/translate/mt.js';
+import { colorizePage, onColorizeStatus, clearColorizeCache, colorizeModelReady } from '../core/colorize/engine.js';
 
 export const meta = { title: 'Reader', nav: false, icon: 'library', order: 99 };
 
@@ -160,10 +162,34 @@ export function render(view, params) {
   // > 100 are legacy pixel widths (e.g. 880/1200) — migrate them to the default.
   const clampWidth = (v) => { v = Number(v); return (!v || v > 100) ? 70 : Math.max(30, Math.min(100, Math.round(v))); };
   let webtoonWidth = clampWidth(gp.webtoonWidth);
-  // In-image AI translation (client-side bubble detection + OCR + MT).
-  let translate = gp.translate === true;
+  // In-image AI translation + colorization are gated behind the Experimental
+  // master switch (Settings → Experimental). When it's off the reader shows no
+  // translate/colorize toggles and never auto-applies them, even if the per-manga
+  // prefs are on — the overlays/colorized pages simply don't appear.
+  const experimental = store.get().experimental === true;
+  let translate = experimental && gp.translate === true;
   let translateTo = gp.translateTo || 'en';
   let translateFrom = gp.translateFrom || 'auto'; // 'auto'|'ja'|'zh'|'ko'|'en'
+  // Colorize additionally requires the ~62 MB model to ALREADY be downloaded in
+  // Settings → Experimental → Colorization. Starting false and only opting in
+  // once that's confirmed means it stays off by default even when a stale
+  // `colorize: true` is left in prefs from an earlier session, and no page can
+  // trigger a surprise 62 MB fetch just because Experimental got switched on.
+  let colorize = false; // AI manga colorization
+  let colorReady = false; // model present in the cache
+  if (experimental) {
+    colorizeModelReady().then((ready) => {
+      if (st.destroyed) return;
+      colorReady = ready;
+      if (!ready) {
+        // Model isn't there (cache cleared, or the pref predates the download
+        // gate) — drop the stale pref so it stops re-arming on every open.
+        if (gp.colorize === true) store.set({ reader: { colorize: false } });
+        return;
+      }
+      if (gp.colorize === true) { colorize = true; syncChrome(); beginColorizeAll(); }
+    }).catch(() => {});
+  }
   // On phones the reader area is already narrow, so the full column width is the
   // sensible default — anything less just wastes screen. When still on the global
   // default (70%), snap webtoon to 100% on phone; an explicit per-manga width
@@ -256,6 +282,8 @@ export function render(view, params) {
     if (document.fullscreenElement) { try { document.exitFullscreen(); } catch { /* ignore */ } }
     cancelAutoLoop();
     resetTranslations();
+    resetColorize();
+    clearColorizeCache();  // revoke the session's cached full-res colorized blob URLs
     if (scrollListener) { (scrollTarget || window).removeEventListener('scroll', scrollListener); scrollListener = null; scrollTarget = null; }
   }
   view.__readerTeardown = teardown;
@@ -484,7 +512,11 @@ export function render(view, params) {
         if (typeof p.prefetch === 'boolean') prefetch = p.prefetch;
         if (p.webtoonWidth) webtoonWidth = clampWidth(p.webtoonWidth);
         if (p.autoScrollLevel != null) autoLevel = clampLevel(p.autoScrollLevel);
-        if (typeof p.translate === 'boolean') translate = p.translate;
+        // Translate & colorize are GLOBAL toggles (Settings → Experimental), not
+        // per-manga — otherwise a title previously saved with them on would
+        // resurrect the feature (and the reader button) after you turned the
+        // "Translate/Colorize pages" toggle off. Only the language choice is
+        // remembered per title.
         if (p.translateTo) translateTo = p.translateTo;
         if (p.translateFrom) translateFrom = p.translateFrom;
       }
@@ -591,7 +623,6 @@ export function render(view, params) {
         prefetch,
         webtoonWidth,
         autoScrollLevel: autoLevel,
-        translate,
         translateTo,
         translateFrom,
         brightness: st.grade.brightness,
@@ -751,6 +782,58 @@ export function render(view, params) {
     if (translate) { resetTranslations(); beginTranslateAll(); }
   }
 
+  // ── Colorize (on-device manga colorization) ───────────────────────────────
+  // Swaps each visible page's image for an AI-coloured version. The colourised
+  // image keeps the page's crisp line art (luminance) with model chroma. Result
+  // cached per page url; toggling off restores the original.
+  let colorizeObserver = null;
+  let colorizeErrored = false;
+  onColorizeStatus((m) => { if (!st.destroyed) toast(m); });
+
+  function observeColorize(img) {
+    if (colorize && img.__tlPage) colorizeObs().observe(img);
+  }
+  function colorizeObs() {
+    if (!colorizeObserver) {
+      colorizeObserver = new IntersectionObserver((entries) => {
+        for (const en of entries) {
+          if (!en.isIntersecting) continue;
+          colorizeObserver.unobserve(en.target);
+          applyColorize(en.target);
+        }
+      }, { rootMargin: '100% 0px' });
+    }
+    return colorizeObserver;
+  }
+  async function applyColorize(img) {
+    if (st.destroyed || !colorize || !img.__tlPage) return;
+    try {
+      const url = await colorizePage(img.__tlPage.url, img.__tlPage.headers);
+      if (st.destroyed || !colorize || !img.isConnected) return;
+      if (img.__colorOrig == null) img.__colorOrig = img.getAttribute('src') || '';
+      img.src = url;
+    } catch (e) {
+      if (!colorizeErrored && !st.destroyed && colorize) { colorizeErrored = true; toast('Colorize failed: ' + ((e && e.message) || e)); }
+    }
+  }
+  function resetColorize() {
+    if (colorizeObserver) { colorizeObserver.disconnect(); colorizeObserver = null; }
+  }
+  function restoreColorize() {
+    $$('img.reader-page', view).forEach((img) => {
+      if (img.__colorOrig != null) { img.src = img.__colorOrig; img.__colorOrig = null; }
+    });
+  }
+  function beginColorizeAll() { $$('img.reader-page', view).forEach((img) => observeColorize(img)); }
+  function setColorize(on) {
+    colorize = !!on;
+    store.set({ reader: { colorize } });
+    savePrefs();
+    if (colorize) beginColorizeAll();
+    else { resetColorize(); restoreColorize(); }
+    $$('.reader-color-toggle', view).forEach((n) => n.classList.toggle('active', colorize));
+  }
+
   // ── auto-scroll ────────────────────────────────────────────────────────────
   // Level → speed. WEBTOON: pixels per second. PAGED: milliseconds per page.
   function webtoonPxPerSec() { return 24 + (autoLevel - 1) * 26; }        // 24 … 258 px/s
@@ -834,10 +917,10 @@ export function render(view, params) {
 
   // Tap the page counter → jump to any page (works in every mode; webtoon has no
   // seek slider otherwise).
-  function promptJump() {
+  async function promptJump() {
     const total = st.pages.length;
     if (!total) return;
-    const ans = window.prompt(`Go to page (1–${total})`, String(st.currentPage + 1));
+    const ans = await promptDialog(`Go to page (1–${total})`, String(st.currentPage + 1));
     if (ans == null) return;
     const n = parseInt(ans, 10);
     if (Number.isFinite(n) && n >= 1 && n <= total) jumpTo(n - 1);
@@ -932,6 +1015,7 @@ export function render(view, params) {
     applyImage(img, p.url, headers, () => { img.replaceWith(brokenPage(p, i)); });
     img.__tlPage = { url: p.url, headers };
     observeTranslate(img);
+    observeColorize(img);
     const f = filterStr();
     if (f) img.style.filter = f;
     return img;
@@ -1002,6 +1086,17 @@ export function render(view, params) {
         if (!tlVisible) tlBtn.classList.add('active');
       }
 
+      // Colorize toggle only exists when the Colorize feature is actually on
+      // (like the translate button gates on `translate`) — turning experimental
+      // on alone must NOT surface it while "Colorize pages" is off.
+      let colorBtn = null;
+      if (colorize) {
+        colorBtn = iconBtn('droplet', (e) => { if (e) e.stopPropagation(); setColorize(!colorize); },
+          colorize ? 'Colorize on' : 'Colorize (AI)');
+        colorBtn.classList.add('reader-btn', 'reader-color-toggle');
+        if (colorize) colorBtn.classList.add('active');
+      }
+
       const listBtn = iconBtn('list', openChapterList, 'Chapters');
       listBtn.classList.add('reader-btn');
 
@@ -1021,7 +1116,7 @@ export function render(view, params) {
       return el('div', { class: 'reader-bar top' },
         el('div', { class: 'reader-title-group' }, back, titleWrap),
         el('div', { class: 'reader-actions' },
-          autoBtn, tlBtn, sidebarBtn, fsBtn, bmBtn, listBtn, settingsBtn,
+          autoBtn, colorBtn, tlBtn, sidebarBtn, fsBtn, bmBtn, listBtn, settingsBtn,
         ),
       );
     }
@@ -1115,6 +1210,7 @@ export function render(view, params) {
     // A running loop must not outlive the DOM it scrolls (mode/chapter change).
     cancelAutoLoop();
     resetTranslations();   // overlays/observer die with the old DOM
+    resetColorize();       // observer dies with the old imgs (cache survives)
     zoomReset = null;   // the previous render's zoom controller is gone
     if (scrollListener) { (scrollTarget || window).removeEventListener('scroll', scrollListener); scrollListener = null; scrollTarget = null; }
     if (!st.pages.length) {
@@ -1500,6 +1596,7 @@ export function render(view, params) {
       const isRead = i < st.index;
       const row = el('li', {
         class: isRead ? 'read' : '',
+        role: 'button', tabindex: '0',
         style: isCurrent ? { background: 'var(--surface2)', borderColor: 'var(--accent)', color: 'var(--text)' } : null,
       },
         el('span', { class: 'ch-meta', style: { display: 'flex', alignItems: 'center', gap: '8px', minWidth: '0' } },
@@ -1511,6 +1608,9 @@ export function render(view, params) {
       row.addEventListener('click', () => {
         closeFn();
         if (i !== st.index) transitionChapter(i);
+      });
+      row.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); row.click(); }
       });
       list.appendChild(row);
     });
@@ -1600,6 +1700,17 @@ export function render(view, params) {
     );
 
     const colorSection = el('div', { class: 'settings-section' }, el('h2', null, 'Colour'));
+    // AI colorize toggle — the top-bar droplet only appears while colorize is
+    // on, so this is how you enable it from inside the reader. Requires the
+    // model to be downloaded first (Settings → Experimental → Colorization);
+    // without that gate this switch would kick off a silent 62 MB fetch.
+    if (experimental && colorReady) {
+      const czInput = el('input', { type: 'checkbox' });
+      czInput.checked = colorize;
+      czInput.addEventListener('change', () => setColorize(czInput.checked));
+      colorSection.appendChild(inlineRow('AI colorize (beta)',
+        el('label', { class: 'switch' }, czInput, el('span', { class: 'slider' }))));
+    }
     function gradeSlider(label, key, min, max, step, fmtVal) {
       const valOut = el('span', { class: 'counter' }, fmtVal(live[key]));
       const input = el('input', { type: 'range', min: String(min), max: String(max), step: String(step), value: String(live[key]), style: { width: '100%', accentColor: 'var(--accent)' } });
@@ -1617,14 +1728,16 @@ export function render(view, params) {
     function renderChips() {
       chips.replaceChildren();
       PALETTES.forEach((pal) => {
-        const c = el('span', { class: 'chip' + (live.palette === pal ? ' active' : ''), role: 'button', tabindex: '0' }, PALETTE_LABEL(pal));
-        c.addEventListener('click', () => { live.palette = pal; renderChips(); applyLive(); });
-        chips.appendChild(c);
+        chips.appendChild(chip(PALETTE_LABEL(pal), {
+          active: live.palette === pal,
+          onClick: () => { live.palette = pal; renderChips(); applyLive(); },
+        }));
       });
     }
     renderChips();
     colorSection.appendChild(el('div', { class: 'field', style: { marginBottom: '0' } }, el('label', null, 'Presets'), chips));
-    const body = el('div', null, layoutSection, tlSection, colorSection);
+    // Translate settings only appear when experimental features are enabled.
+    const body = el('div', null, layoutSection, experimental ? tlSection : null, colorSection);
     modal({
       title: 'Reader Settings',
       body,

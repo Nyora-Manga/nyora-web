@@ -12,7 +12,7 @@
 
 import library from '../core/library.js';
 import {
-  el, emptyState, errorBox, sectionHeader, icon, chip,
+  el, emptyState, errorBox, sectionHeader, icon, chip, btn,
 } from '../core/ui.js';
 
 export const meta = {
@@ -40,8 +40,7 @@ function load(body) {
     body.replaceChildren(
       errorBox(`Couldn't load statistics: ${err.message || err}`),
       el('div', { class: 'center', style: { marginTop: '12px' } },
-        el('button', { class: 'btn btn-ghost', onClick: () => load(body) },
-          icon('refresh'), el('span', null, 'Retry')),
+        btn('Retry', { variant: 'ghost', icon: 'refresh', onClick: () => load(body) }),
       ),
     );
     return;

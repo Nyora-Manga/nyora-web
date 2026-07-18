@@ -50,6 +50,18 @@
             if (isNyoraKey(k)) dump[k] = localStorage.getItem(k);
           }
         } catch (e) {}
+        // Never put credentials in a URL. The fragment isn't sent to a server,
+        // but it does transit the address bar, session-restore state, and any
+        // extension with tab access — so drop the LLM API key and the sync
+        // token from the payload. Both are re-entered/re-issued on the new
+        // origin; everything else (library, history, prefs) still migrates.
+        try { delete dump['nyora.sync.session.v1']; } catch (e) {}
+        try {
+          if (dump['nyora.prefs']) {
+            var pj = JSON.parse(dump['nyora.prefs']);
+            if (pj && pj.aiApiKey) { pj.aiApiKey = ''; dump['nyora.prefs'] = JSON.stringify(pj); }
+          }
+        } catch (e) {}
         var frag = '';
         try {
           var b64 = btoa(unescape(encodeURIComponent(JSON.stringify(dump))));
@@ -191,16 +203,82 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <!-- Plus Jakarta Sans (expressive display) + Inter (crisp body/UI) — the Material 3 Expressive face. -->
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&family=Inter:wght@400;450;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/styles.css?v=38" />
+  <link rel="stylesheet" href="/styles.css?v=40" />
 
+  <!-- Theme preflight: resolve the saved (or system) theme and stamp it on
+       <html> BEFORE first paint, so the app and splash never flash the wrong
+       colour or the old buggy black shell. -->
+  <script>
+  (function () {
+    try {
+      var p = JSON.parse(localStorage.getItem('nyora.prefs') || '{}');
+      var a = p.appearance || 'DARK';
+      var t = a === 'LIGHT' ? 'LIGHT'
+        : a === 'DARK' ? 'DARK'
+        : (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches ? 'LIGHT' : 'DARK');
+      document.documentElement.setAttribute('data-theme', t);
+    } catch (e) { document.documentElement.setAttribute('data-theme', 'DARK'); }
+  })();
+  </script>
+  <!-- Splash: inline so it paints instantly, before styles.css or app.js load,
+       covering the shell while the ES modules download + boot. Removed by app.js
+       once the first screen renders. -->
+  <style>
+    #splash {
+      position: fixed; inset: 0; z-index: 2147483000;
+      display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 24px;
+      background: radial-gradient(125% 90% at 50% 36%, #17171d 0%, #0a0a0d 58%, #050506 100%);
+      opacity: 1; transition: opacity .5s ease;
+    }
+    html[data-theme="LIGHT"] #splash {
+      background: radial-gradient(125% 90% at 50% 36%, #ffffff 0%, #f2f0f3 60%, #eae8ec 100%);
+    }
+    #splash.splash-hide { opacity: 0; pointer-events: none; }
+    #splash .splash-logo {
+      width: 78px; height: 78px; border-radius: 22px;
+      box-shadow: 0 14px 44px rgba(0,0,0,.5), inset 0 0 0 1px rgba(255,255,255,.06);
+      animation: splash-pop .6s cubic-bezier(.2,.8,.2,1) both;
+    }
+    #splash .splash-word {
+      font-family: 'Plus Jakarta Sans', system-ui, sans-serif; font-weight: 800;
+      font-size: 21px; letter-spacing: .36em; padding-left: .36em; color: #f4f4f6;
+      animation: splash-fade .7s ease .12s both;
+    }
+    html[data-theme="LIGHT"] #splash .splash-word { color: #16161a; }
+    #splash .splash-bar {
+      width: 128px; height: 3px; border-radius: 99px; overflow: hidden; position: relative;
+      background: rgba(255,255,255,.13);
+    }
+    html[data-theme="LIGHT"] #splash .splash-bar { background: rgba(0,0,0,.10); }
+    #splash .splash-bar::before {
+      content: ""; position: absolute; top: 0; bottom: 0; left: 0; width: 42%; border-radius: 99px;
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,.9), transparent);
+      animation: splash-slide 1.15s ease-in-out infinite;
+    }
+    html[data-theme="LIGHT"] #splash .splash-bar::before {
+      background: linear-gradient(90deg, transparent, rgba(0,0,0,.55), transparent);
+    }
+    @keyframes splash-pop { from { opacity: 0; transform: scale(.82); } to { opacity: 1; transform: none; } }
+    @keyframes splash-fade { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+    @keyframes splash-slide { 0% { transform: translateX(-130%); } 100% { transform: translateX(365%); } }
+    @media (prefers-reduced-motion: reduce) {
+      #splash .splash-logo, #splash .splash-word { animation: none; }
+      #splash .splash-bar::before { animation: none; width: 100%; opacity: .5; }
+    }
+  </style>
   </head>
   <body>
+  <div id="splash" role="status" aria-label="Loading Nyora">
+    <img class="splash-logo" src="/icon.png" alt="" />
+    <div class="splash-word">NYORA</div>
+    <div class="splash-bar"></div>
+  </div>
   <aside class="sidebar" id="sidebar"></aside>
   <div class="main">
     <header class="topbar" id="topbar">
-      <form class="search-form" id="searchForm">
+      <form class="search-form" id="searchForm" role="search">
         <svg class="search-icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
-        <input id="searchInput" placeholder="Search all sources…" />
+        <input id="searchInput" placeholder="Search all sources…" aria-label="Search all sources" enterkeyhint="search" />
       </form>
       <span class="spacer"></span>
       <a class="visit-site" href="https://nyora.xyz" target="_blank" rel="noopener" aria-label="Visit the official Nyora website">
@@ -237,6 +315,6 @@
   <div class="modal-root" id="modalRoot"></div>
   <script src="/env.js?v=1"></script>
   <script src="/vendor/gsap.min.js?v=1" defer></script>
-  <script type="module" src="/app.js?v=7"></script>
+  <script type="module" src="/app.js?v=9"></script>
   </body>
 </html>

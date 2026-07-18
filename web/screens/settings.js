@@ -1,8 +1,10 @@
 // screens/settings.js — client-side preferences for the Nyora web SPA.
 
 import library from '../core/library.js';
+import { downloads } from '../core/downloads.js';
+import { colorizeModelReady, downloadColorizeModel } from '../core/colorize/engine.js';
 import {
-  el, toast, btn, sectionHeader, confirmDialog, icon, iconBtn, menuSelect, m3Range, schemeCard, infoDot,
+  el, toast, btn, sectionHeader, confirmDialog, icon, iconBtn, menuSelect, m3Range, schemeCard, infoDot, segmented, stepper, m3Switch,
 } from '../core/ui.js';
 import {
   store, router, COLOR_SCHEMES, resolveAccent, detectBrowserAccent,
@@ -29,31 +31,35 @@ function field(label, control, hint) {
 // settingRow(name, sub, control) — `sub` may be a short string (rendered
 // beneath the name) or, to keep the row terse, an { info: '…' } object that
 // tucks the explanation behind a small circled "!".
+//
+// The row auto-adapts to whatever control it's given so every case lays out
+// sanely — small controls (switch, button, dropdown) sit inline on the right;
+// wide/typed controls (text/URL/password inputs, textareas) drop onto their own
+// full-width line under the label instead of being crushed into the right slot.
+function controlLayout(node) {
+  if (!node || !node.tagName) return 'inline';
+  const tag = node.tagName.toLowerCase();
+  if (tag === 'textarea') return 'block';
+  if (tag === 'input') {
+    const t = (node.getAttribute('type') || 'text').toLowerCase();
+    // typed fields want the whole row; toggles/sliders/swatches stay inline.
+    return ['checkbox', 'radio', 'range', 'color', 'button', 'submit', 'reset', 'file'].includes(t)
+      ? 'inline' : 'block';
+  }
+  // helper-built filled fields carry the `.input` class on the element itself.
+  if (node.classList && node.classList.contains('input')) return 'block';
+  return 'inline';
+}
 function settingRow(name, sub, control) {
   const info = sub && typeof sub === 'object' && sub.info ? sub.info : null;
-  return el('div', { class: 'setting-row' },
+  const layout = controlLayout(control);
+  return el('div', { class: 'setting-row' + (layout === 'block' ? ' setting-row--stack' : '') },
     el('div', { class: 'row-main' },
       el('div', { class: 'name' }, name, info ? infoDot(info) : null),
       (sub && !info) ? el('div', { class: 'sub' }, sub) : null,
     ),
-    el('div', { class: 'row-actions' }, control),
+    control ? el('div', { class: 'row-actions' }, control) : null,
   );
-}
-
-function segControl(options, selected, onSelect) {
-  const wrap = el('div', { class: 'seg' });
-  for (const [value, label] of options) {
-    const b = el('button', {
-      type: 'button', class: value === selected ? 'active' : '',
-      onClick: () => {
-        if (b.classList.contains('active')) return;
-        for (const child of Array.from(wrap.children)) child.classList.remove('active');
-        b.classList.add('active'); onSelect(value);
-      },
-    }, label);
-    wrap.appendChild(b);
-  }
-  return wrap;
 }
 
 function switchToggle(checked, onToggle) {
@@ -72,37 +78,75 @@ function switchToggle(checked, onToggle) {
 const SECTIONS = [
   { id: 'appearance', name: 'Appearance', sub: 'Theme and color scheme', icon: 'palette', build: buildAppearance },
   { id: 'reader', name: 'Reader', sub: 'Default reading mode, fit and prefetch', icon: 'book', build: buildReader },
-  { id: 'translate', name: 'Translate', sub: 'On-device AI page translation', icon: 'globe', build: buildTranslate },
+  { id: 'downloads', name: 'Downloads', sub: 'Format, concurrency and offline storage', icon: 'download', build: buildDownloads },
   { id: 'content', name: 'Content', sub: '18+ sources, languages and sources', icon: 'eye', build: buildContent },
   { id: 'sync', name: 'Cloud Sync', sub: 'Account, sync and restore', icon: 'refresh', build: buildSync },
   { id: 'backup', name: 'Backup & Data', sub: 'Export, import and clear data', icon: 'download', build: buildBackupData },
   { id: 'advanced', name: 'Advanced', sub: 'Storage, caches and servers', icon: 'bars', build: buildAdvanced },
+  { id: 'experimental', name: 'Experimental', sub: 'On-device AI translation & colorization (beta)', icon: 'flask', build: buildExperimental },
   { id: 'about', name: 'About', sub: 'Version, links and credits', icon: 'info', build: buildAbout },
 ];
 
+// A settings-hub row (icon + name + sub + chevron) that drills into a sub-page.
+// Reused by the top-level hub AND by nested hubs (Experimental → Translation…).
+function navRow(name, sub, iconName, onClick, disabled) {
+  const row = el('div', {
+    class: 'settings-nav-row' + (disabled ? ' is-disabled' : ''),
+    role: 'button', tabindex: disabled ? '-1' : '0',
+    'aria-disabled': disabled ? 'true' : null,
+  },
+    el('span', { class: 'settings-nav-icon' }, icon(iconName)),
+    el('div', { class: 'row-main' },
+      el('div', { class: 'name' }, name),
+      el('div', { class: 'sub' }, sub),
+    ),
+    el('span', { class: 'settings-nav-chevron' }, icon('chevron')),
+  );
+  if (!disabled) {
+    row.addEventListener('click', onClick);
+    row.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(); } });
+  }
+  return row;
+}
+
+// Nested sub-pages of Experimental (recursive settings). Function refs are
+// hoisted, so this literal can reference the builders defined further down.
+const EXP_CHILDREN = {
+  translation: { name: 'Translation', sub: 'In-image AI page translation + LLM refinement', icon: 'globe', build: buildExpTranslation },
+  colorization: { name: 'Colorization', sub: 'AI-colour black-and-white manga on-device', icon: 'droplet', build: buildExpColorization },
+};
+
 export function render(view, params) {
   view.replaceChildren();
-  const section = SECTIONS.find((x) => x.id === (params && params.s));
-  if (!section) {
+  const s = params && params.s;
+  const sub = params && params.sub;
+
+  // Top-level hub.
+  if (!s) {
     view.append(sectionHeader('Settings'));
     const list = el('div', { class: 'settings-nav' });
     for (const sec of SECTIONS) {
-      const row = el('div', { class: 'settings-nav-row', role: 'button', tabindex: '0' },
-        el('span', { class: 'settings-nav-icon' }, icon(sec.icon)),
-        el('div', { class: 'row-main' },
-          el('div', { class: 'name' }, sec.name),
-          el('div', { class: 'sub' }, sec.sub),
-        ),
-        el('span', { class: 'settings-nav-chevron' }, icon('chevron')),
-      );
-      const go = () => router.navigate('settings', { s: sec.id });
-      row.addEventListener('click', go);
-      row.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } });
-      list.appendChild(row);
+      list.appendChild(navRow(sec.name, sec.sub, sec.icon, () => router.navigate('settings', { s: sec.id })));
     }
     view.append(list);
     return;
   }
+
+  const section = SECTIONS.find((x) => x.id === s);
+  if (!section) { router.navigate('settings'); return; }
+
+  // Recursive sub-page: Experimental → Translation / Colorization.
+  if (s === 'experimental' && sub && EXP_CHILDREN[sub]) {
+    const child = EXP_CHILDREN[sub];
+    const back = iconBtn('back', () => router.navigate('settings', { s: 'experimental' }), 'Back to Experimental');
+    view.append(el('div', { class: 'settings-subheader' }, back, el('h1', null, child.name)));
+    if (store.get().experimental !== true) {
+      view.append(el('p', { class: 'exp-hint' }, 'Enable experimental features to use this.'));
+    }
+    view.append(child.build());
+    return;
+  }
+
   const back = iconBtn('back', () => router.navigate('settings'), 'Back to settings');
   view.append(el('div', { class: 'settings-subheader' }, back, el('h1', null, section.name)));
   view.append(section.build());
@@ -112,15 +156,15 @@ function buildAppearance() {
   const prefs = store.get();
   const section = el('section', { class: 'settings-section' });
   section.append(settingRow('Theme', 'System follows your OS setting and switches live.',
-    segControl([['SYSTEM', 'System'], ['DARK', 'Dark'], ['LIGHT', 'Light']],
+    segmented([{ value: 'SYSTEM', label: 'System' }, { value: 'DARK', label: 'Dark' }, { value: 'LIGHT', label: 'Light' }],
       ['SYSTEM', 'LIGHT', 'DARK'].includes(prefs.appearance) ? prefs.appearance : 'DARK',
       (v) => store.set({ appearance: v }))));
   section.append(settingRow('Cover grid density', 'How many covers fit per row in Library, Explore and Search.',
-    segControl([['S', 'Compact'], ['M', 'Comfort'], ['L', 'Large']], prefs.gridSize || 'M', (v) => store.set({ gridSize: v }))));
+    segmented([{ value: 'S', label: 'Compact' }, { value: 'M', label: 'Comfort' }, { value: 'L', label: 'Large' }], prefs.gridSize || 'M', (v) => store.set({ gridSize: v }))));
   section.append(settingRow('Dark style', 'Pure black saves OLED power; Soft uses Material grey surfaces.',
-    segControl([['BLACK', 'Pure black'], ['SOFT', 'Soft']], prefs.darkStyle === 'SOFT' ? 'SOFT' : 'BLACK', (v) => store.set({ darkStyle: v }))));
+    segmented([{ value: 'BLACK', label: 'Pure black' }, { value: 'SOFT', label: 'Soft' }], prefs.darkStyle === 'SOFT' ? 'SOFT' : 'BLACK', (v) => store.set({ darkStyle: v }))));
   section.append(settingRow('Interface scale', 'Overall size of text and controls.',
-    segControl([['S', 'Small'], ['M', 'Default'], ['L', 'Large']], ['S', 'L'].includes(prefs.uiScale) ? prefs.uiScale : 'M', (v) => store.set({ uiScale: v }))));
+    segmented([{ value: 'S', label: 'Small' }, { value: 'M', label: 'Default' }, { value: 'L', label: 'Large' }], ['S', 'L'].includes(prefs.uiScale) ? prefs.uiScale : 'M', (v) => store.set({ uiScale: v }))));
   section.append(settingRow('Show titles under covers', null,
     switchToggle(prefs.showCardTitles !== false, (v) => store.set({ showCardTitles: v }))));
   section.append(settingRow('Compact sidebar', 'Icon-only navigation rail on desktop — more room for content.',
@@ -150,15 +194,73 @@ function buildAppearance() {
   // raw hex values directly).
   const isCustom = isCustomHex;
   const picker = el('input', {
-    type: 'color', class: 'accent-picker', title: 'Pick a custom accent',
+    type: 'color', class: 'accent-picker',
     value: isCustom ? prefs.accent : resolveAccent(selectedId || 'sakura', appearance),
   });
-  picker.addEventListener('change', () => { store.set({ accent: picker.value }); clearActive(); });
+  // Re-render the whole Appearance section so the 'Use scheme' revert
+  // affordance appears immediately; store.set re-themes live via resolveAccent
+  // (no full-page reload).
+  const rerender = () => section.replaceWith(buildAppearance());
+  picker.addEventListener('change', () => { store.set({ accent: picker.value }); rerender(); });
   section.append(settingRow('Custom accent', 'Overrides the color scheme with any color you like.',
     el('div', { class: 'row', style: { gap: '10px' } },
       picker,
-      isCustom ? btn('Use scheme', { variant: 'ghost', onClick: () => { store.set({ accent: 'sakura' }); location.reload(); } }) : null,
+      isCustom ? btn('Use scheme', { variant: 'ghost', onClick: () => { store.set({ accent: 'sakura' }); rerender(); } }) : null,
     )));
+  return section;
+}
+
+function dlBytes(n) {
+  const v = Number(n) || 0;
+  if (v <= 0) return '0 B';
+  const units = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.min(units.length - 1, Math.floor(Math.log(v) / Math.log(1024)));
+  return `${(v / Math.pow(1024, i)).toFixed(i ? 1 : 0)} ${units[i]}`;
+}
+
+function buildDownloads() {
+  const s = downloads.getSettings();
+  const section = el('section', { class: 'settings-section' });
+
+  section.append(settingRow('Archive format', 'CBZ opens in comic readers; ZIP is the same file, renamed.',
+    segmented([{ label: 'CBZ', value: 'CBZ' }, { label: 'ZIP', value: 'ZIP' }], s.format,
+      (v) => { downloads.saveSettings({ format: v }); toast(`Saving as ${v}`); })));
+
+  section.append(settingRow('Concurrent chapters', 'Chapters downloaded in parallel.',
+    stepper({ value: s.maxConcurrent, min: 1, max: 5, onChange: (v) => downloads.saveSettings({ maxConcurrent: v }) })));
+
+  section.append(settingRow('Parallel pages', 'Page images fetched at once per chapter.',
+    stepper({ value: s.imageConcurrency, min: 1, max: 8, onChange: (v) => downloads.saveSettings({ imageConcurrency: v }) })));
+
+  section.append(settingRow('Retries per page', 'Re-attempts before a page is skipped.',
+    stepper({ value: s.retries, min: 0, max: 5, onChange: (v) => downloads.saveSettings({ retries: v }) })));
+
+  section.append(settingRow('Keep for offline reading', 'Store downloaded chapters in this browser.',
+    m3Switch(s.keepOffline, (on) => {
+      downloads.saveSettings({ keepOffline: on });
+      if (!on) toast('New downloads will not be kept offline');
+    })));
+
+  section.append(settingRow('Auto-save to device', 'Also download each finished file to your computer.',
+    m3Switch(s.saveToDevice, (on) => downloads.saveSettings({ saveToDevice: on }))));
+
+  // Offline storage usage + clear actions.
+  const usage = el('div', { class: 'sub' });
+  const refresh = () => {
+    const c = downloads.counts();
+    const parts = [];
+    if (c.completed) parts.push(`${c.completed} chapter${c.completed === 1 ? '' : 's'}`);
+    parts.push(dlBytes(c.totalBytes));
+    usage.textContent = `${parts.join(' · ')} stored offline`;
+  };
+  refresh();
+  const clearDone = btn('Clear finished', { variant: 'ghost', class: 'btn-sm', icon: 'trash', onClick: async () => { const r = await downloads.clearCompleted(); toast(r.removed ? `Cleared ${r.removed}` : 'Nothing to clear'); refresh(); } });
+  const delAll = btn('Delete all', { variant: 'ghost', class: 'btn-sm btn-danger', icon: 'trash', onClick: async () => { if (!(await confirmDialog('Delete every download, including offline files?'))) return; const r = await downloads.clearAll(); toast(r.removed ? `Deleted ${r.removed}` : 'Nothing to delete'); refresh(); } });
+  section.append(el('div', { class: 'setting-row' },
+    el('div', { class: 'row-main' }, el('div', { class: 'name' }, 'Offline storage'), usage),
+    el('div', { class: 'row-actions' }, clearDone, delAll),
+  ));
+
   return section;
 }
 
@@ -166,8 +268,8 @@ function buildReader() {
   const prefs = store.get();
   const r = prefs.reader || {};
   const section = el('section', { class: 'settings-section' });
-  section.append(settingRow('Default reading mode', 'New manga open in this mode; each title remembers its own override.', segControl([['WEBTOON', 'Webtoon'], ['PAGED', 'Paged'], ['PAGED_RTL', 'Paged RTL']], r.mode, (v) => store.set({ reader: { mode: v } }))));
-  section.append(settingRow('Image fit', null, segControl([['WIDTH', 'Width'], ['HEIGHT', 'Height']], r.fit, (v) => store.set({ reader: { fit: v } }))));
+  section.append(settingRow('Default reading mode', 'New manga open in this mode; each title remembers its own override.', segmented([{ value: 'WEBTOON', label: 'Webtoon' }, { value: 'PAGED', label: 'Paged' }, { value: 'PAGED_RTL', label: 'Paged RTL' }], r.mode, (v) => store.set({ reader: { mode: v } }))));
+  section.append(settingRow('Image fit', null, segmented([{ value: 'WIDTH', label: 'Width' }, { value: 'HEIGHT', label: 'Height' }], r.fit, (v) => store.set({ reader: { fit: v } }))));
   section.append(settingRow('Prefetch next chapter', 'Preload the next chapter’s pages for seamless chapter turns.', switchToggle(r.prefetch, (v) => store.set({ reader: { prefetch: v } }))));
 
   const sliderRow = (label, sub, min, max, step, value, fmtVal, onChange) => {
@@ -194,39 +296,98 @@ function buildReader() {
   return section;
 }
 
-function buildTranslate() {
+// Experimental HUB: a master gate + collapsed nav rows that drill into the
+// Translation and Colorization sub-pages (recursive settings). The gate also
+// controls the reader (see reader.js): while off, translate/colorize toggles
+// never appear or apply, and the rows here are disabled.
+function buildExperimental() {
+  const enabled = store.get().experimental === true;
+  const section = el('section', { class: 'settings-section experimental' });
+  const rerender = () => section.replaceWith(buildExperimental());
+
+  section.append(el('div', { class: 'exp-banner' + (enabled ? ' on' : '') },
+    el('span', { class: 'exp-banner-icon' }, icon('flask')),
+    el('div', { class: 'exp-banner-text' },
+      el('div', { class: 'exp-banner-title' }, 'Experimental features'),
+      el('div', { class: 'exp-banner-sub' },
+        'On-device AI translation and colorization. Beta — everything runs in your browser; models download on first use and results can be slow or imperfect.'),
+    ),
+    switchToggle(enabled, (v) => { store.set({ experimental: v }); rerender(); }),
+  ));
+
+  if (!enabled) {
+    section.append(el('p', { class: 'exp-hint' }, 'Turn on experimental features to open translation and colorization.'));
+  }
+
+  // Collapsed feature rows → each opens its own sub-page.
+  const nav = el('div', { class: 'settings-nav exp-nav' });
+  for (const [id, child] of Object.entries(EXP_CHILDREN)) {
+    nav.appendChild(navRow(child.name, child.sub, child.icon,
+      () => router.navigate('settings', { s: 'experimental', sub: id }), !enabled));
+  }
+  section.append(nav);
+
+  // Shared model storage (used by both features).
+  section.append(el('h2', { class: 'exp-h2' }, el('span', { class: 'exp-h2-icon' }, icon('download')), 'Storage'));
+  section.append(expModelStorageRow());
+
+  return section;
+}
+
+// Downloaded-models storage row (shared by translation + colorization).
+function expModelStorageRow() {
+  const usage = el('span', { class: 'hint' }, 'Calculating…');
+  (async () => {
+    try {
+      const cache = await caches.open('nyora-tl-models');
+      const keys = await cache.keys();
+      let bytes = 0;
+      for (const req of keys) { const res = await cache.match(req); if (res) bytes += (await res.blob()).size; }
+      usage.textContent = keys.length
+        ? `${keys.length} file${keys.length === 1 ? '' : 's'} · ${(bytes / 1024 / 1024).toFixed(0)} MB`
+        : 'No models downloaded yet';
+    } catch { usage.textContent = 'Unavailable'; }
+  })();
+  return settingRow('Downloaded models', usage,
+    btn('Delete', {
+      variant: 'ghost', class: 'btn-danger',
+      onClick: async () => {
+        if (!(await confirmDialog('Delete all downloaded AI models? They re-download on next use.'))) return;
+        try { await caches.delete('nyora-tl-models'); usage.textContent = 'No models downloaded yet'; toast('Models deleted'); }
+        catch { toast('Could not delete models'); }
+      },
+    }));
+}
+
+// Experimental → Translation sub-page.
+function buildExpTranslation() {
   const r = store.get().reader || {};
   const section = el('section', { class: 'settings-section' });
   const select = (opts, val, onChange) => menuSelect(opts, val, onChange);
-  section.append(settingRow(
-    'Translate pages',
+
+  section.append(settingRow('Translate pages',
     { info: 'Show manga pages with speech bubbles translated in place. Runs on-device — pages never leave your browser. Also toggleable per manga in the reader. Models download on first use (Japanese ~125 MB; Chinese/Korean/English ~20 MB).' },
-    switchToggle(r.translate, (v) => store.set({ reader: { translate: v } })),
-  ));
-  section.append(settingRow(
-    'Translate from',
+    switchToggle(r.translate, (v) => store.set({ reader: { translate: v } }))));
+  section.append(settingRow('Translate from',
     { info: 'Text-recognition language. Auto follows the manga source’s language.' },
-    select(TL_SOURCES, r.translateFrom || 'auto', (v) => store.set({ reader: { translateFrom: v } })),
-  ));
-  section.append(settingRow(
-    'Translate to', null,
-    select(TL_LANGS, r.translateTo || 'en', (v) => store.set({ reader: { translateTo: v } })),
-  ));
+    select(TL_SOURCES, r.translateFrom || 'auto', (v) => store.set({ reader: { translateFrom: v } }))));
+  section.append(settingRow('Translate to', null,
+    select(TL_LANGS, r.translateTo || 'en', (v) => store.set({ reader: { translateTo: v } }))));
 
-  // ---- LLM refinement (Android's AI Translate) --------------------------
-  section.append(el('h2', { style: { marginTop: '28px' } }, 'AI refinement'));
+  // Not under "AI refinement": the glossary now rewrites names before the plain
+  // machine translation too, so it works with no API key at all.
+  section.append(settingRow('Character names',
+    { info: 'Look the series up on MangaBaka/AniList and its Fandom wiki, detect which characters actually appear on each page, and use their canonical names — e.g. 早川アキ → Aki Hayakawa — instead of letting the translator invent a reading. Works on its own with no API key, and also sharpens AI refinement.' },
+    switchToggle(store.get().aiFandom === true, (v) => store.set({ aiFandom: v }))));
 
+  section.append(el('h3', { class: 'exp-h3' }, 'AI refinement'));
   const AI_PLACEHOLDERS = {
     openai: { endpoint: 'https://api.openai.com/v1', model: 'gpt-5.6-sol', key: 'sk-…' },
     anthropic: { endpoint: 'https://api.anthropic.com', model: 'claude-fable-5', key: 'sk-ant-…' },
   };
   const aiInputs = {};
   const aiField = (label, key, type) => {
-    const input = el('input', {
-      class: 'input', type,
-      autocomplete: 'off', spellcheck: 'false',
-      style: { width: '100%', maxWidth: '380px' },
-    });
+    const input = el('input', { class: 'input', type, autocomplete: 'off', spellcheck: 'false' });
     input.value = store.get()[key] || '';
     input.addEventListener('change', () => { store.set({ [key]: input.value.trim() }); toast('Saved'); });
     aiInputs[key] = input;
@@ -241,42 +402,90 @@ function buildTranslate() {
   };
   section.append(settingRow('API style',
     { info: 'Refine each translated page with a language model for coherence. OpenAI style covers OpenAI, OpenRouter, Groq and local Ollama; Anthropic covers Claude. Leave the API key empty to disable. The key is stored only in this browser.' },
-    segControl([['openai', 'OpenAI'], ['anthropic', 'Anthropic']],
+    segmented([{ value: 'openai', label: 'OpenAI' }, { value: 'anthropic', label: 'Anthropic' }],
       store.get().aiProvider === 'anthropic' ? 'anthropic' : 'openai',
       (v) => { store.set({ aiProvider: v }); paintAiPlaceholders(v); })));
   section.append(aiField('API endpoint', 'aiEndpoint', 'url'));
   section.append(aiField('API key', 'aiApiKey', 'password'));
   section.append(aiField('Model', 'aiModel', 'text'));
   paintAiPlaceholders(store.get().aiProvider === 'anthropic' ? 'anthropic' : 'openai');
-  section.append(settingRow('Fetch series context',
-    { info: 'Look up the series (synopsis + canonical character names, native → romanized) before refining, so names and terms come out right.' },
-    switchToggle(store.get().aiFandom === true, (v) => store.set({ aiFandom: v }))));
 
-  // Downloaded-model management (mirrors Android's per-model storage screen).
-  const usage = el('span', { class: 'hint' }, 'Calculating…');
-  (async () => {
+  section.append(el('h3', { class: 'exp-h3' }, 'Storage'));
+  section.append(expModelStorageRow());
+  return section;
+}
+
+// Experimental → Colorization sub-page. The model is big (~980 MB), so it is
+// downloaded EXPLICITLY here (with a progress bar) and the Colorize toggle stays
+// locked until it's cached — no surprise multi-hundred-MB download mid-read.
+function buildExpColorization() {
+  const r = store.get().reader || {};
+  const section = el('section', { class: 'settings-section' });
+
+  // Colorize toggle — locked until the model is present.
+  const czToggle = switchToggle(r.colorize === true, (v) => store.set({ reader: { colorize: v } }));
+  const czInput = czToggle.querySelector('input');
+  czInput.disabled = true;
+  const czRow = settingRow('Colorize pages',
+    { info: 'AI-colour black-and-white manga on this device with manga-colorization-v2 — a model trained on manga/anime art. Download the model below to enable this; line art stays crisp because only colour comes from the model.' },
+    czToggle);
+  czRow.classList.add('is-locked');
+  section.append(czRow);
+
+  // ── Model download, with a real progress bar ──
+  const state = el('div', { class: 'sub' }, 'Checking…');
+  const fill = el('span', { style: { width: '0%' } });
+  const bar = el('div', { class: 'progress exp-dl-bar', style: { display: 'none' } }, fill);
+  const dlBtn = btn('Download', { variant: 'accent', class: 'btn-sm', icon: 'install', onClick: () => startDownload() });
+  section.append(el('div', { class: 'setting-row exp-model-row' },
+    el('div', { class: 'row-main' },
+      el('div', { class: 'name' }, 'Colorization model'),
+      state,
+      bar,
+    ),
+    el('div', { class: 'row-actions' }, dlBtn),
+  ));
+
+  function setReady(ready) {
+    czInput.disabled = !ready;
+    czRow.classList.toggle('is-locked', !ready);
+    bar.style.display = 'none';
+    if (ready) {
+      state.textContent = 'Downloaded — manga-colorization-v2 (~62 MB), cached on this device.';
+      dlBtn.style.display = 'none';
+    } else {
+      state.textContent = 'manga-colorization-v2 · ~62 MB — download once to enable colorization.';
+      dlBtn.style.display = '';
+      dlBtn.disabled = false;
+    }
+  }
+
+  async function startDownload() {
+    dlBtn.disabled = true;
+    bar.style.display = '';
+    fill.style.width = '0%';
+    state.textContent = 'Downloading… 0%';
     try {
-      const cache = await caches.open('nyora-tl-models');
-      const keys = await cache.keys();
-      let bytes = 0;
-      for (const req of keys) {
-        const res = await cache.match(req);
-        if (res) bytes += (await res.blob()).size;
-      }
-      usage.textContent = keys.length
-        ? `${keys.length} file${keys.length === 1 ? '' : 's'} · ${(bytes / 1024 / 1024).toFixed(0)} MB`
-        : 'No models downloaded yet';
-    } catch { usage.textContent = 'Unavailable'; }
-  })();
-  section.append(settingRow('Downloaded models', usage,
-    btn('Delete', {
-      variant: 'ghost', class: 'btn-danger',
-      onClick: async () => {
-        if (!(await confirmDialog('Delete all downloaded AI models? They re-download on next use.'))) return;
-        try { await caches.delete('nyora-tl-models'); usage.textContent = 'No models downloaded yet'; toast('Models deleted'); }
-        catch { toast('Could not delete models'); }
-      },
-    })));
+      await downloadColorizeModel((pct) => {
+        fill.style.width = pct + '%';
+        state.textContent = `Downloading… ${pct}%`;
+      });
+      toast('Colorization model ready');
+      setReady(true);
+    } catch (e) {
+      state.textContent = `Download failed — ${(e && e.message) || 'check your connection'}. Tap Download to retry.`;
+      bar.style.display = 'none';
+      dlBtn.disabled = false;
+    }
+  }
+
+  colorizeModelReady().then(setReady).catch(() => setReady(false));
+
+  section.append(el('p', { class: 'exp-note' },
+    'Powered by manga-colorization-v2, a GAN trained on manga/anime art, running entirely on this device — pages never leave your browser. Screentone is denoised before colouring, and line art stays crisp because only colour comes from the model.'));
+
+  section.append(el('h3', { class: 'exp-h3' }, 'Storage'));
+  section.append(expModelStorageRow());
   return section;
 }
 
@@ -287,7 +496,7 @@ function buildContent() {
   section.append(settingRow('Keep 18+ out of history', 'Don’t save adult manga to your reading history.', switchToggle(prefs.noNsfwHistory, (v) => store.set({ noNsfwHistory: v }))));
   section.append(settingRow('Incognito mode', 'Pause reading history entirely — nothing you open is recorded until this is turned off.', switchToggle(prefs.incognito, (v) => { store.set({ incognito: v }); toast(v ? 'Incognito on — history paused' : 'Incognito off'); })));
   section.append(settingRow('Universal search scope', 'Pinned searches only the sources you pinned in Explore (faster, curated); All installed searches everything.',
-    segControl([['pinned', 'Pinned'], ['all', 'All installed']], prefs.searchScope === 'all' ? 'all' : 'pinned', (v) => store.set({ searchScope: v }))));
+    segmented([{ value: 'pinned', label: 'Pinned' }, { value: 'all', label: 'All installed' }], prefs.searchScope === 'all' ? 'all' : 'pinned', (v) => store.set({ searchScope: v }))));
   section.append(settingRow(
     'Languages & sources',
     'Re-pick your languages and content preference; reseeds the installed sources.',
@@ -494,7 +703,7 @@ function buildAbout() {
     class: 'social-link',
     style: {
       display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-      width: '42px', height: '42px', borderRadius: '12px',
+      width: '42px', height: '42px', borderRadius: 'var(--radius)',
       background: 'var(--surface2)', color: 'var(--text-dim)',
       transition: 'all 0.2s var(--ease)',
       margin: '0 8px',

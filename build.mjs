@@ -9,11 +9,20 @@
 //   web/  →  edit + serve unbundled (python3 -m http.server in web/)
 //   dist/ →  built bundle, deployed to nyoraweb.pages.dev
 import { build } from 'esbuild';
-import { rm, cp, readFile, writeFile } from 'node:fs/promises';
+import { rm, cp, readFile, writeFile, readdir } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 
 const SRC = 'web';
 const OUT = 'dist';
+
+// The onnxruntime runtime is fetched, not committed (see scripts/fetch-ort.mjs).
+// Fail loudly rather than shipping a build whose AI workers 404 on their
+// runtime — that failure would only surface for a user who opens the reader.
+const ORT_ENTRY = `${SRC}/vendor/ort/ort.min.mjs`;
+if (!(await readFile(ORT_ENTRY).catch(() => null))) {
+  console.error(`✗ missing ${ORT_ENTRY} — run: npm run fetch:ort`);
+  process.exit(1);
+}
 
 // 1. Fresh dist/ that mirrors every static asset (html, css, env.js, sw.js,
 //    icons, manifest, _redirects, sources.json, …). The source .js modules are
@@ -35,6 +44,48 @@ await build({
   legalComments: 'none',
   logLevel: 'info',
 });
+
+// 2a. The AI workers are loaded BY URL at runtime (`new Worker('/core/
+//     translate/tl-worker.js')`), so they are not part of the app graph and the
+//     prune below would delete them. Bundle each as its own self-contained
+//     entry, in place, so it keeps its path while inlining its imports
+//     (worker.js pulls in ./model.js) and gets minified like everything else.
+const WORKERS = ['core/translate/tl-worker.js', 'core/colorize/worker.js'];
+await build({
+  entryPoints: WORKERS.map((w) => `${SRC}/${w}`),
+  outdir: OUT,
+  outbase: SRC,
+  bundle: true,
+  minify: true,
+  format: 'esm',
+  target: ['es2020'],
+  legalComments: 'none',
+});
+
+// 2b. Drop the raw ES modules that step 1 copied. They're inlined into the
+//     bundle and nothing loads them — but left in place they ship the entire
+//     unminified source to production alongside the minified bundle, which
+//     makes minification pointless and adds ~700 KB of dead weight. Keep the
+//     entry, the generated chunks, the two bundled workers, and the standalone
+//     scripts index.html and the SW load directly (sw.js, env.js).
+const KEEP = new Set(['app.js', 'sw.js', 'env.js', ...WORKERS]);
+async function pruneSources(dir, rel = '') {
+  for (const entry of await readdir(dir, { withFileTypes: true })) {
+    const abs = `${dir}/${entry.name}`;
+    const relPath = rel ? `${rel}/${entry.name}` : entry.name;
+    if (entry.isDirectory()) {
+      if (entry.name === 'vendor') continue; // vendored libs are loaded as-is
+      await pruneSources(abs, relPath);
+      // remove the directory if pruning emptied it
+      if ((await readdir(abs)).length === 0) await rm(abs, { recursive: true, force: true });
+    } else if (entry.name.endsWith('.js')
+      && !KEEP.has(relPath)
+      && !entry.name.startsWith('chunk-')) {
+      await rm(abs, { force: true });
+    }
+  }
+}
+await pruneSources(OUT);
 
 // 3. Cache-bust id from the bundled entry's bytes.
 const id = createHash('sha256').update(await readFile(`${OUT}/app.js`)).digest('hex').slice(0, 8);
