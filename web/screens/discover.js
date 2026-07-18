@@ -23,7 +23,7 @@
 
 import {
   el, skeletonCard, errorBox, emptyState,
-  sectionHeader, chip, icon, btn, applyImage,
+  sectionHeader, chip, btn, applyImage,
 } from '../core/ui.js';
 import { router } from '../core/store.js';
 
@@ -52,37 +52,10 @@ export function render(view, _params) {
   const root = el('section', { class: 'discover' });
   view.append(root);
 
-  // Persistent search bar at the top — submits a universal search.
-  root.append(discoverSearchBar());
-
   const body = el('div', { class: 'discover-body' });
   root.append(body);
 
   load(body);
-}
-
-function discoverSearchBar() {
-  const input = el('input', {
-    type: 'search',
-    class: 'discover-search-input',
-    placeholder: 'Search all sources',
-    autocomplete: 'off',
-    enterkeyhint: 'search',
-    'aria-label': 'Search all sources',
-  });
-  const form = el('form', {
-    class: 'discover-search',
-    role: 'search',
-    onSubmit: (e) => {
-      e.preventDefault();
-      const q = input.value.trim();
-      router.navigate('search', q ? { q } : {});
-    },
-  },
-    icon('search'),
-    input,
-  );
-  return form;
 }
 
 async function load(body) {
@@ -341,7 +314,7 @@ function heroCard(item) {
     ),
   );
 
-  const node = el('div', { class: 'discover-hero', role: 'button', tabindex: '0' },
+  const node = el('div', { class: 'discover-hero' },
     bg,
     el('div', { class: 'discover-hero-content' }, coverWrap, info),
   );
@@ -349,9 +322,6 @@ function heroCard(item) {
     // Let the explicit Read button handle its own click.
     if (e.target.closest('.btn')) return;
     openEntry(item);
-  });
-  node.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openEntry(item); }
   });
   return node;
 }
@@ -381,15 +351,14 @@ function railCard(item) {
     coverWrap.appendChild(img);
   }
   if (genre) {
-    coverWrap.appendChild(el('div', {
-      class: 'chips',
-      style: { position: 'absolute', left: '6px', right: '6px', bottom: '6px', gap: '6px' },
-    }, chip(genre)));
+    coverWrap.appendChild(el('div', { class: 'chips cover-chips' }, chip(genre)));
   }
 
-  const node = el('div', { class: 'card discover-rail-card', role: 'button', tabindex: '0' },
-    coverWrap,
-    el('div', { class: 'title', title }, title),
+  const node = el('md-elevated-card', { class: 'card discover-rail-card', role: 'button', tabindex: '0' },
+    el('div', { class: 'card-body' },
+      coverWrap,
+      el('div', { class: 'title', title }, title),
+    ),
   );
   node.addEventListener('click', () => openEntry(item));
   node.addEventListener('keydown', (e) => {

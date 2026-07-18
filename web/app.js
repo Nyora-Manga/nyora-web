@@ -5,7 +5,7 @@
 // route name to a screen's render() and mounts it into #view.
 
 import { store, router } from './core/store.js';
-import { el, icon, $, toast } from './core/ui.js';
+import { el, icon, $, toast, btn, errorBox } from './core/ui.js';
 import library from './core/library.js';
 import { revealView } from './core/motion.js';
 
@@ -25,6 +25,7 @@ import { meta as readerMeta, render as readerRender } from './screens/reader.js'
 import { meta as searchMeta, render as searchRender } from './screens/search.js';
 import { meta as browserMeta, render as browserRender } from './screens/browser.js';
 import { shouldShowWelcome, showWelcome } from './screens/welcome.js';
+import { shouldShowChangelog, showChangelog, markChangelogSeen } from './core/changelog.js';
 
 const routes = {
   discover: discoverRender,
@@ -153,7 +154,7 @@ function dispatch(route) {
     fn(view, route.params || {});
     revealView(view, name);
   } catch {
-    view.replaceChildren(el('div', { class: 'error-box' }, 'Something went wrong loading this screen. Please try again.'));
+    view.replaceChildren(errorBox('Something went wrong loading this screen. Please try again.'));
   }
   // Restore this screen's remembered scroll position (0 = fresh navigation).
   const scrollKey = name + '?' + JSON.stringify(route.params || {});
@@ -189,6 +190,7 @@ function buildSidebar() {
       'data-route': item.key,
       role: 'button',
       tabindex: '0',
+      title: item.label, // rail mode hides labels — the tooltip still names it
       onClick: () => {
         document.body.classList.remove('nav-open');
         if (item.continue) continueReading();
@@ -365,19 +367,11 @@ function syncTabbar(name) {
 // next load instead of getting stuck behind a stale cached build.
 function registerSW() {
   if (!('serviceWorker' in navigator)) return;
-  // Local development: never use the service worker — it caches aggressively and
-  // makes edits to web/ appear stale. Tear down any existing registration + caches
-  // so every reload serves the latest source. No effect on production hosts.
-  const host = location.hostname;
-  if (host === 'localhost' || host === '127.0.0.1' || host === '[::1]') {
-    navigator.serviceWorker.getRegistrations()
-      .then((regs) => regs.forEach((r) => r.unregister()))
-      .catch(() => {});
-    if (window.caches && caches.keys) {
-      caches.keys().then((keys) => keys.forEach((k) => caches.delete(k))).catch(() => {});
-    }
-    return;
-  }
+  // Local development uses the service worker too: sw.js serves same-origin
+  // code network-first on localhost (edits are never stale) while still
+  // injecting the COOP/COEP headers the translator needs for wasm threads.
+  // Do NOT tear it down / clear caches here — the old localhost teardown wiped
+  // 'nyora-tl-models' on every reload, re-downloading ~125 MB of AI models.
   // If this page is already controlled by a SW, a controllerchange means a NEW
   // worker took over (an update) — reload once so the fresh app/assets are used.
   const wasControlled = !!navigator.serviceWorker.controller;
@@ -436,8 +430,8 @@ function setupInstallPrompt() {
         el('span', {}, 'Add it to your home screen — full-screen and offline-ready.'),
       ),
       el('div', { class: 'install-banner-actions' },
-        el('button', { class: 'btn btn-ghost', onClick: dismiss }, 'Later'),
-        el('button', { class: 'btn btn-accent', onClick: doInstall }, 'Install'),
+        btn('Later', { variant: 'ghost', onClick: dismiss }),
+        btn('Install', { variant: 'accent', onClick: doInstall }),
       ),
     );
     document.body.appendChild(banner);
@@ -512,7 +506,37 @@ router.onChange(dispatch);
 // never flashes behind it; only start routing — which renders the first screen
 // into #view — once the user proceeds.
 if (shouldShowWelcome()) {
+  // Genuine first run — the welcome screen is the introduction, so record the
+  // version rather than stacking a "what's new" dialog on top of it.
+  markChangelogSeen();
   showWelcome(() => router.start(routes, 'discover'));
 } else {
   router.start(routes, 'discover');
+  // Existing installs have no stored version, so this fires once for people
+  // already using the app. Wait for the splash to clear so it doesn't animate
+  // in behind it.
+  if (shouldShowChangelog()) setTimeout(() => showChangelog(), 900);
 }
+
+// Fade out the boot splash once the shell + first screen have painted, so the
+// user never sees the empty black shell while modules were loading.
+function hideSplash() {
+  const s = document.getElementById('splash');
+  if (!s) return;
+  s.classList.add('splash-hide');
+  const done = () => { if (s.parentNode) s.remove(); };
+  s.addEventListener('transitionend', done, { once: true });
+  setTimeout(done, 800);
+}
+requestAnimationFrame(() => requestAnimationFrame(hideSplash));
+
+// Splash failsafes: #splash is a fixed full-screen overlay, so any boot throw or
+// failed module load that skips the rAF above would leave it covering the app
+// forever. These belts-and-braces removals guarantee it always clears — the
+// normal successful boot still fades it after first paint (the rAF above wins).
+window.addEventListener('load', hideSplash);
+setTimeout(hideSplash, 5000);
+// A boot error reveals the shell instead of a permanent splash. once:true so
+// these never interfere after the app is up and running.
+window.addEventListener('error', hideSplash, { once: true });
+window.addEventListener('unhandledrejection', hideSplash, { once: true });

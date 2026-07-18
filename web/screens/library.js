@@ -7,7 +7,7 @@
 
 import {
   el, card, toast, skeletonCard, icon, btn, chip, emptyState,
-  errorBox, promptDialog, confirmDialog, modal, segmented,
+  errorBox, promptDialog, confirmDialog, modal, segmented, attachContextMenu,
 } from '../core/ui.js';
 import library from '../core/library.js';
 import { api } from '../core/api.js';
@@ -311,7 +311,10 @@ export function render(view, params) {
         active: state.activeCategoryId === cat.id,
         onClick: () => selectCategory(cat.id),
       });
-      attachManageGesture(pill, cat);
+      attachContextMenu(pill, () => [
+        { label: 'Rename', icon: 'settings', onClick: () => renameCategory(cat) },
+        { label: 'Delete', icon: 'trash', danger: true, onClick: () => deleteCategory(cat) },
+      ]);
       chipsEl.appendChild(pill);
     }
 
@@ -323,23 +326,8 @@ export function render(view, params) {
     // A small, unobtrusive "Manage" affordance when there is something to manage.
     if (state.categories.length) {
       const manage = chip('Manage', { onClick: () => openManagePicker() });
-      manage.title = 'Rename or delete a collection';
       chipsEl.appendChild(manage);
     }
-  }
-
-  // Long-press (touch) and context-menu (mouse) on a category chip jumps
-  // straight to its manage sheet — a quiet power-user affordance.
-  function attachManageGesture(pill, cat) {
-    let timer = null;
-    const start = () => {
-      timer = setTimeout(() => { timer = null; openManageSheet(cat); }, 500);
-    };
-    const cancel = () => { if (timer) { clearTimeout(timer); timer = null; } };
-    pill.addEventListener('touchstart', start, { passive: true });
-    pill.addEventListener('touchend', cancel);
-    pill.addEventListener('touchmove', cancel);
-    pill.addEventListener('contextmenu', (e) => { e.preventDefault(); openManageSheet(cat); });
   }
 
   // ---- category management -------------------------------------------
@@ -413,6 +401,9 @@ export function render(view, params) {
         class: 'row-item', role: 'button', tabindex: '0',
         style: { cursor: 'pointer' },
         onClick: () => { close(); openManageSheet(cat); },
+        onKeyDown: (e) => {
+          if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); close(); openManageSheet(cat); }
+        },
       },
         icon('folder'),
         el('div', { class: 'row-main' },

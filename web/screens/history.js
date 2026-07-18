@@ -21,7 +21,7 @@ import {
   el, $, proxyImage, applyImage, toast, emptyState, errorBox, sectionHeader,
   iconBtn, icon, btn, confirmDialog, fmt,
 } from '../core/ui.js';
-import { router } from '../core/store.js';
+import { store, router } from '../core/store.js';
 import library from '../core/library.js';
 
 export const meta = {
@@ -99,8 +99,7 @@ function paint(body, clearBtn, search) {
     body.replaceChildren(
       errorBox(`Couldn't load history: ${err.message || err}`),
       el('div', { class: 'center', style: { marginTop: '12px' } },
-        el('button', { class: 'btn btn-ghost', onClick: () => paint(body, clearBtn, search) },
-          icon('refresh'), el('span', null, 'Retry')),
+        btn('Retry', { variant: 'ghost', icon: 'refresh', onClick: () => paint(body, clearBtn, search) }),
       ),
     );
     return;
@@ -186,16 +185,29 @@ function rowItem(row, body, clearBtn, search) {
   const item = el('div', { class: 'row-item' });
 
   const manga = (row && row.manga) || {};
+  const title = (manga.title && manga.title.trim()) || 'Untitled';
 
-  // Cover thumbnail (direct-first; proxy fallback; hide on broken image).
+  // Some sources return no cover in chapter details, so the recorded entry has
+  // none — but the card grid cached one when the manga was browsed. Backfill.
+  if (!manga.coverUrl && !manga.largeCoverUrl && manga.url) {
+    const hint = store.cachedManga(manga.url);
+    if (hint && (hint.coverUrl || hint.largeCoverUrl)) {
+      manga.coverUrl = hint.coverUrl || '';
+      manga.largeCoverUrl = hint.largeCoverUrl || '';
+    }
+  }
+
+  // Cover thumbnail (direct-first; proxy fallback). Missing/broken covers show
+  // a monogram tile instead of collapsing — rows stay aligned.
+  const fallbackThumb = () => el('div', { class: 'thumb thumb-fallback', 'aria-hidden': 'true' }, (title[0] || '?').toUpperCase());
   const cover = manga.coverUrl || manga.largeCoverUrl || '';
   if (cover) {
     const img = el('img', { class: 'thumb', loading: 'lazy', decoding: 'async', alt: manga.title || '' });
-    applyImage(img, cover, undefined, () => { img.style.display = 'none'; });
+    applyImage(img, cover, undefined, () => { img.replaceWith(fallbackThumb()); });
     item.appendChild(img);
+  } else {
+    item.appendChild(fallbackThumb());
   }
-
-  const title = (manga.title && manga.title.trim()) || 'Untitled';
   const chapter = (row.chapterTitle && row.chapterTitle.trim()) || 'Chapter';
   const pct = Math.round(clampPercent(row.percent) * 100);
 
@@ -213,21 +225,24 @@ function rowItem(row, body, clearBtn, search) {
 
   const main = el(
     'div',
-    { class: 'row-main' },
+    { class: 'row-main', role: 'button', tabindex: '0', 'aria-label': `Resume ${title}` },
     el('div', { class: 'name', title }, title),
     el('div', { class: 'sub', title: chapter }, `${subParts.join(' · ')} · ${pct}%`),
     progress,
   );
   main.style.cursor = 'pointer';
 
-  // Tapping the row body (or thumb) RESUMES in the reader at the stored spot.
+  // row-main is the SINGLE resume target. The cover img is swapped out for a
+  // fallback tile when it errors (applyImage -> replaceWith), so a handler on
+  // the img would be lost on broken covers; bind click + keyboard here instead.
   const resume = () => resumeReading(row);
   main.addEventListener('click', resume);
-  const thumb = $('.thumb', item);
-  if (thumb) {
-    thumb.style.cursor = 'pointer';
-    thumb.addEventListener('click', resume);
-  }
+  main.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') {
+      e.preventDefault();
+      resume();
+    }
+  });
 
   const actions = el(
     'div',

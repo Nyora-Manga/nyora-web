@@ -2,3 +2,29 @@
 # never pick up new deploys. (Cloudflare Pages was serving it max-age=14400.)
 /sw.js
   Cache-Control: no-cache, no-store, must-revalidate
+
+# ---- Security headers ----------------------------------------------------
+#
+# script-src is 'self' with NO third-party origin: onnxruntime is vendored under
+# /vendor/ort/ precisely so this can hold. Never add a CDN back here — a dynamic
+# import() cannot carry an integrity attribute, so a CDN entry means unverified
+# code executing in a worker that sees every page image.
+#
+# connect-src still allows Hugging Face because the model WEIGHTS are fetched at
+# runtime; those are pinned to commit SHAs and SHA-256-verified in the workers
+# before they reach the ONNX parser.
+#
+# 'unsafe-inline' (script-src) is required by the inline boot scripts in
+# index.html — the theme preflight and the legacy-domain migration. style-src
+# needs it for the inline style attributes the UI code sets throughout. Both are
+# deliberate, and both are tightening targets (nonces) rather than oversights.
+#
+# connect-src lists the LLM refinement defaults only. A user-configured custom
+# endpoint (Settings → Experimental → Translation) will be BLOCKED until its
+# host is added here — that is the intended trade-off, not a bug.
+/*
+  Content-Security-Policy: default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'; worker-src 'self' blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https:; media-src 'self' blob:; connect-src 'self' blob: data: https://api.nyora.xyz https://sync.nyora.xyz https://huggingface.co https://*.huggingface.co https://*.hf.co https://raw.githubusercontent.com https://translate.googleapis.com https://graphql.anilist.co https://api.mangabaka.dev https://*.fandom.com https://api.openai.com https://api.anthropic.com
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  X-Frame-Options: DENY
+  Permissions-Policy: geolocation=(), microphone=(), camera=(), payment=(), usb=(), interest-cohort=()

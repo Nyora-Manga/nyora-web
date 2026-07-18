@@ -6,10 +6,10 @@
 // a glass auth card. Desktop-first but responsive. Email/password sign-in
 // against the self-hosted sync server, plus guest and restore actions.
 
-import { el, toast, spinner, langCode, languageOptions } from '../core/ui.js';
+import { el, toast, spinner, langCode, languageOptions, schemeCard, segmented } from '../core/ui.js';
 import sync from '../core/sync.js';
 import api from '../core/api.js';
-import { store } from '../core/store.js';
+import { store, COLOR_SCHEMES } from '../core/store.js';
 
 const ONBOARD_KEY = 'nyora.web.onboarded.v1';
 
@@ -214,6 +214,7 @@ export function showWelcome(onDone) {
 
   document.documentElement.classList.add('wlc-open');
   document.body.appendChild(overlay);
+  requestAnimationFrame(() => emailInput.focus());
 
   // ── Preferences onboarding ──────────────────────────────────────────────
   // After the user is in (sign-in / create / guest): swap the auth stage for the
@@ -297,7 +298,7 @@ function populatePreferencesCard(card, opts = {}) {
     const loading = card.querySelector('.wlc-prefs-loading');
     if (loading) loading.remove();
 
-    const nsfwInput = el('input', { type: 'checkbox' });
+    const nsfwInput = el('input', { type: 'checkbox', 'aria-label': 'Show 18+ sources' });
     nsfwInput.checked = show18;
     nsfwInput.addEventListener('change', () => { show18 = nsfwInput.checked; renderCount(); });
     const nsfwRow = el('div', { class: 'wlc-pref-row' },
@@ -325,8 +326,14 @@ function populatePreferencesCard(card, opts = {}) {
       grid.appendChild(c);
     }
     function paint() {
-      allChip.classList.toggle('active', selected.size === 0);
-      for (const [code, c] of chips) c.classList.toggle('active', selected.has(code));
+      const allOn = selected.size === 0;
+      allChip.classList.toggle('active', allOn);
+      allChip.setAttribute('aria-pressed', allOn ? 'true' : 'false');
+      for (const [code, c] of chips) {
+        const on = selected.has(code);
+        c.classList.toggle('active', on);
+        c.setAttribute('aria-pressed', on ? 'true' : 'false');
+      }
     }
     paint();
 
@@ -344,9 +351,51 @@ function populatePreferencesCard(card, opts = {}) {
       applyAndFinish(entries);
     });
 
+    // Appearance — applied LIVE so the pick gives instant feedback (the CTA
+    // and accents on this very card recolor as you tap).
+    const prefsNow = store.get();
+    let theme = ['SYSTEM', 'LIGHT', 'DARK'].includes(prefsNow.appearance) ? prefsNow.appearance : 'DARK';
+    const themeSeg = segmented(
+      [{ label: 'System', value: 'SYSTEM' }, { label: 'Dark', value: 'DARK' }, { label: 'Light', value: 'LIGHT' }],
+      theme,
+      (v) => {
+        theme = v;
+        store.set({ appearance: v });
+        paintSchemeCards(); // card previews depend on the effective theme
+        syncThemeAria();
+      });
+    themeSeg.classList.add('wlc-theme-seg');
+    const syncThemeAria = () => {
+      for (const c of themeSeg.children) c.setAttribute('aria-pressed', c.classList.contains('active') ? 'true' : 'false');
+    };
+    syncThemeAria();
+    // Colour schemes as the same preview cards Settings uses.
+    const swatches = el('div', { class: 'scheme-cards wlc-scheme-cards' });
+    function paintSchemeCards() {
+      const effective = theme === 'SYSTEM'
+        ? (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches ? 'LIGHT' : 'DARK')
+        : theme;
+      const current = COLOR_SCHEMES.some((s) => s.id === store.get().accent) ? store.get().accent : 'sakura';
+      swatches.replaceChildren(...COLOR_SCHEMES.map((s) => schemeCard(s, {
+        active: s.id === current,
+        appearance: effective,
+        onChoose: (node) => {
+          store.set({ accent: s.id });
+          for (const c of swatches.children) c.classList.remove('active');
+          node.classList.add('active');
+        },
+      })));
+    }
+    paintSchemeCards();
+
     // Head fixed; sections scroll; foot (count + CTA) pinned so the CTA is always
     // reachable even with a long language list.
     const body = el('div', { class: 'wlc-prefs-body' },
+      el('div', { class: 'wlc-prefs-section' },
+        el('div', { class: 'wlc-prefs-label' }, 'Appearance'),
+        el('p', { class: 'wlc-prefs-hint' }, 'Theme and accent colour — applied instantly; fine-tune later in Settings.'),
+        themeSeg,
+        swatches),
       el('div', { class: 'wlc-prefs-section' }, nsfwRow),
       el('div', { class: 'wlc-prefs-section' },
         el('div', { class: 'wlc-prefs-label' }, 'Languages'),

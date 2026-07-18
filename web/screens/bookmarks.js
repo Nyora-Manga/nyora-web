@@ -16,7 +16,7 @@
 import { api } from '../core/api.js';
 import {
   el, $, proxyImage, applyImage, toast, emptyState, errorBox, sectionHeader,
-  iconBtn, icon, chip, confirmDialog, promptDialog, fmt,
+  iconBtn, btn, chip, confirmDialog, promptDialog, fmt,
 } from '../core/ui.js';
 import { router } from '../core/store.js';
 
@@ -55,8 +55,7 @@ async function load(body) {
     body.replaceChildren(
       errorBox(`Couldn't load bookmarks: ${err.message || err}`),
       el('div', { class: 'center', style: { marginTop: '12px' } },
-        el('button', { class: 'btn btn-ghost', onClick: () => load(body) },
-          icon('refresh'), el('span', null, 'Retry')),
+        btn('Retry', { variant: 'ghost', icon: 'refresh', onClick: () => load(body) }),
       ),
     );
     return;
@@ -95,13 +94,7 @@ function renderGroups(body, rows) {
 
     const title = (manga.title && manga.title.trim()) || 'Unknown';
     const section = el('div', { class: 'bookmark-section', style: { marginBottom: '28px' } });
-    const head = el(
-      'div',
-      { class: 'section-header' },
-      el('h2', { title }, title),
-      el('div', { class: 'section-actions' },
-        chip(`${groupRows.length} saved`)),
-    );
+    const head = sectionHeader(title, chip(`${groupRows.length} saved`));
 
     const list = el('div', { class: 'list' });
     for (const row of groupRows) list.appendChild(rowItem(row, body));
@@ -138,7 +131,12 @@ function rowItem(row, body) {
 
   const main = el(
     'div',
-    { class: 'row-main' },
+    {
+      class: 'row-main',
+      role: 'button',
+      tabindex: '0',
+      'aria-label': `Resume ${chapterTitle}${mangaTitle ? ` — ${mangaTitle}` : ''}`,
+    },
     el('div', { class: 'name', title: chapterTitle }, chapterTitle),
     el('div', { class: 'sub' },
       chip(`Page ${pageNo}`),
@@ -166,6 +164,12 @@ function rowItem(row, body) {
 
   // Clicking the row body (cover + main, not the action buttons) resumes.
   main.addEventListener('click', open);
+  main.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      open();
+    }
+  });
   const thumb = $('.thumb', item);
   if (thumb) {
     thumb.style.cursor = 'pointer';
@@ -262,7 +266,7 @@ function skeletonGroups() {
   for (let s = 0; s < 2; s++) {
     const section = el('div', { class: 'bookmark-section', style: { marginBottom: '28px' } });
     const head = el('div', { class: 'section-header' },
-      el('div', { class: 'skeleton', style: { height: '17px', width: '40%', borderRadius: '6px' } }));
+      el('div', { class: 'skeleton', style: { height: '17px', width: '40%', borderRadius: 'var(--radius-sm)' } }));
     const list = el('div', { class: 'list' });
     for (let i = 0; i < 3; i++) list.appendChild(skeletonRow());
     section.append(head, list);
@@ -275,8 +279,8 @@ function skeletonRow() {
   return el('div', { class: 'row-item' },
     el('div', { class: 'skeleton thumb' }),
     el('div', { class: 'row-main' },
-      el('div', { class: 'skeleton', style: { height: '14px', width: '55%', borderRadius: '6px' } }),
-      el('div', { class: 'skeleton', style: { height: '12px', width: '35%', borderRadius: '6px', marginTop: '8px' } }),
+      el('div', { class: 'skeleton', style: { height: '14px', width: '55%', borderRadius: 'var(--radius-sm)' } }),
+      el('div', { class: 'skeleton', style: { height: '12px', width: '35%', borderRadius: 'var(--radius-sm)', marginTop: '8px' } }),
     ),
   );
 }

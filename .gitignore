@@ -8,3 +8,6 @@ build/
 .DS_Store
 .idea/
 *.iml
+
+# onnxruntime runtime — fetched by scripts/fetch-ort.mjs, not committed (24 MB wasm)
+web/vendor/ort/

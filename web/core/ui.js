@@ -2,7 +2,13 @@
 // toasts and small formatters shared by every screen.
 
 import { api } from './api.js';
-import { store } from './store.js';
+import { store, resolveAccent, detectBrowserAccent } from './store.js';
+import library from './library.js';
+// Material You prebuilt card surface (Material Web's <md-elevated-card>). Loaded
+// from a self-contained pre-bundled vendor ESM so it resolves in both unbundled
+// dev (served from web/) and the production bundle. Theming: --md-elevated-card-*
+// tokens in styles.css. Regenerate with: esbuild bundle of @material/web/labs/card.
+import '../vendor/md-elevated-card.js';
 
 // ---- langLabel() : friendly source subtitle ---------------------------
 // Sources expose an internal parser/engine name (e.g. "MadaraParser"); users
@@ -118,6 +124,19 @@ export function $$(sel, root = document) {
 
 // ---- image proxy -------------------------------------------------------
 
+// Manga metadata is SCRAPED from third-party sites, so any URL field in it is
+// attacker-controlled. Navigating to a `javascript:` URL runs script in THIS
+// origin (the opened window inherits the opener), which would hand over the
+// sync token in localStorage — so only ever hand http(s) to window.open, and
+// always with noopener so the target can't reach back via window.opener.
+export function openExternal(raw) {
+  let href;
+  try { href = new URL(String(raw || '').trim()); } catch { return false; }
+  if (href.protocol !== 'http:' && href.protocol !== 'https:') return false;
+  window.open(href.href, '_blank', 'noopener,noreferrer');
+  return true;
+}
+
 export function proxyImage(url, headers) {
   return api.imageUrl(url, headers);
 }
@@ -148,6 +167,282 @@ export function applyImage(img, url, headers, onFail) {
     else if (stage === 1) { stage = 2; if (onFail) onFail(); }
   });
   img.src = canDirect ? abs : proxyImage(abs, headers);
+}
+
+// ---- schemeCard : colour-scheme preview card ------------------------------
+// Mirrors android's item_color_scheme.xml: a mini surface with an "Abc" label,
+// two secondary-tone bars, a primary swatch, a check when active, and the
+// scheme name beneath. Shared by Settings → Appearance and onboarding.
+export function schemeCard(scheme, { active, appearance, onChoose } = {}) {
+  const primary = scheme.wallpaper
+    ? (detectBrowserAccent() || resolveAccent('wallpaper', appearance))
+    : (appearance === 'LIGHT' ? scheme.light : scheme.dark);
+  const secondary = scheme.wallpaper ? primary : (scheme.sec || scheme.dark);
+  const check = icon('check');
+  check.classList.add('scheme-check');
+  const surface = el('div', { class: 'scheme-card-surface' },
+    el('span', { class: 'scheme-abc' }, 'Abc'),
+    el('span', { class: 'scheme-bar', style: { background: secondary, width: '40%' } }),
+    el('span', { class: 'scheme-bar', style: { background: secondary, width: '70%' } }),
+    el('span', { class: 'scheme-primary', style: { background: primary } }),
+    check,
+  );
+  const cardEl = el('div', {
+    class: active ? 'scheme-card active' : 'scheme-card',
+    role: 'button', tabindex: '0', title: scheme.name,
+    style: { '--card-primary': primary },
+  },
+    surface,
+    el('span', { class: 'scheme-name' }, scheme.name),
+  );
+  const choose = () => onChoose && onChoose(cardEl);
+  cardEl.addEventListener('click', choose);
+  cardEl.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); choose(); } });
+  return cardEl;
+}
+
+// ---- contextMenu : Material action menu ----------------------------------
+// Replaces the browser's native long-press / right-click menu on app elements.
+// items: [{ icon, label, onClick, danger }]. Opens at (x, y), clamped on-screen.
+export function contextMenu(items, x, y) {
+  const menu = el('div', { class: 'menu-select-pop ctx-menu', role: 'menu' },
+    items.filter(Boolean).map((it) => {
+      const row = el('button', {
+        class: 'menu-select-item' + (it.danger ? ' danger' : ''),
+        type: 'button', role: 'menuitem',
+      },
+        el('span', { class: 'menu-select-check' }, it.icon ? icon(it.icon) : null),
+        el('span', { class: 'menu-select-text' }, it.label),
+      );
+      row.addEventListener('click', (e) => {
+        e.stopPropagation();
+        close();
+        if (it.onClick) it.onClick();
+      });
+      return row;
+    }));
+  let invoker = null;
+  function close() {
+    // We focus rows[0] on open; if focus is still inside the menu, hand it back
+    // to whatever was focused when we opened. Only restore when focus is inside
+    // the menu so we don't yank focus from elsewhere.
+    const refocus = menu.contains(document.activeElement);
+    menu.remove();
+    document.removeEventListener('pointerdown', onDoc, true);
+    document.removeEventListener('keydown', onKey, true);
+    window.removeEventListener('scroll', close, true);
+    if (refocus) invoker?.focus?.();
+  }
+  function onDoc(e) { if (!menu.contains(e.target)) close(); }
+  function onKey(e) { if (e.key === 'Escape') { e.stopPropagation(); close(); } }
+  Object.assign(menu.style, { position: 'fixed', left: `${x}px`, top: `${y}px`, minWidth: '200px' });
+  document.body.appendChild(menu);
+  const r = menu.getBoundingClientRect();
+  if (r.right > window.innerWidth - 8) menu.style.left = `${Math.max(8, window.innerWidth - 8 - r.width)}px`;
+  if (r.bottom > window.innerHeight - 8) menu.style.top = `${Math.max(8, y - r.height)}px`;
+  // Defer the outside-close binding so the opening event doesn't self-close it.
+  setTimeout(() => {
+    document.addEventListener('pointerdown', onDoc, true);
+    document.addEventListener('keydown', onKey, true);
+    window.addEventListener('scroll', close, true);
+    // Move focus into the menu and let the arrow keys rove between items.
+    const rows = Array.from(menu.querySelectorAll('.menu-select-item'));
+    invoker = document.activeElement;
+    rows[0]?.focus();
+    menu.addEventListener('keydown', (e) => {
+      const idx = rows.indexOf(document.activeElement);
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        rows[Math.min(rows.length - 1, (idx < 0 ? -1 : idx) + 1)]?.focus();
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        rows[Math.max(0, (idx < 0 ? 0 : idx) - 1)]?.focus();
+      } else if (e.key === 'Home') {
+        e.preventDefault();
+        rows[0]?.focus();
+      } else if (e.key === 'End') {
+        e.preventDefault();
+        rows[rows.length - 1]?.focus();
+      }
+    });
+  }, 0);
+  return close;
+}
+
+// Long-press (touch) + right-click both open the same Material menu.
+// getItems runs at open time so state (e.g. favourited) is current.
+export function attachContextMenu(node, getItems) {
+  node.addEventListener('contextmenu', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    contextMenu(getItems(), e.clientX || 40, e.clientY || 40);
+  });
+  let timer = null;
+  let sx = 0;
+  let sy = 0;
+  node.addEventListener('touchstart', (e) => {
+    if (e.touches.length !== 1) return;
+    sx = e.touches[0].clientX;
+    sy = e.touches[0].clientY;
+    timer = setTimeout(() => {
+      timer = null;
+      if (navigator.vibrate) { try { navigator.vibrate(10); } catch { /* ignore */ } }
+      contextMenu(getItems(), sx, sy);
+    }, 480);
+  }, { passive: true });
+  const cancel = () => { if (timer) { clearTimeout(timer); timer = null; } };
+  node.addEventListener('touchmove', (e) => {
+    const t = e.touches[0];
+    if (t && Math.hypot(t.clientX - sx, t.clientY - sy) > 12) cancel();
+  }, { passive: true });
+  node.addEventListener('touchend', cancel, { passive: true });
+  node.addEventListener('touchcancel', cancel, { passive: true });
+}
+
+// ---- infoDot : a small circled "!" that reveals help on tap/hover ---------
+// Keeps rows terse — the explanation lives behind the icon instead of a
+// paragraph. Returns an inline <button> with an anchored Material tooltip.
+export function infoDot(text) {
+  const dot = el('button', {
+    class: 'info-dot', type: 'button', 'aria-label': 'More info', title: '',
+  }, el('span', { class: 'info-dot-glyph' }, '!'));
+  let tip = null;
+  const hide = () => { if (tip) { tip.remove(); tip = null; document.removeEventListener('pointerdown', onDoc, true); } };
+  const onDoc = (e) => { if (tip && !tip.contains(e.target) && e.target !== dot) hide(); };
+  const show = () => {
+    if (tip) return;
+    tip = el('div', { class: 'info-tip', role: 'tooltip' }, text);
+    document.body.appendChild(tip);
+    const r = dot.getBoundingClientRect();
+    tip.style.top = `${r.bottom + 8}px`;
+    tip.style.left = `${Math.min(r.left, window.innerWidth - tip.offsetWidth - 12)}px`;
+    setTimeout(() => document.addEventListener('pointerdown', onDoc, true), 0);
+  };
+  dot.addEventListener('click', (e) => { e.stopPropagation(); tip ? hide() : show(); });
+  dot.addEventListener('mouseenter', show);
+  dot.addEventListener('mouseleave', () => { if (tip && !tip.matches(':hover')) hide(); });
+  return dot;
+}
+
+// ---- m3Range : Material slider fill -------------------------------------
+// The .m3-range CSS paints the filled track from the --p custom property;
+// this wires an input[type=range] to keep it in sync.
+export function m3Range(input) {
+  input.classList.add('m3-range');
+  const upd = () => {
+    const min = Number(input.min) || 0;
+    const max = Number(input.max) || 100;
+    const p = ((Number(input.value) - min) / (max - min || 1)) * 100;
+    input.style.setProperty('--p', p + '%');
+  };
+  input.addEventListener('input', upd);
+  upd();
+  return input;
+}
+
+// ---- menuSelect : Material dropdown -------------------------------------
+//
+// A native <select>'s OPEN menu is OS-rendered and unthemable. This is the
+// Material replacement: a pill trigger + an elevated anchored menu with a
+// check on the selected option. options: [value, label] pairs or
+// {value, label} objects. Returns the trigger button; trigger.setValue(v)
+// updates it from outside.
+
+export function menuSelect(options, value, onChange, opts = {}) {
+  const norm = options.map((o) => (Array.isArray(o) ? { value: o[0], label: o[1] } : o));
+  let current = value;
+  const labelOf = (v) => {
+    const hit = norm.find((o) => o.value === v);
+    return hit ? hit.label : String(v == null ? '' : v);
+  };
+  const labelEl = el('span', { class: 'menu-select-label' }, labelOf(current));
+  const trigger = el('button', {
+    class: 'menu-select', type: 'button',
+    'aria-haspopup': 'listbox', 'aria-label': opts.label || null,
+  }, labelEl, icon('chevron'));
+
+  let menu = null;
+  function close() {
+    if (!menu) return;
+    // open() moves focus into the popup; if it's still there, return it to the
+    // trigger so keyboard users aren't dumped back at <body>. Only refocus when
+    // focus is actually inside the menu — otherwise we'd steal it.
+    const refocus = menu.contains(document.activeElement);
+    menu.remove();
+    menu = null;
+    document.removeEventListener('pointerdown', onDoc, true);
+    document.removeEventListener('keydown', onKey, true);
+    if (refocus) trigger.focus();
+  }
+  function onDoc(e) { if (menu && !menu.contains(e.target) && !trigger.contains(e.target)) close(); }
+  function onKey(e) { if (e.key === 'Escape') { e.stopPropagation(); close(); } }
+  function open() {
+    if (menu) { close(); return; }
+    const items = [];
+    menu = el('div', { class: 'menu-select-pop', role: 'listbox' },
+      norm.map((o) => {
+        const active = o.value === current;
+        const item = el('button', {
+          class: 'menu-select-item' + (active ? ' active' : ''),
+          type: 'button', role: 'option', 'aria-selected': active ? 'true' : 'false',
+        },
+          el('span', { class: 'menu-select-check' }, active ? icon('check') : null),
+          el('span', { class: 'menu-select-text' }, o.label),
+        );
+        item.addEventListener('click', (e) => {
+          e.stopPropagation();
+          close();
+          if (o.value === current) return;
+          current = o.value;
+          labelEl.textContent = labelOf(current);
+          if (onChange) onChange(current);
+        });
+        items.push(item);
+        return item;
+      }));
+    // Keyboard parity with the native <select> this replaces: roving focus with
+    // the arrow keys, Home/End jumps, Enter/Space selects, Escape closes (below).
+    menu.addEventListener('keydown', (e) => {
+      const idx = items.indexOf(document.activeElement);
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        items[Math.min(items.length - 1, (idx < 0 ? -1 : idx) + 1)]?.focus();
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        items[Math.max(0, (idx < 0 ? 0 : idx) - 1)]?.focus();
+      } else if (e.key === 'Home') {
+        e.preventDefault();
+        items[0]?.focus();
+      } else if (e.key === 'End') {
+        e.preventDefault();
+        items[items.length - 1]?.focus();
+      } else if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        if (idx >= 0) items[idx].click();
+      }
+    });
+    const r = trigger.getBoundingClientRect();
+    Object.assign(menu.style, {
+      position: 'fixed',
+      top: `${r.bottom + 6}px`,
+      left: `${r.left}px`,
+      minWidth: `${Math.round(r.width)}px`,
+    });
+    document.body.appendChild(menu);
+    // Keep the menu on screen: right-align to the trigger if it overflows, and
+    // flip above it if the bottom edge would clip.
+    const mr = menu.getBoundingClientRect();
+    if (mr.right > window.innerWidth - 8) menu.style.left = `${Math.max(8, r.right - mr.width)}px`;
+    if (mr.bottom > window.innerHeight - 8) menu.style.top = `${Math.max(8, r.top - 6 - mr.height)}px`;
+    document.addEventListener('pointerdown', onDoc, true);
+    document.addEventListener('keydown', onKey, true);
+    // Move focus to the selected option (or the first) for keyboard users.
+    const activeIdx = norm.findIndex((o) => o.value === current);
+    (items[activeIdx >= 0 ? activeIdx : 0] || items[0])?.focus();
+  }
+  trigger.addEventListener('click', (e) => { e.stopPropagation(); open(); });
+  trigger.setValue = (v) => { current = v; labelEl.textContent = labelOf(v); };
+  return trigger;
 }
 
 // ---- toast -------------------------------------------------------------
@@ -221,6 +516,8 @@ const ICON_PATHS = {
   info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/>',
   globe: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18 14 14 0 0 1 0-18z"/>',
   palette: '<path d="M12 3a9 9 0 1 0 0 18 2 2 0 0 0 1.6-3.2 2 2 0 0 1 1.6-3.2H17a4 4 0 0 0 4-4c0-2.8-4-7.6-9-7.6z"/><circle cx="7.5" cy="11.5" r="1"/><circle cx="12" cy="8" r="1"/><circle cx="16.5" cy="11.5" r="1"/>',
+  droplet: '<path d="M12 3s6 6.6 6 11a6 6 0 0 1-12 0c0-4.4 6-11 6-11z"/>',
+  flask: '<path d="M9 3h6"/><path d="M10 3v6.2L4.7 18a2 2 0 0 0 1.7 3h11.2a2 2 0 0 0 1.7-3L14 9.2V3"/><path d="M7 15h10"/>',
   install: '<path d="M12 3v12"/><path d="m8 11 4 4 4-4"/><path d="M5 21h14"/>',
   uninstall: '<path d="M5 7h14"/><path d="M9 7V5h6v2"/><path d="M6 7l1 13h10l1-13"/><path d="M10 11l4 4M14 11l-4 4"/>',
   grid: '<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>',
@@ -317,7 +614,46 @@ export function chip(text, opts = {}) {
     props.role = 'button';
     props.tabindex = '0';
   }
-  return el('span', props, text);
+  const node = el('span', props, text);
+  // A <span role="button"> doesn't fire click on Enter/Space — wire it by hand,
+  // mirroring card()/schemeCard().
+  if (opts.onClick) {
+    node.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); opts.onClick(e); }
+    });
+  }
+  return node;
+}
+
+// ---- checkbox : Material tick box --------------------------------------
+//
+// checkbox({ checked, onChange }) -> <label class="m3-check"> wrapping a hidden
+// native checkbox and the .m3-check-box tick. Callers read/set state via
+// label.querySelector('input'); the change listener fires onChange(input.checked).
+
+export function checkbox({ checked = false, onChange } = {}) {
+  const input = el('input', { type: 'checkbox' });
+  input.checked = !!checked;
+  const box = el('span', { class: 'm3-check-box', 'aria-hidden': 'true' });
+  box.innerHTML =
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
+    'stroke-width="3" stroke-linecap="round" stroke-linejoin="round">' +
+    '<path d="M5 12l4 5 10-11"/></svg>';
+  input.addEventListener('change', () => { if (onChange) onChange(input.checked); });
+  return el('label', { class: 'm3-check' }, input, box);
+}
+
+// ---- m3Switch : Material toggle ----------------------------------------
+//
+// Matches settings.js/downloads.js switchToggle() output exactly so it stays
+// visually identical: <label class="switch"><input type="checkbox"><span
+// class="slider"></span></label>. The change listener fires onToggle(input.checked).
+
+export function m3Switch(checked = false, onToggle) {
+  const input = el('input', { type: 'checkbox' });
+  input.checked = !!checked;
+  input.addEventListener('change', () => { if (onToggle) onToggle(input.checked); });
+  return el('label', { class: 'switch' }, input, el('span', { class: 'slider' }));
 }
 
 // ---- structural widgets -----------------------------------------------
@@ -474,7 +810,15 @@ export function card(manga, onClick) {
       : el('div', { class: 'cover-fallback' }, ((title || '?').trim()[0] || '?').toUpperCase());
     const cur = coverWrap.querySelector('.cover-media, .cover-fallback');
     if (cur) cur.replaceWith(node); else coverWrap.insertBefore(node, coverWrap.firstChild);
-    if (i < covers.length) applyImage(node, covers[i], coverHeaders, () => mountCover(i + 1));
+    if (i < covers.length) {
+      // Stop the loading shimmer the moment real art is painted.
+      node.addEventListener('load', () => coverWrap.classList.add('img-loaded'), { once: true });
+      applyImage(node, covers[i], coverHeaders, () => mountCover(i + 1));
+      // Cached images can be complete before the listener sees a 'load'.
+      if (node.complete && node.naturalWidth) coverWrap.classList.add('img-loaded');
+    } else {
+      coverWrap.classList.add('img-loaded'); // monogram fallback — no shimmer
+    }
   };
   mountCover(0);
   const nsfw =
@@ -483,11 +827,16 @@ export function card(manga, onClick) {
     coverWrap.appendChild(el('span', { class: 'badge nsfw' }, '18+'));
   }
 
+  // Cover + title live inside a .card-body wrapper (not slotted directly into the
+  // md-card) — slotted content has a Chromium overflow-clip paint bug that let the
+  // title's clamped 3rd line bleed through; as a normal descendant it clips right.
   const node = el(
-    'div',
+    'md-elevated-card',
     { class: 'card', role: 'button', tabindex: '0' },
-    coverWrap,
-    el('div', { class: 'title', title: manga.title || '' }, manga.title || 'Untitled'),
+    el('div', { class: 'card-body' },
+      coverWrap,
+      el('div', { class: 'title', title: manga.title || '' }, manga.title || 'Untitled'),
+    ),
   );
   if (onClick) {
     node.addEventListener('click', () => onClick(manga));
@@ -498,6 +847,31 @@ export function card(manga, onClick) {
       }
     });
   }
+  // Long-press / right-click → Material action menu (replaces the native one).
+  attachContextMenu(node, () => {
+    const fav = library.isFavourite(manga.id);
+    return [
+      onClick ? { icon: 'book', label: 'Open', onClick: () => onClick(manga) } : null,
+      {
+        icon: 'heart',
+        label: fav ? 'Remove from favourites' : 'Add to favourites',
+        onClick: () => {
+          try {
+            library.toggleFavourite(manga);
+            toast(fav ? 'Removed from favourites' : 'Added to favourites');
+          } catch { toast('Could not update favourites'); }
+        },
+      },
+      {
+        icon: 'share',
+        label: 'Copy title',
+        onClick: () => {
+          try { navigator.clipboard.writeText(manga.title || ''); toast('Title copied'); }
+          catch { toast('Could not copy'); }
+        },
+      },
+    ];
+  });
   return node;
 }
 
@@ -508,17 +882,25 @@ export function card(manga, onClick) {
 // closes it. An action's onClick may return false to KEEP the modal open;
 // any other return value (or none) closes it.
 
+let modalTitleSeq = 0;
+
 export function modal({ title, body, actions } = {}) {
   const root = $('#modalRoot');
   if (!root) {
     return () => {};
   }
 
+  // Remember what was focused so we can restore it when the dialog closes.
+  const prevFocus = document.activeElement;
   const backdrop = el('div', { class: 'modal-backdrop' });
 
   function close() {
     backdrop.classList.remove('open');
     document.removeEventListener('keydown', onKey);
+    // Return focus to the element that opened the dialog.
+    if (prevFocus && typeof prevFocus.focus === 'function') {
+      try { prevFocus.focus(); } catch { /* element may be gone */ }
+    }
     // Allow the fade-out transition to play before removing.
     setTimeout(() => backdrop.remove(), 160);
   }
@@ -544,13 +926,14 @@ export function modal({ title, body, actions } = {}) {
     }),
   );
 
+  const titleId = `modal-title-${++modalTitleSeq}`;
   const dialog = el(
     'div',
-    { class: 'modal', role: 'dialog', 'aria-modal': 'true' },
+    { class: 'modal', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': titleId, tabindex: '-1' },
     el(
       'div',
       { class: 'modal-head' },
-      el('h3', null, title || ''),
+      el('h3', { id: titleId }, title || ''),
       iconBtn('close', close, 'Close'),
     ),
     el('div', { class: 'modal-body' }, bodyNode),
@@ -561,9 +944,30 @@ export function modal({ title, body, actions } = {}) {
   backdrop.addEventListener('mousedown', (e) => {
     if (e.target === backdrop) close();
   });
+  // Trap Tab/Shift+Tab so focus cycles within the dialog while it's open.
+  backdrop.addEventListener('keydown', (e) => {
+    if (e.key !== 'Tab') return;
+    const focusables = Array.from(
+      dialog.querySelectorAll(
+        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+      ),
+    ).filter((n) => !n.disabled && n.offsetParent !== null);
+    if (!focusables.length) return;
+    const first = focusables[0];
+    const last = focusables[focusables.length - 1];
+    if (e.shiftKey && document.activeElement === first) {
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && document.activeElement === last) {
+      e.preventDefault();
+      first.focus();
+    }
+  });
 
   root.appendChild(backdrop);
   document.addEventListener('keydown', onKey);
+  // Move focus into the dialog: first action button, else the dialog container.
+  (actionNodes[0] || dialog).focus();
   // next frame -> transition in
   requestAnimationFrame(() => backdrop.classList.add('open'));
 
@@ -695,6 +1099,8 @@ export default {
   promptDialog,
   card,
   chip,
+  checkbox,
+  m3Switch,
   btn,
   iconBtn,
   stepper,

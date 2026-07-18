@@ -117,16 +117,19 @@ function renderBooks(view, body) {
 function bookRow(view, book) {
   const count = book.kind === 'images' ? book.files.length : null;
   const open = () => openBook(view, book);
-  const item = el('div', { class: 'row-item' },
+  const item = el('div', { class: 'row-item', role: 'button', tabindex: '0' },
     el('div', { class: 'thumb', style: { display: 'grid', placeItems: 'center' } },
       icon(book.kind === 'archive' ? 'download' : 'folder')),
     el('div', { class: 'row-main' },
       el('div', { class: 'name', title: book.name }, book.name),
       el('div', { class: 'sub' }, book.kind === 'archive' ? 'Archive · tap to open' : `${count} page${count === 1 ? '' : 's'}`),
     ),
-    el('div', { class: 'row-actions' }, iconBtn('chevron', open, 'Open')),
+    el('div', { class: 'row-actions' }, icon('chevron')),
   );
   item.addEventListener('click', open);
+  item.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); }
+  });
   return item;
 }
 
@@ -153,7 +156,9 @@ async function openBook(view, book) {
   const reader = el('div', { class: 'reader webtoon fit-width', style: { paddingBottom: '48px' } });
   for (let i = 0; i < pages.length; i++) {
     const img = el('img', { class: 'reader-page', loading: 'lazy', decoding: 'async', alt: `Page ${i + 1}`, src: pages[i] });
-    img.addEventListener('error', () => { img.style.display = 'none'; });
+    img.addEventListener('error', () => {
+      img.replaceWith(el('div', { class: 'reader-page', style: { background: 'var(--surface2)', color: 'var(--text-dim)', display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '200px', borderRadius: 'var(--radius)' } }, icon('image')));
+    });
     reader.appendChild(img);
   }
   view.appendChild(reader);
@@ -226,7 +231,7 @@ function folderHint(name) {
 function cta(onChoose) {
   const wrap = el('div', { class: 'center', style: { flexDirection: 'column', gap: '14px', padding: '48px 0' } });
   wrap.append(
-    emptyState('Choose a folder of images or CBZ/ZIP archives to read offline. Everything stays on your device.'),
+    emptyState('Read offline — choose a folder of images or CBZ/ZIP archives. Everything stays on your device.'),
     btn('Choose Folder', { variant: 'accent', icon: 'folder', onClick: onChoose }),
   );
   return wrap;

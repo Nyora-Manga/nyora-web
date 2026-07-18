@@ -18,7 +18,7 @@ import { api } from '../core/api.js';
 import {
   el, $, proxyImage, toast, spinner, skeletonCard, icon, btn, iconBtn, chip,
   sectionHeader, emptyState, errorBox, card, modal, segmented, langLabel,
-  languageOptions,
+  languageOptions, menuSelect,
 } from '../core/ui.js';
 import { store, router } from '../core/store.js';
 
@@ -134,14 +134,13 @@ export function render(view, params) {
   function buildLangSelect(onChange) {
     const opts = languageOptions(installedVisible());
     if (!new Set(['all', ...opts.map((o) => o.code || '')]).has(state.lang)) state.lang = 'all';
-    const sel = el('select', {
-      class: 'lang-select', 'aria-label': 'Filter sources by language',
-      onChange: (e) => { state.lang = e.target.value; onChange(); },
-    }, el('option', { value: 'all' }, `All languages (${installedVisible().length})`));
-    for (const o of opts) {
-      sel.appendChild(el('option', { value: o.code || '' }, `${o.label} (${o.count})`));
-    }
-    sel.value = state.lang;
+    const items = [
+      { value: 'all', label: `All languages (${installedVisible().length})` },
+      ...opts.map((o) => ({ value: o.code || '', label: `${o.label} (${o.count})` })),
+    ];
+    const sel = menuSelect(items, state.lang, (v) => { state.lang = v; onChange(); },
+      { label: 'Filter sources by language' });
+    sel.classList.add('lang-select');
     return { el: sel, langCount: opts.length };
   }
 
@@ -236,12 +235,9 @@ export function render(view, params) {
   }
 
   function sourceTile(src) {
-    const pinBtn = el('button', {
-      class: 'source-tile-pin' + (src.isPinned ? ' active' : ''), type: 'button',
-      title: src.isPinned ? 'Unpin source' : 'Pin source',
-      'aria-label': src.isPinned ? 'Unpin source' : 'Pin source',
-      onClick: (e) => { e.stopPropagation(); togglePin(src); },
-    }, icon('pin'));
+    const pinBtn = iconBtn('pin', (e) => { e.stopPropagation(); togglePin(src); }, src.isPinned ? 'Unpin source' : 'Pin source');
+    pinBtn.classList.add('source-tile-pin');
+    pinBtn.classList.toggle('active', src.isPinned);
     return el('div', {
       class: 'source-tile' + (src.isPinned ? ' pinned' : ''),
       role: 'button', tabindex: '0',
@@ -385,13 +381,9 @@ export function render(view, params) {
       class: 'field ext-search', type: 'search', placeholder: 'Search extensions…',
     });
     let catLang = 'all';
-    const langSelect = el('select', {
-      class: 'lang-select ext-lang', 'aria-label': 'Filter extensions by language',
-      onChange: (ev) => { catLang = ev.target.value; renderExt(); },
-    }, el('option', { value: 'all' }, 'All languages'));
-    langSelect.style.display = 'none'; // revealed once ≥2 languages are known
-    modal({ title: 'Catalog', body: el('div', { class: 'ext-sheet' },
-      el('div', { class: 'ext-toolbar' }, searchInput, langSelect), listWrap) });
+    let langSelect = null; // menuSelect trigger, mounted in the toolbar once ≥2 languages are known
+    const toolbar = el('div', { class: 'ext-toolbar' }, searchInput);
+    modal({ title: 'Catalog', body: el('div', { class: 'ext-sheet' }, toolbar, listWrap) });
 
     let entries = [];
     let extToken = 0;
@@ -421,11 +413,18 @@ export function render(view, params) {
     function populateExtLang() {
       const visible = entries.filter((e) => state.showNsfw || !e.isNsfw);
       const opts = languageOptions(visible);
-      langSelect.replaceChildren(el('option', { value: 'all' }, `All languages (${visible.length})`));
-      for (const o of opts) langSelect.appendChild(el('option', { value: o.code || '' }, `${o.label} (${o.count})`));
-      if (![...langSelect.options].some((op) => op.value === catLang)) catLang = 'all';
-      langSelect.value = catLang;
-      langSelect.style.display = opts.length > 1 ? '' : 'none';
+      if (!new Set(['all', ...opts.map((o) => o.code || '')]).has(catLang)) catLang = 'all';
+      const items = [
+        { value: 'all', label: `All languages (${visible.length})` },
+        ...opts.map((o) => ({ value: o.code || '', label: `${o.label} (${o.count})` })),
+      ];
+      const sel = menuSelect(items, catLang, (v) => { catLang = v; renderExt(); },
+        { label: 'Filter extensions by language' });
+      sel.classList.add('lang-select', 'ext-lang');
+      if (langSelect) langSelect.remove();
+      // Only reveal the trigger once there's more than one language to pick from.
+      langSelect = opts.length > 1 ? sel : null;
+      if (langSelect) toolbar.appendChild(langSelect);
     }
 
     function renderExt() {

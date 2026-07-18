@@ -7,9 +7,10 @@
 
 import { downloads } from '../core/downloads.js';
 import { unzipImages } from '../core/zip.js';
+import { router } from '../core/store.js';
 import {
   el, $, spinner, emptyState, errorBox, sectionHeader, icon, btn, iconBtn,
-  toast, stepper, segmented, confirmDialog,
+  toast, confirmDialog, chip,
 } from '../core/ui.js';
 
 export const meta = {
@@ -29,10 +30,12 @@ export function render(view, _params) {
   revokeReaderUrls();
   view.replaceChildren();
 
-  const header = sectionHeader('Downloads');
-  const settings = buildSettings();
+  // Download SETTINGS now live in Settings → Downloads; the gear jumps there.
+  const gear = iconBtn('settings', () => router.navigate('settings', { s: 'downloads' }), 'Download settings');
+  const header = sectionHeader('Downloads', gear);
+  const storage = buildStorageStrip();
   const queueWrap = el('div', { class: 'downloads-host' });
-  view.append(header, settings.node, queueWrap);
+  view.append(header, storage.node, queueWrap);
 
   const renderQueue = () => paintQueue(view, queueWrap);
   renderQueue();
@@ -40,7 +43,7 @@ export function render(view, _params) {
   _unsub = downloads.subscribe(() => {
     if (!queueWrap.isConnected) { if (_unsub) { _unsub(); _unsub = null; } return; }
     renderQueue();
-    settings.refreshStorage();
+    storage.refresh();
   });
 
   // Deterministic cleanup when navigating away (app.js dispatch calls this).
@@ -50,130 +53,89 @@ export function render(view, _params) {
   };
 }
 
-// ── Settings card ──────────────────────────────────────────────────────────
+// ── Offline-storage summary strip ────────────────────────────────────────────
 
-function buildSettings() {
-  const s = downloads.getSettings();
-  const section = el('section', { class: 'settings-section' });
-  section.append(el('h2', null, 'Download settings'));
-
-  // Format
-  const formatSeg = segmented(
-    [{ label: 'CBZ', value: 'CBZ' }, { label: 'ZIP', value: 'ZIP' }],
-    s.format,
-    (v) => { downloads.saveSettings({ format: v }); toast(`Saving as ${v}`); },
-  );
-  section.append(settingRow('Archive format', 'CBZ opens in comic readers; ZIP is the same file, renamed.', formatSeg));
-
-  // Max concurrent chapters
-  section.append(settingRow('Concurrent chapters', 'Chapters downloaded in parallel.',
-    stepper({
-      value: s.maxConcurrent, min: 1, max: 5,
-      onChange: (v) => downloads.saveSettings({ maxConcurrent: v }),
-    })));
-
-  // Parallel page downloads
-  section.append(settingRow('Parallel pages', 'Page images fetched at once per chapter.',
-    stepper({
-      value: s.imageConcurrency, min: 1, max: 8,
-      onChange: (v) => downloads.saveSettings({ imageConcurrency: v }),
-    })));
-
-  // Retries
-  section.append(settingRow('Retries per page', 'Re-attempts before a page is skipped.',
-    stepper({
-      value: s.retries, min: 0, max: 5,
-      onChange: (v) => downloads.saveSettings({ retries: v }),
-    })));
-
-  // Keep offline
-  section.append(settingRow('Keep for offline reading', 'Store downloaded chapters in this browser.',
-    switchToggle(s.keepOffline, (on) => {
-      downloads.saveSettings({ keepOffline: on });
-      if (!on) toast('New downloads will not be kept offline');
-    })));
-
-  // Auto-save to device
-  section.append(settingRow('Auto-save to device', 'Also download each finished file to your computer.',
-    switchToggle(s.saveToDevice, (on) => downloads.saveSettings({ saveToDevice: on }))));
-
-  // Storage usage + clear actions
-  const storageText = el('div', { class: 'sub' });
+function buildStorageStrip() {
+  const sub = el('div', { class: 'dl-storage-sub' });
   const clearDone = btn('Clear finished', {
-    variant: 'ghost', icon: 'trash', class: 'btn-sm',
+    variant: 'ghost', class: 'btn-sm', icon: 'trash',
     onClick: async () => {
       const res = await downloads.clearCompleted();
       toast(res.removed ? `Cleared ${res.removed}` : 'Nothing to clear');
     },
   });
   const clearAll = btn('Delete all', {
-    variant: 'ghost', icon: 'trash', class: 'btn-sm btn-danger',
+    variant: 'ghost', class: 'btn-sm btn-danger', icon: 'trash',
     onClick: async () => {
       if (!(await confirmDialog('Delete every download, including offline files?'))) return;
       const res = await downloads.clearAll();
       toast(res.removed ? `Deleted ${res.removed}` : 'Nothing to delete');
     },
   });
-  const storageRow = el('div', { class: 'setting-row' },
-    el('div', { class: 'row-main' },
-      el('div', { class: 'name' }, 'Offline storage'),
-      storageText,
+  const node = el('div', { class: 'dl-storage' },
+    el('div', { class: 'dl-storage-main' },
+      el('span', { class: 'dl-storage-icon' }, icon('download')),
+      el('div', { class: 'dl-storage-text' },
+        el('div', { class: 'dl-storage-title' }, 'Offline storage'),
+        sub,
+      ),
     ),
-    el('div', { class: 'row-actions' }, clearDone, clearAll),
+    el('div', { class: 'dl-storage-actions' }, clearDone, clearAll),
   );
-  section.append(storageRow);
-
-  const refreshStorage = () => {
+  const refresh = () => {
     const c = downloads.counts();
     const parts = [];
     if (c.completed) parts.push(`${c.completed} chapter${c.completed === 1 ? '' : 's'}`);
     parts.push(fmtBytes(c.totalBytes));
-    storageText.textContent = `${parts.join(' · ')} stored offline`;
+    sub.textContent = `${parts.join(' · ')} stored offline`;
   };
-  refreshStorage();
-
-  return { node: section, refreshStorage };
+  refresh();
+  return { node, refresh };
 }
 
-// ── Queue list ──────────────────────────────────────────────────────────────
+// ── Queue list (grouped: In progress / Completed) ────────────────────────────
 
 function paintQueue(view, host) {
   const rows = downloads.list();
-  const active = rows.filter((r) => ACTIVE.has(r.status));
-  const finished = rows.filter((r) => !ACTIVE.has(r.status));
-
-  const actions = el('div', { class: 'section-actions' });
-  if (active.length) {
-    actions.appendChild(btn(`Cancel all (${active.length})`, {
-      variant: 'ghost', class: 'btn-danger btn-sm', icon: 'close',
-      onClick: () => { downloads.cancelAll(); toast('Cancelling downloads'); },
-    }));
-  }
-  const completed = finished.filter((r) => r.status === 'COMPLETED' && r.offline);
-  if (completed.length > 1) {
-    actions.appendChild(btn('Save all', {
-      variant: 'ghost', class: 'btn-sm', icon: 'download',
-      onClick: async () => {
-        toast('Bundling…');
-        const res = await downloads.saveBundle(completed.map((r) => r.id), 'nyora-downloads');
-        toast(res.ok ? `Saved ${res.count} chapters` : 'Nothing to save');
-      },
-    }));
-  }
-
-  const header = el('div', { class: 'section-header' },
-    el('h2', null, `Queue${rows.length ? ` (${rows.length})` : ''}`),
-    actions,
-  );
-
   if (!rows.length) {
-    host.replaceChildren(header, emptyState('No downloads yet. Open a manga and tap Download.'));
+    host.replaceChildren(emptyState('No downloads yet — open a manga and tap Download.', 'download'));
     return;
   }
+  const active = rows.filter((r) => ACTIVE.has(r.status));
+  const finished = rows.filter((r) => !ACTIVE.has(r.status));
+  const frag = document.createDocumentFragment();
 
-  const list = el('div', { class: 'list' });
-  for (const job of rows) list.appendChild(downloadRow(view, job));
-  host.replaceChildren(header, list);
+  if (active.length) {
+    const cancelAll = btn(`Cancel all (${active.length})`, {
+      variant: 'ghost', class: 'btn-danger btn-sm', icon: 'close',
+      onClick: () => { downloads.cancelAll(); toast('Cancelling downloads'); },
+    });
+    frag.appendChild(sectionHeader(`In progress (${active.length})`, cancelAll));
+    const list = el('div', { class: 'list' });
+    for (const job of active) list.appendChild(downloadRow(view, job));
+    frag.appendChild(list);
+  }
+
+  if (finished.length) {
+    const savable = finished.filter((r) => r.status === 'COMPLETED' && r.offline);
+    const actions = [];
+    if (savable.length > 1) {
+      actions.push(btn('Save all', {
+        variant: 'ghost', class: 'btn-sm', icon: 'download',
+        onClick: async () => {
+          toast('Bundling…');
+          const res = await downloads.saveBundle(savable.map((r) => r.id), 'nyora-downloads');
+          toast(res.ok ? `Saved ${res.count} chapters` : 'Nothing to save');
+        },
+      }));
+    }
+    frag.appendChild(sectionHeader(`Completed (${finished.length})`, ...actions));
+    const list = el('div', { class: 'list' });
+    for (const job of finished) list.appendChild(downloadRow(view, job));
+    frag.appendChild(list);
+  }
+
+  host.replaceChildren(frag);
 }
 
 function downloadRow(view, job) {
@@ -188,8 +150,9 @@ function downloadRow(view, job) {
   );
 
   if (status === 'RUNNING' || status === 'QUEUED') {
-    main.appendChild(el('div', { class: 'progress' },
-      el('span', { style: { width: `${status === 'RUNNING' && total > 0 ? pct : (status === 'RUNNING' ? 6 : 0)}%` } })));
+    const determinate = status === 'RUNNING' && total > 0;
+    main.appendChild(el('div', { class: determinate ? 'progress' : 'progress indeterminate' },
+      el('span', determinate ? { style: { width: `${pct}%` } } : null)));
     main.appendChild(el('div', { class: 'sub dl-meta' },
       status === 'RUNNING'
         ? (total > 0 ? `${done} / ${total} pages · ${pct}%` : 'Fetching pages…')
@@ -250,13 +213,7 @@ async function openOfflineReader(view, job) {
   }
 
   const back = iconBtn('back', () => render(view), 'Back to downloads');
-  const header = el('div', { class: 'section-header' },
-    el('h2', null, job.chapterTitle || 'Chapter'),
-    el('div', { class: 'section-actions' },
-      el('span', { class: 'chip' }, `${pages.length} pages`),
-      back,
-    ),
-  );
+  const header = sectionHeader(job.chapterTitle || 'Chapter', chip(`${pages.length} pages`), back);
   view.replaceChildren(header);
 
   if (!pages.length) { view.appendChild(emptyState('This download has no readable pages.')); return; }
@@ -278,29 +235,12 @@ function revokeReaderUrls() {
 
 // ── small helpers ───────────────────────────────────────────────────────────
 
-function settingRow(name, sub, control) {
-  return el('div', { class: 'setting-row' },
-    el('div', { class: 'row-main' },
-      el('div', { class: 'name' }, name),
-      sub ? el('div', { class: 'sub' }, sub) : null,
-    ),
-    el('div', { class: 'row-actions' }, control),
-  );
-}
-
-function switchToggle(checked, onToggle) {
-  const input = el('input', { type: 'checkbox' });
-  input.checked = !!checked;
-  input.addEventListener('change', () => onToggle(input.checked));
-  return el('label', { class: 'switch' }, input, el('span', { class: 'slider' }));
-}
-
 function statusChip(status, job) {
   const map = { RUNNING: 'Running', QUEUED: 'Queued', COMPLETED: 'Done', FAILED: 'Failed', CANCELLED: 'Cancelled' };
   let key = (status || '').toLowerCase();
   let label = map[status] || status || 'Unknown';
   if (status === 'COMPLETED' && job && job.warning) { key = 'queued'; label = 'Partial'; }
-  return el('span', { class: `chip status-${key}` }, label);
+  return chip(label, { class: `status-${key}` });
 }
 
 function fmtBytes(n) {

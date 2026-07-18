@@ -40,10 +40,15 @@
 import { api } from '../core/api.js';
 import {
   el, $, $$, proxyImage, applyImage, toast, spinner, icon, btn, iconBtn,
-  emptyState, errorBox, modal, segmented, fmt,
+  emptyState, errorBox, modal, segmented, fmt, menuSelect, m3Range,
+  promptDialog, chip,
 } from '../core/ui.js';
 import { store, router } from '../core/store.js';
 import library from '../core/library.js';
+import { translatePage, onTranslatorStatus } from '../core/translate/engine.js';
+import { attachOverlay } from '../core/translate/overlay.js';
+import { TL_LANGS, TL_SOURCES } from '../core/translate/mt.js';
+import { colorizePage, onColorizeStatus, clearColorizeCache, colorizeModelReady } from '../core/colorize/engine.js';
 
 export const meta = { title: 'Reader', nav: false, icon: 'library', order: 99 };
 
@@ -157,6 +162,34 @@ export function render(view, params) {
   // > 100 are legacy pixel widths (e.g. 880/1200) — migrate them to the default.
   const clampWidth = (v) => { v = Number(v); return (!v || v > 100) ? 70 : Math.max(30, Math.min(100, Math.round(v))); };
   let webtoonWidth = clampWidth(gp.webtoonWidth);
+  // In-image AI translation + colorization are gated behind the Experimental
+  // master switch (Settings → Experimental). When it's off the reader shows no
+  // translate/colorize toggles and never auto-applies them, even if the per-manga
+  // prefs are on — the overlays/colorized pages simply don't appear.
+  const experimental = store.get().experimental === true;
+  let translate = experimental && gp.translate === true;
+  let translateTo = gp.translateTo || 'en';
+  let translateFrom = gp.translateFrom || 'auto'; // 'auto'|'ja'|'zh'|'ko'|'en'
+  // Colorize additionally requires the ~62 MB model to ALREADY be downloaded in
+  // Settings → Experimental → Colorization. Starting false and only opting in
+  // once that's confirmed means it stays off by default even when a stale
+  // `colorize: true` is left in prefs from an earlier session, and no page can
+  // trigger a surprise 62 MB fetch just because Experimental got switched on.
+  let colorize = false; // AI manga colorization
+  let colorReady = false; // model present in the cache
+  if (experimental) {
+    colorizeModelReady().then((ready) => {
+      if (st.destroyed) return;
+      colorReady = ready;
+      if (!ready) {
+        // Model isn't there (cache cleared, or the pref predates the download
+        // gate) — drop the stale pref so it stops re-arming on every open.
+        if (gp.colorize === true) store.set({ reader: { colorize: false } });
+        return;
+      }
+      if (gp.colorize === true) { colorize = true; syncChrome(); beginColorizeAll(); }
+    }).catch(() => {});
+  }
   // On phones the reader area is already narrow, so the full column width is the
   // sensible default — anything less just wastes screen. When still on the global
   // default (70%), snap webtoon to 100% on phone; an explicit per-manga width
@@ -207,6 +240,7 @@ export function render(view, params) {
       case 'p': case 'P': e.preventDefault(); goReadingChapter(-1); break;  // previous chapter
       case 'f': case 'F': e.preventDefault(); toggleFit(); break;
       case 'a': case 'A': e.preventDefault(); toggleAuto(); break;          // auto-scroll
+      case 't': case 'T': e.preventDefault(); if (translate) setTlVisible(!tlVisible); break; // peek original
       case '+': case '=': e.preventDefault(); bumpSpeed(1); break;          // faster
       case '-': case '_': e.preventDefault(); bumpSpeed(-1); break;         // slower
       case 'Home': e.preventDefault(); jumpTo(0); break;
@@ -224,6 +258,7 @@ export function render(view, params) {
   let wakeLock = null;
   async function acquireWakeLock() {
     try {
+      if ((store.get().reader || {}).keepAwake === false) return; // user opted out
       if ('wakeLock' in navigator && document.visibilityState === 'visible' && !st.destroyed) {
         wakeLock = await navigator.wakeLock.request('screen');
       }
@@ -246,6 +281,9 @@ export function render(view, params) {
     document.body.classList.remove('reader-fullscreen');
     if (document.fullscreenElement) { try { document.exitFullscreen(); } catch { /* ignore */ } }
     cancelAutoLoop();
+    resetTranslations();
+    resetColorize();
+    clearColorizeCache();  // revoke the session's cached full-res colorized blob URLs
     if (scrollListener) { (scrollTarget || window).removeEventListener('scroll', scrollListener); scrollListener = null; scrollTarget = null; }
   }
   view.__readerTeardown = teardown;
@@ -316,49 +354,146 @@ export function render(view, params) {
     return 1; // fallback: assume oldest-first
   }
   // reading: +1 = next chapter, -1 = previous chapter (order-independent).
-  function goReadingChapter(reading) { goChapter(reading * nextDelta()); }
+  function goReadingChapter(reading, opts) { goChapter(reading * nextDelta(), opts); }
   function chapterExists(reading) {
     const t = st.index + reading * nextDelta();
     return t >= 0 && t < st.chapters.length;
   }
 
-  function goChapter(direction) {
+  function goChapter(direction, opts) {
     if (st.index < 0 || !st.chapters.length) return;
     const target = st.index + direction;
     if (target < 0 || target >= st.chapters.length) {
       toast('No more chapters this way.');
       return;
     }
-    st.chapterUrl = st.chapters[target].url;
-    router.navigate('reader', { sid: st.sid, url: st.mangaUrl, chapterUrl: st.chapterUrl });
-    loadPages(target);
+    transitionChapter(target, opts);
+  }
+
+  // Seamless chapter swap: no loading screen, no screen re-mount. Pages come
+  // from the prefetch cache when warm (instant); the DOM is rebuilt in place,
+  // the chapter title/counter refresh, and the URL hash is updated silently
+  // (replaceState — a router.navigate would fire hashchange and re-mount the
+  // whole reader, which is exactly the refresh this avoids).
+  let chapterSwapping = false;
+  let lastChapterSwapTs = 0;
+  async function transitionChapter(target, opts = {}) {
+    if (chapterSwapping || st.destroyed) return;
+    const ch = st.chapters[target];
+    if (!ch) return;
+    chapterSwapping = true;
+    try {
+      let pages = pagesCache.get(ch.url);
+      if (!pages) {
+        toast('Loading chapter…');
+        const data = await api.pages(st.sid, ch.url);
+        pages = data.pages || [];
+        pagesCache.set(ch.url, pages);
+      }
+      if (st.destroyed) return;
+      if (!pages.length) { toast('That chapter has no pages.'); return; }
+      st.index = target;
+      st.chapterUrl = ch.url;
+      st.pages = pages;
+      // Reading backwards lands on the END of the previous chapter (continuity).
+      st.currentPage = opts.atEnd ? pages.length - 1 : 0;
+      syncUrl();
+      renderReader();
+      lastChapterSwapTs = Date.now();
+      toast(fmt.chapterTitle(ch, target));
+      recordHistory(st.currentPage);
+      checkBookmark();
+      maybePrefetch();
+    } catch (e) {
+      toast(readerError(e, 'Could not load chapter'));
+    } finally {
+      chapterSwapping = false;
+    }
+  }
+
+  // Reflect the current chapter in the hash WITHOUT firing hashchange, so a
+  // reload/share deep-links to the right chapter but the reader isn't re-mounted.
+  function syncUrl() {
+    try {
+      history.replaceState(null, '', '#/reader?sid=' + encodeURIComponent(st.sid)
+        + '&url=' + encodeURIComponent(st.mangaUrl)
+        + '&chapterUrl=' + encodeURIComponent(st.chapterUrl));
+    } catch { /* ignore */ }
   }
 
   function pageStep(delta) {
     if (!st.pages.length) return;
     const last = st.pages.length - 1;
     const target = st.currentPage + delta;
-    // Reading forward past the last page → NEXT chapter; back before first → prev.
-    if (target < 0) { goReadingChapter(-1); return; }
+    // Reading forward past the last page → NEXT chapter; back before first →
+    // prev chapter, landing on its last page.
+    if (target < 0) { goReadingChapter(-1, { atEnd: true }); return; }
     if (target > last) { goReadingChapter(1); return; }
     setPage(target, true);
   }
 
   // ── data loading ─────────────────────────────────────────────────────────
+  // Pages are the long pole; details only feed titles, chapter nav and prefs.
+  // Fire both immediately and never let a slow (or broken) details call block
+  // the first page paint — details hydrate the chrome whenever they land.
   async function loadAll() {
+    const pagesP = api.pages(st.sid, st.chapterUrl);
+    let details = null;
     try {
-      const details = await api.details(st.sid, st.mangaUrl);
-      if (st.destroyed) return;
-      st.manga = details.manga || { id: st.mangaUrl, title: 'Reading', url: st.mangaUrl };
-      st.chapters = details.chapters || [];
-      st.index = st.chapters.findIndex((c) => c.url === st.chapterUrl);
-      if (st.index < 0) st.index = 0;
-      loadPrefs();
-      await loadPages(st.index, startPage);
-    } catch (e) {
-      if (st.destroyed) return;
-      view.replaceChildren(bar('top', true), errorBox(readerError(e, 'Could not load this chapter')));
+      details = await Promise.race([
+        api.details(st.sid, st.mangaUrl),
+        pagesP.then(() => null).catch(() => null),
+      ]);
+    } catch { details = null; }
+    if (st.destroyed) return;
+    applyDetails(details);
+    loadPrefs();
+    if (!details) hydrateDetailsLate();
+    await loadPages(st.index, startPage, pagesP);
+  }
+
+  function applyDetails(details) {
+    const manga = details && details.manga;
+    st.manga = manga || st.manga
+      || { id: st.mangaUrl, title: 'Reading', url: st.mangaUrl, __placeholder: true };
+    // Some sources omit the cover in details — recover it from the card grid's
+    // manga cache so history entries record with artwork.
+    if (st.manga && !st.manga.coverUrl && !st.manga.largeCoverUrl && st.manga.url) {
+      const hint = store.cachedManga(st.manga.url);
+      if (hint && (hint.coverUrl || hint.largeCoverUrl)) {
+        st.manga.coverUrl = hint.coverUrl || '';
+        st.manga.largeCoverUrl = hint.largeCoverUrl || '';
+      }
     }
+    st.chapters = (details && details.chapters) || st.chapters || [];
+    st.index = st.chapters.findIndex((c) => c.url === st.chapterUrl);
+    if (st.index < 0) st.index = 0;
+  }
+
+  function hydrateDetailsLate() {
+    api.details(st.sid, st.mangaUrl).then((details) => {
+      if (st.destroyed || !details) return;
+      const prevMode = mode;
+      applyDetails(details);
+      loadPrefs();
+      if (!st.pages.length) return; // pages failed/pending — nothing to hydrate
+      if (mode !== prevMode) { renderReader(); return; } // per-manga mode pref
+      applyReaderWidth();
+      const f = filterStr();
+      $$('.reader-page', view).forEach((img) => { img.style.filter = f; });
+      syncChrome();
+      recordHistory(st.currentPage);
+      checkBookmark();
+      maybePrefetch();
+    }).catch(() => { /* reader stays usable without details */ });
+  }
+
+  // Rebuild the top/bottom bars in place (title + chapter prev/next state).
+  function syncChrome() {
+    $$('.reader-bar.top', view).forEach((n) => n.replaceWith(bar('top')));
+    $$('.reader-bar.bottom', view).forEach((n) => n.replaceWith(bar('bottom')));
+    syncPosition();
+    syncAutoUi();
   }
 
   function loadPrefs() {
@@ -377,11 +512,18 @@ export function render(view, params) {
         if (typeof p.prefetch === 'boolean') prefetch = p.prefetch;
         if (p.webtoonWidth) webtoonWidth = clampWidth(p.webtoonWidth);
         if (p.autoScrollLevel != null) autoLevel = clampLevel(p.autoScrollLevel);
+        // Translate & colorize are GLOBAL toggles (Settings → Experimental), not
+        // per-manga — otherwise a title previously saved with them on would
+        // resurrect the feature (and the reader button) after you turned the
+        // "Translate/Colorize pages" toggle off. Only the language choice is
+        // remembered per title.
+        if (p.translateTo) translateTo = p.translateTo;
+        if (p.translateFrom) translateFrom = p.translateFrom;
       }
     } catch { /* keep defaults */ }
   }
 
-  async function loadPages(chapterIndex, startPage = 0) {
+  async function loadPages(chapterIndex, startPage = 0, pagesPromise = null) {
     st.index = chapterIndex;
     if (st.index >= 0 && st.index < st.chapters.length) {
       st.chapterUrl = st.chapters[st.index].url;
@@ -390,9 +532,10 @@ export function render(view, params) {
     if (scrollListener) { (scrollTarget || window).removeEventListener('scroll', scrollListener); scrollListener = null; scrollTarget = null; }
     view.replaceChildren(el('div', { class: 'reader-loading-screen' }, bar('top', true), loadingBlock('Loading pages…')));
     try {
-      const data = await api.pages(st.sid, st.chapterUrl);
+      const data = await (pagesPromise || api.pages(st.sid, st.chapterUrl));
       if (st.destroyed) return;
       st.pages = data.pages || [];
+      pagesCache.set(st.chapterUrl, st.pages);
       // Resume to the requested page (clamped) — renderReader positions to it.
       st.currentPage = Math.max(0, Math.min(st.pages.length - 1, Number(startPage) || 0));
       renderReader();
@@ -401,14 +544,19 @@ export function render(view, params) {
       maybePrefetch();
     } catch (e) {
       if (st.destroyed) return;
-      view.replaceChildren(bar('top', true), errorBox(readerError(e, 'This chapter failed to load')));
+      view.replaceChildren(
+        bar('top', true),
+        errorBox(readerError(e, 'This chapter failed to load')),
+        el('div', { style: { display: 'flex', justifyContent: 'center', marginTop: '16px' } },
+          btn('Retry', { icon: 'refresh', onClick: () => loadPages(chapterIndex, startPage) })),
+      );
     }
   }
 
   // ── history + bookmarks + grade persistence ──────────────────────────────
   let historyTimer = null;
   function recordHistory(page) {
-    if (!st.manga) return;
+    if (!st.manga || st.manga.__placeholder) return;
     const chapter = st.chapters[st.index];
     if (historyTimer) clearTimeout(historyTimer);
     historyTimer = setTimeout(() => {
@@ -430,7 +578,7 @@ export function render(view, params) {
   }
 
   function checkBookmark() {
-    if (!st.manga) return;
+    if (!st.manga || st.manga.__placeholder) return;
     try {
       const r = library.checkBookmark({
         mangaId: st.manga.id, chapterId: st.chapterUrl, page: st.currentPage,
@@ -441,7 +589,7 @@ export function render(view, params) {
   }
 
   function toggleBookmark() {
-    if (!st.manga) return;
+    if (!st.manga || st.manga.__placeholder) return;
     const chapter = st.chapters[st.index];
     try {
       if (st.bookmarked) {
@@ -466,7 +614,7 @@ export function render(view, params) {
   }
 
   function savePrefs() {
-    if (!st.manga) return;
+    if (!st.manga || st.manga.__placeholder) return;
     try {
       library.saveMangaPrefs({
         mangaId: st.manga.id,
@@ -475,6 +623,8 @@ export function render(view, params) {
         prefetch,
         webtoonWidth,
         autoScrollLevel: autoLevel,
+        translateTo,
+        translateFrom,
         brightness: st.grade.brightness,
         contrast: st.grade.contrast,
         saturation: st.grade.saturation,
@@ -484,11 +634,204 @@ export function render(view, params) {
     } catch { /* best-effort */ }
   }
 
+  // Chapter pages cache — prefetched chapters swap in instantly.
+  const pagesCache = new Map(); // chapterUrl → pages[]
+
   function maybePrefetch() {
     if (!prefetch) return;
     const next = st.index + nextDelta();
     if (next < 0 || next >= st.chapters.length) return;
-    api.pages(st.sid, st.chapters[next].url).catch(() => {});
+    const url = st.chapters[next].url;
+    if (pagesCache.has(url)) return;
+    api.pages(st.sid, url).then((d) => pagesCache.set(url, d.pages || [])).catch(() => {});
+  }
+
+  // ── in-image AI translation ───────────────────────────────────────────────
+  // Client-side port of Android's MangaTranslator: bubble detection + OCR run
+  // in a worker (models download on first use), machine translation via the
+  // same free endpoint Android uses, results drawn as an overlay per page.
+  // Pages translate lazily as they approach the viewport.
+  const tlHandles = new Map(); // img → overlay handle
+  let tlObserver = null;
+  let tlErrorToasted = false;
+  onTranslatorStatus((msg) => { if (!st.destroyed) toast(msg); });
+
+  function ensureTlObserver() {
+    if (!tlObserver) {
+      tlObserver = new IntersectionObserver((entries) => {
+        for (const en of entries) {
+          if (!en.isIntersecting) continue;
+          tlObserver.unobserve(en.target);
+          queueTranslate(en.target);
+        }
+      }, { rootMargin: '75% 0px' });
+    }
+    return tlObserver;
+  }
+
+  function observeTranslate(img) {
+    if (translate && img.__tlPage) ensureTlObserver().observe(img);
+  }
+
+  // Effective OCR/source language: the explicit setting, or (auto) the manga
+  // source's language from its details/catalog entry. Unknown → Japanese.
+  let tlSrcPromise = null;
+  function resolveSourceLang() {
+    if (translateFrom !== 'auto') return Promise.resolve(translateFrom);
+    if (!tlSrcPromise) {
+      const norm = (c) => {
+        c = String(c || '').toLowerCase();
+        if (c.startsWith('zh')) return 'zh';
+        if (c.startsWith('ko')) return 'ko';
+        if (c.startsWith('ja')) return 'ja';
+        if (c.startsWith('en')) return 'en';
+        return '';
+      };
+      tlSrcPromise = (async () => {
+        const s = st.manga && st.manga.source;
+        let code = norm(s && (s.lang || s.locale));
+        if (!code) {
+          try {
+            const { sources } = await api.listSources();
+            const entry = (sources || []).find((x) => x.id === st.sid);
+            code = norm(entry && (entry.lang || entry.locale));
+          } catch { /* fall through */ }
+        }
+        return code || 'ja';
+      })();
+    }
+    return tlSrcPromise;
+  }
+
+  async function queueTranslate(img) {
+    if (st.destroyed || !translate || !img.isConnected || !img.__tlPage) return;
+    if (!img.complete || !img.naturalWidth) {
+      img.addEventListener('load', () => queueTranslate(img), { once: true });
+      return;
+    }
+    if (tlHandles.has(img)) return;
+    const handle = attachOverlay(img);
+    tlHandles.set(img, handle);
+    translatePage({
+      url: img.__tlPage.url,
+      headers: img.__tlPage.headers,
+      target: translateTo,
+      source: await resolveSourceLang(),
+      title: (st.manga && !st.manga.__placeholder && st.manga.title) || '',
+      onUpdate: ({ blocks, texts, progress }) => {
+        if (st.destroyed || !translate || tlHandles.get(img) !== handle) return;
+        handle.setBlocks(blocks, texts, progress);
+      },
+    }).catch((e) => {
+      if (tlHandles.get(img) === handle) { handle.destroy(); tlHandles.delete(img); }
+      if (!tlErrorToasted && !st.destroyed && translate) {
+        tlErrorToasted = true;
+        toast('Translation failed: ' + ((e && e.message) || e));
+      }
+    });
+  }
+
+  function resetTranslations() {
+    if (tlObserver) { tlObserver.disconnect(); tlObserver = null; }
+    tlHandles.forEach((h) => { try { h.destroy(); } catch { /* ignore */ } });
+    tlHandles.clear();
+  }
+
+  function beginTranslateAll() {
+    $$('img.reader-page', view).forEach((img) => observeTranslate(img));
+  }
+
+  function setTranslate(on) {
+    translate = !!on;
+    store.set({ reader: { translate } });
+    savePrefs();
+    if (translate) beginTranslateAll();
+    else resetTranslations();
+    syncChrome(); // the overlay eye toggle appears/disappears with the feature
+  }
+
+  // Session-only overlay visibility — a quick "peek at the original" switch;
+  // OCR/translation keep running underneath, only the painted blocks hide.
+  let tlVisible = true;
+  function setTlVisible(on) {
+    tlVisible = !!on;
+    const rv = $('.reader-view', view);
+    if (rv) rv.classList.toggle('tl-hidden', !tlVisible);
+    $$('.reader-tl-toggle', view).forEach((n) => {
+      n.classList.toggle('active', !tlVisible);
+      n.title = tlVisible ? 'Hide translation (t)' : 'Show translation (t)';
+      n.replaceChildren(icon(tlVisible ? 'eye' : 'eyeOff'));
+    });
+    toast(tlVisible ? 'Translation shown' : 'Original shown');
+  }
+
+  function setTranslateTo(lang) {
+    if (lang === translateTo) return;
+    translateTo = lang;
+    store.set({ reader: { translateTo } });
+    savePrefs();
+    if (translate) { resetTranslations(); beginTranslateAll(); }
+  }
+
+  function setTranslateFrom(lang) {
+    if (lang === translateFrom) return;
+    translateFrom = lang;
+    tlSrcPromise = null;
+    store.set({ reader: { translateFrom } });
+    savePrefs();
+    if (translate) { resetTranslations(); beginTranslateAll(); }
+  }
+
+  // ── Colorize (on-device manga colorization) ───────────────────────────────
+  // Swaps each visible page's image for an AI-coloured version. The colourised
+  // image keeps the page's crisp line art (luminance) with model chroma. Result
+  // cached per page url; toggling off restores the original.
+  let colorizeObserver = null;
+  let colorizeErrored = false;
+  onColorizeStatus((m) => { if (!st.destroyed) toast(m); });
+
+  function observeColorize(img) {
+    if (colorize && img.__tlPage) colorizeObs().observe(img);
+  }
+  function colorizeObs() {
+    if (!colorizeObserver) {
+      colorizeObserver = new IntersectionObserver((entries) => {
+        for (const en of entries) {
+          if (!en.isIntersecting) continue;
+          colorizeObserver.unobserve(en.target);
+          applyColorize(en.target);
+        }
+      }, { rootMargin: '100% 0px' });
+    }
+    return colorizeObserver;
+  }
+  async function applyColorize(img) {
+    if (st.destroyed || !colorize || !img.__tlPage) return;
+    try {
+      const url = await colorizePage(img.__tlPage.url, img.__tlPage.headers);
+      if (st.destroyed || !colorize || !img.isConnected) return;
+      if (img.__colorOrig == null) img.__colorOrig = img.getAttribute('src') || '';
+      img.src = url;
+    } catch (e) {
+      if (!colorizeErrored && !st.destroyed && colorize) { colorizeErrored = true; toast('Colorize failed: ' + ((e && e.message) || e)); }
+    }
+  }
+  function resetColorize() {
+    if (colorizeObserver) { colorizeObserver.disconnect(); colorizeObserver = null; }
+  }
+  function restoreColorize() {
+    $$('img.reader-page', view).forEach((img) => {
+      if (img.__colorOrig != null) { img.src = img.__colorOrig; img.__colorOrig = null; }
+    });
+  }
+  function beginColorizeAll() { $$('img.reader-page', view).forEach((img) => observeColorize(img)); }
+  function setColorize(on) {
+    colorize = !!on;
+    store.set({ reader: { colorize } });
+    savePrefs();
+    if (colorize) beginColorizeAll();
+    else { resetColorize(); restoreColorize(); }
+    $$('.reader-color-toggle', view).forEach((n) => n.classList.toggle('active', colorize));
   }
 
   // ── auto-scroll ────────────────────────────────────────────────────────────
@@ -574,10 +917,10 @@ export function render(view, params) {
 
   // Tap the page counter → jump to any page (works in every mode; webtoon has no
   // seek slider otherwise).
-  function promptJump() {
+  async function promptJump() {
     const total = st.pages.length;
     if (!total) return;
-    const ans = window.prompt(`Go to page (1–${total})`, String(st.currentPage + 1));
+    const ans = await promptDialog(`Go to page (1–${total})`, String(st.currentPage + 1));
     if (ans == null) return;
     const n = parseInt(ans, 10);
     if (Number.isFinite(n) && n >= 1 && n <= total) jumpTo(n - 1);
@@ -605,10 +948,10 @@ export function render(view, params) {
     if (mode === 'WEBTOON') {
       if (scrollIntoView) {
         const img = $(`[data-page="${st.currentPage}"]`, view);
-        if (img) img.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        if (img) img.scrollIntoView({ behavior: scrollIntoView === 'instant' ? 'auto' : 'smooth', block: 'start' });
       }
     } else {
-      goToSlide(st.currentPage, scrollIntoView);
+      goToSlide(st.currentPage, scrollIntoView === true);
     }
   }
 
@@ -670,6 +1013,9 @@ export function render(view, params) {
       }
     }, { once: true });
     applyImage(img, p.url, headers, () => { img.replaceWith(brokenPage(p, i)); });
+    img.__tlPage = { url: p.url, headers };
+    observeTranslate(img);
+    observeColorize(img);
     const f = filterStr();
     if (f) img.style.filter = f;
     return img;
@@ -720,7 +1066,8 @@ export function render(view, params) {
       );
 
       if (minimal) {
-        return el('div', { class: 'reader-bar top' }, back, titleWrap);
+        return el('div', { class: 'reader-bar top' },
+          el('div', { class: 'reader-title-group' }, back, titleWrap));
       }
 
       const bmBtn = iconBtn('bookmark', toggleBookmark, 'Bookmark');
@@ -730,6 +1077,25 @@ export function render(view, params) {
       const autoBtn = iconBtn(autoOn ? 'pause' : 'play', toggleAuto, autoOn ? 'Stop auto-scroll (a)' : 'Auto-scroll (a / space)');
       autoBtn.classList.add('reader-btn', 'reader-auto-toggle');
       if (autoOn) autoBtn.classList.add('active');
+
+      let tlBtn = null;
+      if (translate) {
+        tlBtn = iconBtn(tlVisible ? 'eye' : 'eyeOff', (e) => { if (e) e.stopPropagation(); setTlVisible(!tlVisible); },
+          tlVisible ? 'Hide translation (t)' : 'Show translation (t)');
+        tlBtn.classList.add('reader-btn', 'reader-tl-toggle');
+        if (!tlVisible) tlBtn.classList.add('active');
+      }
+
+      // Colorize toggle only exists when the Colorize feature is actually on
+      // (like the translate button gates on `translate`) — turning experimental
+      // on alone must NOT surface it while "Colorize pages" is off.
+      let colorBtn = null;
+      if (colorize) {
+        colorBtn = iconBtn('droplet', (e) => { if (e) e.stopPropagation(); setColorize(!colorize); },
+          colorize ? 'Colorize on' : 'Colorize (AI)');
+        colorBtn.classList.add('reader-btn', 'reader-color-toggle');
+        if (colorize) colorBtn.classList.add('active');
+      }
 
       const listBtn = iconBtn('list', openChapterList, 'Chapters');
       listBtn.classList.add('reader-btn');
@@ -748,10 +1114,9 @@ export function render(view, params) {
       if (fsOn) fsBtn.classList.add('active');
 
       return el('div', { class: 'reader-bar top' },
-        back,
-        titleWrap,
+        el('div', { class: 'reader-title-group' }, back, titleWrap),
         el('div', { class: 'reader-actions' },
-          autoBtn, sidebarBtn, fsBtn, bmBtn, listBtn, settingsBtn,
+          autoBtn, colorBtn, tlBtn, sidebarBtn, fsBtn, bmBtn, listBtn, settingsBtn,
         ),
       );
     }
@@ -780,14 +1145,16 @@ export function render(view, params) {
     }, `${st.currentPage + 1} / ${st.pages.length || 0}`);
 
     let slider = null;
-    if (mode !== 'WEBTOON' && st.pages.length > 1) {
+    if (st.pages.length > 1) {
       slider = el('input', {
         type: 'range', class: 'reader-slider', 'aria-label': 'Page',
         min: '1', max: String(st.pages.length), step: '1',
         value: String(st.currentPage + 1),
       });
-      slider.addEventListener('input', () => setPage(Number(slider.value) - 1, true));
+      // 'instant' — dragging should jump, not chase a smooth scroll per tick.
+      slider.addEventListener('input', () => setPage(Number(slider.value) - 1, 'instant'));
       slider.addEventListener('click', (e) => e.stopPropagation());
+      m3Range(slider);
     }
 
     return el('div', { class: 'reader-bar bottom' },
@@ -805,6 +1172,8 @@ export function render(view, params) {
     });
     $$('.reader-slider', view).forEach((n) => {
       if (Number(n.value) !== st.currentPage + 1) n.value = String(st.currentPage + 1);
+      const max = Number(n.max) || 1;
+      if (max > 1) n.style.setProperty('--p', ((st.currentPage / (max - 1)) * 100) + '%');
     });
     const prg = $('.reader-progress', view);
     if (prg) {
@@ -840,6 +1209,8 @@ export function render(view, params) {
   function renderReader() {
     // A running loop must not outlive the DOM it scrolls (mode/chapter change).
     cancelAutoLoop();
+    resetTranslations();   // overlays/observer die with the old DOM
+    resetColorize();       // observer dies with the old imgs (cache survives)
     zoomReset = null;   // the previous render's zoom controller is gone
     if (scrollListener) { (scrollTarget || window).removeEventListener('scroll', scrollListener); scrollListener = null; scrollTarget = null; }
     if (!st.pages.length) {
@@ -848,7 +1219,9 @@ export function render(view, params) {
     }
 
     applyReaderWidth();
-    const readerView = el('div', { class: 'reader-view' + (st.controlsVisible ? '' : ' controls-hidden') });
+    const readerView = el('div', {
+      class: 'reader-view' + (st.controlsVisible ? '' : ' controls-hidden') + (tlVisible ? '' : ' tl-hidden'),
+    });
     readerView.addEventListener('click', toggleControls);
 
     if (mode === 'WEBTOON') {
@@ -879,12 +1252,17 @@ export function render(view, params) {
       st.pages.forEach((p, i) => {
         track.appendChild(el('div', { class: 'reader-slide', 'data-page': String(i) }, pageImg(p, i)));
       });
-      // Tap zones (desktop / non-swipe): left = prev, right = next (flipped for RTL).
-      const left = el('div', { class: 'reader-zone left', title: rtl ? 'Next' : 'Previous' });
-      const right = el('div', { class: 'reader-zone right', title: rtl ? 'Previous' : 'Next' });
-      left.addEventListener('click', (e) => { e.stopPropagation(); pageStep(rtl ? 1 : -1); });
-      right.addEventListener('click', (e) => { e.stopPropagation(); pageStep(rtl ? -1 : 1); });
-      const stage = el('div', { class: 'reader-paged' }, track, left, right);
+      // Tap zones (desktop / non-swipe): left = prev, right = next (flipped for
+      // RTL). Disabled entirely by the "tap to turn pages" preference.
+      const zones = [];
+      if ((store.get().reader || {}).tapZones !== false) {
+        const left = el('div', { class: 'reader-zone left', title: rtl ? 'Next' : 'Previous' });
+        const right = el('div', { class: 'reader-zone right', title: rtl ? 'Previous' : 'Next' });
+        left.addEventListener('click', (e) => { e.stopPropagation(); pageStep(rtl ? 1 : -1); });
+        right.addEventListener('click', (e) => { e.stopPropagation(); pageStep(rtl ? -1 : 1); });
+        zones.push(left, right);
+      }
+      const stage = el('div', { class: 'reader-paged' }, track, ...zones);
       // Update currentPage from whichever slide is snapped under the centre.
       let raf = null;
       track.addEventListener('scroll', () => {
@@ -958,6 +1336,84 @@ export function render(view, params) {
       });
     };
     scrollTarget.addEventListener('scroll', scrollListener, { passive: true });
+    if (scrollTarget !== window) bindWebtoonBoundaryGestures(scrollTarget);
+  }
+
+  // Continuous reading (webtoon): a deliberate gesture PAST a chapter boundary
+  // rolls straight into the next/previous chapter — wheel or swipe, no button.
+  // Intent matters: position-based triggers bounce (landing at the end of a
+  // chapter would instantly re-advance), so only accumulated input while the
+  // container is already pinned at the boundary counts, with a cooldown after
+  // each swap so momentum can't chain through chapters.
+  function bindWebtoonBoundaryGestures(scrollEl) {
+    if ((store.get().reader || {}).edgeGestures === false) return; // user opted out
+    const atTop = () => scrollEl.scrollTop <= 2;
+    const atBottom = () => scrollEl.scrollTop + scrollEl.clientHeight >= scrollEl.scrollHeight - 2;
+    const ready = () => Date.now() - lastChapterSwapTs > 700 && !chapterSwapping;
+    // Dwell-arming: scroll momentum can slam into the boundary and keep firing
+    // wheel/touch events — those must never count. The boundary only "arms"
+    // after you've SAT on it for a beat; only then does a fresh gesture flip
+    // the chapter.
+    let bottomSince = 0;
+    let topSince = 0;
+    function updateDwell() {
+      const now = Date.now();
+      bottomSince = atBottom() ? (bottomSince || now) : 0;
+      topSince = atTop() ? (topSince || now) : 0;
+    }
+    const armed = (dir) => {
+      const since = dir === 1 ? bottomSince : topSince;
+      return !!since && Date.now() - since > 350;
+    };
+    scrollEl.addEventListener('scroll', updateDwell, { passive: true });
+    updateDwell();
+
+    // Wheel events arrive in "bursts" (a physical scroll gesture + its
+    // momentum tail, gaps < ~300ms). A burst that BEGAN before the boundary
+    // armed is momentum — ignore it entirely, however long it runs. Only a
+    // fresh burst started while resting on the armed boundary can flip.
+    let wheelAccum = 0;
+    let lastWheelAt = 0;
+    let burstStartedArmed = false;
+    scrollEl.addEventListener('wheel', (e) => {
+      updateDwell();
+      const now = Date.now();
+      const newBurst = now - lastWheelAt > 300;
+      lastWheelAt = now;
+      const dir = e.deltaY > 0 ? 1 : -1;
+      if ((dir === 1 && !atBottom()) || (dir === -1 && !atTop())) {
+        wheelAccum = 0;
+        burstStartedArmed = false;
+        return;
+      }
+      if (newBurst) { burstStartedArmed = armed(dir); wheelAccum = 0; }
+      if (!burstStartedArmed) { wheelAccum = 0; return; }
+      if (Math.sign(wheelAccum) !== dir) wheelAccum = 0;
+      wheelAccum += e.deltaY;
+      if (Math.abs(wheelAccum) > 480 && ready() && chapterExists(dir)) {
+        wheelAccum = 0;
+        burstStartedArmed = false;
+        goReadingChapter(dir, dir === -1 ? { atEnd: true } : undefined);
+      }
+    }, { passive: true });
+    // Touch: a firm vertical swipe STARTED while already resting on the boundary.
+    let t0y = 0;
+    let t0TopArmed = false;
+    let t0BottomArmed = false;
+    scrollEl.addEventListener('touchstart', (e) => {
+      updateDwell();
+      if (e.touches.length !== 1) { t0TopArmed = t0BottomArmed = false; return; }
+      t0y = e.touches[0].clientY;
+      t0TopArmed = atTop() && armed(-1);
+      t0BottomArmed = atBottom() && armed(1);
+    }, { passive: true });
+    scrollEl.addEventListener('touchend', (e) => {
+      const t = e.changedTouches[0];
+      if (!t || !ready()) return;
+      const dy = t.clientY - t0y;
+      if (t0BottomArmed && atBottom() && dy < -90 && chapterExists(1)) goReadingChapter(1);
+      else if (t0TopArmed && atTop() && dy > 90 && chapterExists(-1)) goReadingChapter(-1, { atEnd: true });
+    }, { passive: true });
   }
 
   // Paged: scroll the given slide to centre (browser handles RTL). `smooth` for
@@ -1140,6 +1596,7 @@ export function render(view, params) {
       const isRead = i < st.index;
       const row = el('li', {
         class: isRead ? 'read' : '',
+        role: 'button', tabindex: '0',
         style: isCurrent ? { background: 'var(--surface2)', borderColor: 'var(--accent)', color: 'var(--text)' } : null,
       },
         el('span', { class: 'ch-meta', style: { display: 'flex', alignItems: 'center', gap: '8px', minWidth: '0' } },
@@ -1150,11 +1607,10 @@ export function render(view, params) {
       );
       row.addEventListener('click', () => {
         closeFn();
-        if (i !== st.index) {
-          st.chapterUrl = c.url;
-          router.navigate('reader', { sid: st.sid, url: st.mangaUrl, chapterUrl: st.chapterUrl });
-          loadPages(i);
-        }
+        if (i !== st.index) transitionChapter(i);
+      });
+      row.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); row.click(); }
       });
       list.appendChild(row);
     });
@@ -1198,6 +1654,7 @@ export function render(view, params) {
       widthVal.textContent = `${val}%`;
       setWebtoonWidth(val);
     });
+    m3Range(widthSlider);
 
     const prefetchInput = el('input', { type: 'checkbox' });
     prefetchInput.checked = prefetch;
@@ -1215,6 +1672,7 @@ export function render(view, params) {
       speedVal.textContent = `${val}/10`;
       if (val !== autoLevel) bumpSpeed(val - autoLevel, true);
     });
+    m3Range(speedSlider);
 
     const layoutSection = el('div', { class: 'settings-section' },
       el('h2', null, 'Layout'),
@@ -1224,12 +1682,40 @@ export function render(view, params) {
       el('div', { class: 'field' }, el('div', { class: 'row', style: { justifyContent: 'space-between' } }, el('label', null, 'Auto-scroll speed'), speedVal), speedSlider),
       inlineRow('Prefetch next chapter', prefetchSwitch)
     );
-    
+
+    const tlInput = el('input', { type: 'checkbox' });
+    tlInput.checked = translate;
+    tlInput.addEventListener('change', () => setTranslate(tlInput.checked));
+    const tlSwitch = el('label', { class: 'switch' }, tlInput, el('span', { class: 'slider' }));
+    const tlLangSelect = menuSelect(TL_LANGS, translateTo, (v) => setTranslateTo(v));
+    const tlFromSelect = menuSelect(TL_SOURCES, translateFrom, (v) => setTranslateFrom(v));
+    const tlSection = el('div', { class: 'settings-section' },
+      el('h2', null, 'Translate'),
+      inlineRow('Translate pages (beta)', tlSwitch),
+      inlineRow('Translate from', tlFromSelect),
+      inlineRow('Translate to', tlLangSelect),
+      el('div', { style: { fontSize: '12px', color: 'var(--text-dim)', lineHeight: '1.5' } },
+        'Runs entirely in your browser — AI models download on first use and are '
+        + 'cached (Japanese ~125 MB; Chinese/Korean/English ~20 MB).'),
+    );
+
     const colorSection = el('div', { class: 'settings-section' }, el('h2', null, 'Colour'));
+    // AI colorize toggle — the top-bar droplet only appears while colorize is
+    // on, so this is how you enable it from inside the reader. Requires the
+    // model to be downloaded first (Settings → Experimental → Colorization);
+    // without that gate this switch would kick off a silent 62 MB fetch.
+    if (experimental && colorReady) {
+      const czInput = el('input', { type: 'checkbox' });
+      czInput.checked = colorize;
+      czInput.addEventListener('change', () => setColorize(czInput.checked));
+      colorSection.appendChild(inlineRow('AI colorize (beta)',
+        el('label', { class: 'switch' }, czInput, el('span', { class: 'slider' }))));
+    }
     function gradeSlider(label, key, min, max, step, fmtVal) {
       const valOut = el('span', { class: 'counter' }, fmtVal(live[key]));
       const input = el('input', { type: 'range', min: String(min), max: String(max), step: String(step), value: String(live[key]), style: { width: '100%', accentColor: 'var(--accent)' } });
       input.addEventListener('input', () => { live[key] = Number(input.value); valOut.textContent = fmtVal(live[key]); applyLive(); });
+      m3Range(input);
       colorSection.__sliders = colorSection.__sliders || {};
       colorSection.__sliders[key] = { input, valOut, fmtVal };
       return el('div', { class: 'field', style: { marginBottom: '12px' } }, el('div', { class: 'row', style: { justifyContent: 'space-between' } }, el('label', null, label), valOut), input);
@@ -1242,14 +1728,16 @@ export function render(view, params) {
     function renderChips() {
       chips.replaceChildren();
       PALETTES.forEach((pal) => {
-        const c = el('span', { class: 'chip' + (live.palette === pal ? ' active' : ''), role: 'button', tabindex: '0' }, PALETTE_LABEL(pal));
-        c.addEventListener('click', () => { live.palette = pal; renderChips(); applyLive(); });
-        chips.appendChild(c);
+        chips.appendChild(chip(PALETTE_LABEL(pal), {
+          active: live.palette === pal,
+          onClick: () => { live.palette = pal; renderChips(); applyLive(); },
+        }));
       });
     }
     renderChips();
     colorSection.appendChild(el('div', { class: 'field', style: { marginBottom: '0' } }, el('label', null, 'Presets'), chips));
-    const body = el('div', null, layoutSection, colorSection);
+    // Translate settings only appear when experimental features are enabled.
+    const body = el('div', null, layoutSection, experimental ? tlSection : null, colorSection);
     modal({
       title: 'Reader Settings',
       body,
@@ -1266,6 +1754,7 @@ export function render(view, params) {
             const s = sliders[k];
             s.input.value = String(live[k]);
             s.valOut.textContent = s.fmtVal(live[k]);
+            s.input.dispatchEvent(new Event('input')); // refresh the m3 fill
           });
           renderChips();
           return false;
@@ -1290,10 +1779,8 @@ function inlineRow(label, control) {
 }
 
 function loadingBlock(msg) {
-  // A page-shaped shimmer so it reads as "the page is loading", with an accent
-  // ring spinner + label centred over it.
+  // A centred accent ring spinner + label.
   return el('div', { class: 'reader-loading' },
-    el('div', { class: 'reader-loading-page skeleton' }),
     el('div', { class: 'reader-loading-badge' },
       el('div', { class: 'reader-loading-ring', 'aria-hidden': 'true' }),
       el('span', { class: 'reader-loading-label' }, msg || 'Loading…'),
