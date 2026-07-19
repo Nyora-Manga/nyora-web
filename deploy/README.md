@@ -4,8 +4,8 @@
 bakes it on every deploy, so it is only as fresh as the last deploy. These files
 keep it current *between* deploys by refreshing it on each node.
 
-Run this on **all three nodes** (`nyora`, `expo-vm`, `claw`) — each serves the
-file itself, so refreshing one does not help the other two.
+Run this on **every node** (`nyora`, `claw`) — each serves the file itself, so
+refreshing one does not help the others.
 
 ## Install
 
@@ -33,8 +33,8 @@ Check it: `systemctl list-timers nyora-discover-feed` and
 17 */3 * * * WEBROOT=/var/www/nyora-web /usr/local/bin/refresh-discover-feed.sh >/dev/null 2>&1
 ```
 
-Offset the minute per node (`17`, `37`, `57`) so all three don't hit AniList at
-the same instant.
+Offset the minute per node (`17`, `37`) so they don't hit AniList at the same
+instant.
 
 ## Behaviour worth knowing
 

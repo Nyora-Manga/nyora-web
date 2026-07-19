@@ -23,8 +23,14 @@ globalThis.NYORA_HELPER_URL = 'https://api.nyora.xyz';
 // Hugging Face Space node here to give it real traffic share without a DNS/CF change;
 // list api.nyora.xyz more than once to weight the Space lower. Single entry = no-op.
 globalThis.NYORA_HELPER_URLS = [
+  // api.nyora.xyz (WARP-backed VM cluster) listed twice to weight it ~2/3 of the
+  // rotation vs the free HF node below (~1/3). The HF node serves normal sources
+  // locally and transparently relays CF/IP-banned sources back to api.nyora.xyz,
+  // so it never returns a broken CF result — safe to round-robin. Images always
+  // stay on NYORA_HELPER_URL (the VM cluster) regardless.
   'https://api.nyora.xyz',
-  // 'https://<owner>-nyora-node.hf.space',
+  'https://api.nyora.xyz',
+  'https://mdhasanraza-nyora-one.hf.space/n',
 ];
 
 // --- Local development ---

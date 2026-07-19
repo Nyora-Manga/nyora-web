@@ -1,15 +1,18 @@
 name: Deploy web → cluster
 
-# Pushing to the `deploy` branch builds the bundle once and rsyncs it to ALL
-# THREE nodes behind web.nyora.xyz (round-robin DNS): nyora, expo-vm, claw.
-# Each node's Caddy serves the app from /var/www/nyora-web (also fronting the
-# legacy nyoramanga.hasanraza.tech redirect). Deploying only one node leaves the
-# other ⅔ of visitors on a stale build — hence the matrix.
+# Pushing to the `deploy` branch builds the bundle once and rsyncs it to EVERY
+# node behind web.nyora.xyz (round-robin DNS): nyora, claw. Each node's Caddy
+# serves the app from /var/www/nyora-web (also fronting the legacy
+# nyoramanga.hasanraza.tech redirect). Deploying only one node leaves the other
+# half of visitors on a stale build — hence the matrix.
+#
+# Adding or removing a node means updating BOTH the matrix below and the
+# DEPLOY_NODES secret, and the DNS records for web.nyora.xyz.
 #
 # Repo secrets required:
 #   DEPLOY_SSH_KEY      — private key of the CI cluster deploy key (in each
 #                         node's <user> authorized_keys)
-#   DEPLOY_KNOWN_HOSTS  — ssh-keyscan lines for all three node IPs
+#   DEPLOY_KNOWN_HOSTS  — ssh-keyscan lines for every node IP
 on:
   push:
     branches: [deploy]
@@ -61,7 +64,7 @@ jobs:
       # and the IP is masked in logs — so nothing sensitive appears in the workflow,
       # the job name, or the run logs.
       matrix:
-        node: [nyora, expo-vm, claw]
+        node: [nyora, claw]
     steps:
       - name: Resolve node from DEPLOY_NODES (mask IP in logs)
         run: |
