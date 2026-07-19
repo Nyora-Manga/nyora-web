@@ -1,8 +1,8 @@
 {
-  "name": "Nyora — Online Manga Reader",
+  "name": "Nyora Web App — Manga Reader",
   "short_name": "Nyora",
   "version": "2.2.0",
-  "description": "Free online manga reader for your browser — read manga with no install. Installable, offline-capable PWA with hundreds of sources, favourites, history, AniList tracking and cloud sync.",
+  "description": "Read manga in your browser — no install. Installable, offline-capable PWA with hundreds of sources, favourites, history, AniList tracking and cloud sync.",
   "id": "/",
   "start_url": "/",
   "scope": "/",

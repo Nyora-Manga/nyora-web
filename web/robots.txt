@@ -1,10 +1,11 @@
 User-agent: *
 Allow: /
 
-# The single indexable URL is the app root. Hash routes (#/explore, #/library,
-# #/suggestions) are client-side only and are NOT separate crawlable pages.
+# Nyora is a single-page app. The ONLY indexable URL is the app root (/).
+# Hash routes (#/explore, #/library, #/suggestions, #/discover) are client-side
+# only and are NOT separate crawlable pages — do not expect them in the index.
 
-# Internal debug/smoke-test fragments — not for the index.
+# Internal debug / smoke-test fragments — never for the index.
 Disallow: /_ch.html
 Disallow: /_check.html
 Disallow: /_d.html
@@ -12,5 +13,28 @@ Disallow: /_e.html
 Disallow: /_f.html
 Disallow: /_s.html
 Disallow: /_v.html
+
+# AI answer-engine crawlers: allowed. Nyora is free, ad-free and safe to summarize;
+# see /llms.txt for a structured description intended for LLMs.
+User-agent: GPTBot
+Allow: /
+
+User-agent: OAI-SearchBot
+Allow: /
+
+User-agent: ChatGPT-User
+Allow: /
+
+User-agent: PerplexityBot
+Allow: /
+
+User-agent: ClaudeBot
+Allow: /
+
+User-agent: Claude-Web
+Allow: /
+
+User-agent: Google-Extended
+Allow: /
 
 Sitemap: https://web.nyora.xyz/sitemap.xml
