@@ -134,22 +134,44 @@ function apiTryOrder() {
   return bases.slice(start).concat(bases.slice(0, start));
 }
 
+// Statuses that mean "this node is unhealthy, try another" rather than a real
+// answer: gateway errors, a bare 500 (a node mid-restart/crash — e.g. the free HF
+// node rebuilding), and Cloudflare origin errors 520–524 (524 = origin timeout).
+const HELPER_FAILOVER_STATUS = new Set([500, 502, 503, 504, 520, 521, 522, 523, 524]);
+// Per-attempt cap so a hung node (accepts the connection but never responds) fails
+// over instead of hanging the UI. Generous — legit slow source fetches finish well
+// under this, and CF caps its own origin at ~100s anyway.
+const HELPER_ATTEMPT_TIMEOUT_MS = 45000;
+
 // fetch a helper route, trying each node in rotation. Falls over to the next node
-// on a network error or a gateway status (502/503/504) — a sleeping/overloaded node
-// transparently defers to a healthy one. Real 4xx and parsed {error} pass through.
+// on a network error, a per-attempt timeout, or an unhealthy status (see above) —
+// a sleeping/overloaded/restarting node transparently defers to a healthy one. Real
+// 4xx and parsed {error} pass through. A caller's AbortSignal is honoured, not eaten.
 async function helperFetch(path, init) {
   const order = apiTryOrder();
+  const last = order.length - 1;
+  const outer = init && init.signal;
   let lastErr;
   for (let i = 0; i < order.length; i++) {
+    if (outer && outer.aborted) throw outer.reason || new Error('aborted');
+    const ctrl = new AbortController();
+    let timedOut = false;
+    const timer = setTimeout(() => { timedOut = true; ctrl.abort(); }, HELPER_ATTEMPT_TIMEOUT_MS);
+    const relay = () => ctrl.abort();
+    if (outer) outer.addEventListener('abort', relay, { once: true });
     try {
-      const res = await fetch(order[i] + helperPath(path), init);
-      if (i < order.length - 1 && (res.status === 502 || res.status === 503 || res.status === 504)) {
+      const res = await fetch(order[i] + helperPath(path), { ...init, signal: ctrl.signal });
+      if (i < last && HELPER_FAILOVER_STATUS.has(res.status)) {
         lastErr = new Error('HTTP ' + res.status);
         continue;
       }
       return res;
     } catch (err) {
-      lastErr = err; // network failure → try the next node
+      if (outer && outer.aborted) throw err; // caller cancelled → propagate, don't retry
+      lastErr = timedOut ? new Error('helper timeout') : err; // our timeout / network error → next node
+    } finally {
+      clearTimeout(timer);
+      if (outer) outer.removeEventListener('abort', relay);
     }
   }
   throw lastErr || new Error('all helper nodes unreachable');
