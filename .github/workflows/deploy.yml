@@ -1,7 +1,7 @@
 name: Deploy web → cluster
 
 # Pushing to the `deploy` branch builds the bundle once and rsyncs it to ALL
-# THREE nodes behind web.nyora.xyz (round-robin DNS): nyora, expo-vm, claw.
+# nodes behind web.nyora.xyz (round-robin DNS): nyora, claw.
 # Each node's Caddy serves the app from /var/www/nyora-web (also fronting the
 # legacy nyoramanga.hasanraza.tech redirect). Deploying only one node leaves the
 # other ⅔ of visitors on a stale build — hence the matrix.
@@ -61,7 +61,7 @@ jobs:
       # and the IP is masked in logs — so nothing sensitive appears in the workflow,
       # the job name, or the run logs.
       matrix:
-        node: [nyora, expo-vm, claw]
+        node: [nyora, claw]
     steps:
       - name: Resolve node from DEPLOY_NODES (mask IP in logs)
         run: |
