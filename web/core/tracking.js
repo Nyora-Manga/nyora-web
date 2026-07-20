@@ -22,7 +22,6 @@ export const TRACKERS = [
   { slug: 'anilist', name: 'AniList', auth: 'oauth' },
   { slug: 'myanimelist', name: 'MyAnimeList', auth: 'oauth' },
   { slug: 'mangabaka', name: 'MangaBaka', auth: 'oauth' },
-  { slug: 'kitsu', name: 'Kitsu', auth: 'password' },
 ];
 
 function loadStore() {
