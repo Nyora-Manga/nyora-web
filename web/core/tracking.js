@@ -94,12 +94,22 @@ export function connectOAuth(slug) {
       if (bc) { try { bc.close(); } catch { /* ignore */ } }
       clearInterval(poll);
       clearTimeout(timer);
+      clearTimeout(graceTimer);
       try { popup.close(); } catch { /* ignore */ }
     }
     if (bc) bc.onmessage = (ev) => handle(ev.data);
     window.addEventListener('message', onMsg);
     window.addEventListener('storage', onStorage);
-    const poll = setInterval(() => { if (popup.closed && !done) { cleanup(); reject(new Error('Sign-in cancelled.')); } }, 700);
+    // The relay page closes the popup right after posting the token, but delivery
+    // of that message to a backgrounded opener is only flushed when it refocuses
+    // (on popup close) — so a naive "closed ⇒ cancelled" can fire before the token
+    // is processed, which is why the first attempt sometimes failed and only the
+    // second "took". Give any in-flight message a grace window before cancelling.
+    let graceTimer = null;
+    const poll = setInterval(() => {
+      if (done || !popup.closed || graceTimer) return;
+      graceTimer = setTimeout(() => { if (!done) { cleanup(); reject(new Error('Sign-in cancelled.')); } }, 1200);
+    }, 300);
     const timer = setTimeout(() => { cleanup(); reject(new Error('Sign-in timed out.')); }, 300000);
   });
 }
