@@ -30,37 +30,8 @@
     <div class="dot" id="dot"></div>
     <p id="m">Finishing sign-in…</p>
   </div>
-  <script>
-    // Tracker OAuth relay. The popup lands here (same origin as the app that opened
-    // it) after the helper's callback redirects to <origin>/oauth.html#…. Because
-    // this page is same-origin as the opener, it can hand the token back over a
-    // BroadcastChannel even when the provider's Cross-Origin-Opener-Policy has
-    // severed window.opener (which is exactly why the plain postMessage failed).
-    (function () {
-      var p = new URLSearchParams((location.hash || '').replace(/^#/, ''));
-      var msg = {
-        source: 'nyora-tracker',
-        slug: p.get('slug') || '',
-        access_token: p.get('access_token') || '',
-        refresh_token: p.get('refresh_token') || '',
-        error: p.get('error') || '',
-      };
-      // Scrub the token out of the address bar / history immediately.
-      try { history.replaceState(null, '', location.pathname); } catch (e) { /* ignore */ }
-      // Primary: same-origin BroadcastChannel — survives a COOP-severed opener.
-      try { var bc = new BroadcastChannel('nyora-tracker'); bc.postMessage(msg); bc.close(); } catch (e) { /* older browser */ }
-      // Fallbacks: a storage event (same-origin) and a direct opener postMessage
-      // (for providers that don't set COOP).
-      try { localStorage.setItem('nyora.oauth.msg', JSON.stringify(Object.assign({ ts: Date.now() }, msg))); } catch (e) { /* quota */ }
-      try { if (window.opener) window.opener.postMessage(msg, location.origin); } catch (e) { /* severed */ }
-
-      var ok = !!msg.access_token;
-      document.getElementById('dot').style.display = 'none';
-      document.getElementById('m').textContent = ok
-        ? 'Connected — you can close this window.'
-        : 'Sign-in failed — you can close this window.';
-      setTimeout(function () { try { window.close(); } catch (e) { /* ignore */ } }, ok ? 500 : 1600);
-    })();
-  </script>
+  <!-- External script: the site CSP is hash-pinned (no 'unsafe-inline'), but
+       'self' scripts are allowed, so the relay lives in /oauth.js. -->
+  <script src="/oauth.js"></script>
 </body>
 </html>

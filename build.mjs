@@ -68,7 +68,7 @@ await build({
 //     makes minification pointless and adds ~700 KB of dead weight. Keep the
 //     entry, the generated chunks, the two bundled workers, and the standalone
 //     scripts index.html and the SW load directly (sw.js, env.js).
-const KEEP = new Set(['app.js', 'sw.js', 'env.js', ...WORKERS]);
+const KEEP = new Set(['app.js', 'sw.js', 'env.js', 'oauth.js', ...WORKERS]);
 async function pruneSources(dir, rel = '') {
   for (const entry of await readdir(dir, { withFileTypes: true })) {
     const abs = `${dir}/${entry.name}`;
