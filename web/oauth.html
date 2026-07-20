@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>Connecting…</title>
+  <style>
+    html, body { height: 100%; margin: 0; }
+    body {
+      display: grid; place-items: center;
+      font: 14px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      background: #0e0e11; color: #e7e7ea;
+    }
+    .card { text-align: center; padding: 24px 28px; }
+    .dot {
+      width: 26px; height: 26px; margin: 0 auto 14px;
+      border: 3px solid #2a2a31; border-top-color: #8ab4ff; border-radius: 50%;
+      animation: spin .8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    @media (prefers-color-scheme: light) {
+      body { background: #fafafa; color: #1a1a1e; }
+      .dot { border-color: #e4e4e8; border-top-color: #3b6cf0; }
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="dot" id="dot"></div>
+    <p id="m">Finishing sign-in…</p>
+  </div>
+  <script>
+    // Tracker OAuth relay. The popup lands here (same origin as the app that opened
+    // it) after the helper's callback redirects to <origin>/oauth.html#…. Because
+    // this page is same-origin as the opener, it can hand the token back over a
+    // BroadcastChannel even when the provider's Cross-Origin-Opener-Policy has
+    // severed window.opener (which is exactly why the plain postMessage failed).
+    (function () {
+      var p = new URLSearchParams((location.hash || '').replace(/^#/, ''));
+      var msg = {
+        source: 'nyora-tracker',
+        slug: p.get('slug') || '',
+        access_token: p.get('access_token') || '',
+        refresh_token: p.get('refresh_token') || '',
+        error: p.get('error') || '',
+      };
+      // Scrub the token out of the address bar / history immediately.
+      try { history.replaceState(null, '', location.pathname); } catch (e) { /* ignore */ }
+      // Primary: same-origin BroadcastChannel — survives a COOP-severed opener.
+      try { var bc = new BroadcastChannel('nyora-tracker'); bc.postMessage(msg); bc.close(); } catch (e) { /* older browser */ }
+      // Fallbacks: a storage event (same-origin) and a direct opener postMessage
+      // (for providers that don't set COOP).
+      try { localStorage.setItem('nyora.oauth.msg', JSON.stringify(Object.assign({ ts: Date.now() }, msg))); } catch (e) { /* quota */ }
+      try { if (window.opener) window.opener.postMessage(msg, location.origin); } catch (e) { /* severed */ }
+
+      var ok = !!msg.access_token;
+      document.getElementById('dot').style.display = 'none';
+      document.getElementById('m').textContent = ok
+        ? 'Connected — you can close this window.'
+        : 'Sign-in failed — you can close this window.';
+      setTimeout(function () { try { window.close(); } catch (e) { /* ignore */ } }, ok ? 500 : 1600);
+    })();
+  </script>
+</body>
+</html>

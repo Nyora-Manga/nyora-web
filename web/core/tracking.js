@@ -43,36 +43,63 @@ export function setEnabled(slug, on) { setEntry(slug, { enabled: !!on }); }
 export function token(slug) { return entry(slug).access_token || ''; }
 export function disconnect(slug) { const s = loadStore(); delete s[slug]; saveStore(s); }
 
-// OAuth popup login. Resolves once the helper's callback page postMessages a
-// token; security rests on the message coming from the helper's own origin.
+// Map the helper's terse error codes to something a human can act on.
+function oauthErrorMessage(code) {
+  const m = {
+    access_denied: 'You declined the authorization.',
+    no_code: 'The tracker didn’t return an authorization code — try again.',
+    bad_state: 'Sign-in expired or didn’t match — try again.',
+    exchange_failed: 'Couldn’t reach the tracker to finish sign-in.',
+    bad_token_response: 'The tracker returned an unexpected response.',
+    no_access_token: 'The tracker didn’t return an access token.',
+  };
+  return (code && m[code]) || (code ? `Sign-in failed (${code}).` : 'No token returned.');
+}
+
+// OAuth popup login. We pass our own origin as `ro` so the helper's callback
+// relays the token back through THIS origin (oauth.html → BroadcastChannel):
+// some providers (e.g. MangaBaka) send Cross-Origin-Opener-Policy, which nulls
+// window.opener and breaks a plain cross-origin postMessage. We still listen for
+// postMessage too, as a fast path for providers that don't set COOP.
 export function connectOAuth(slug) {
   return new Promise((resolve, reject) => {
     const popup = window.open(
-      `${HELPER}/tracker/${slug}/authorize`,
+      `${HELPER}/tracker/${slug}/authorize?ro=${encodeURIComponent(location.origin)}`,
       `nyora-track-${slug}`,
       'width=520,height=680,menubar=no,toolbar=no',
     );
     if (!popup) { reject(new Error('Popup blocked — allow popups for this site and retry.')); return; }
     let done = false;
-    function onMsg(ev) {
-      if (ev.origin !== HELPER_ORIGIN) return;
-      const d = ev.data;
-      if (!d || d.source !== 'nyora-tracker' || d.slug !== slug) return;
+    let bc = null;
+    try { bc = new BroadcastChannel('nyora-tracker'); } catch { /* older browser */ }
+
+    function handle(d) {
+      if (done || !d || d.source !== 'nyora-tracker' || d.slug !== slug) return;
       cleanup();
-      if (d.error || !d.access_token) { reject(new Error(d.error || 'No token returned')); return; }
+      if (d.error || !d.access_token) { reject(new Error(oauthErrorMessage(d.error))); return; }
       setEntry(slug, { access_token: d.access_token, refresh_token: d.refresh_token || '', enabled: true });
       resolve(true);
+    }
+    // The relay page is same-origin; the legacy direct page is the helper origin.
+    function onMsg(ev) { if (ev.origin === location.origin || ev.origin === HELPER_ORIGIN) handle(ev.data); }
+    function onStorage(ev) {
+      if (ev.key !== 'nyora.oauth.msg' || !ev.newValue) return;
+      try { handle(JSON.parse(ev.newValue)); } catch { /* ignore */ }
     }
     function cleanup() {
       if (done) return;
       done = true;
       window.removeEventListener('message', onMsg);
+      window.removeEventListener('storage', onStorage);
+      if (bc) { try { bc.close(); } catch { /* ignore */ } }
       clearInterval(poll);
       clearTimeout(timer);
       try { popup.close(); } catch { /* ignore */ }
     }
+    if (bc) bc.onmessage = (ev) => handle(ev.data);
     window.addEventListener('message', onMsg);
-    const poll = setInterval(() => { if (popup.closed) { cleanup(); reject(new Error('Sign-in cancelled.')); } }, 700);
+    window.addEventListener('storage', onStorage);
+    const poll = setInterval(() => { if (popup.closed && !done) { cleanup(); reject(new Error('Sign-in cancelled.')); } }, 700);
     const timer = setTimeout(() => { cleanup(); reject(new Error('Sign-in timed out.')); }, 300000);
   });
 }
