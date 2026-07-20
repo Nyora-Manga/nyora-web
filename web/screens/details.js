@@ -752,11 +752,13 @@ function openTracking(manga, mangaId, title, currentChapter = 0) {
     const status = (st && st.status) || 'reading';
     let progress = (st && st.progress) || 0;
     // Bring the tracker up to your current Nyora progress (never regress it) —
-    // this backfills a freshly-linked service that starts at 0 (e.g. MangaBaka)
-    // and keeps a linked tracker in step with what you've actually read here.
+    // this backfills a freshly-linked service that starts at 0 (e.g. MangaBaka).
+    // Only advance the SHOWN progress if the tracker actually accepted the write
+    // (setState resolves false on a rejected write), so we never display a sync
+    // that didn't land on the tracker's side.
     if (currentChapter > progress) {
-      progress = currentChapter;
-      tracking.setState(t.slug, mediaId, { status, progress }).catch(() => { /* best-effort */ });
+      const ok = await tracking.setState(t.slug, mediaId, { status, progress: currentChapter }).catch(() => false);
+      if (ok) progress = currentChapter;
     }
     const score10 = st && st.score != null ? Math.round(st.score * 10) : 0;
 
