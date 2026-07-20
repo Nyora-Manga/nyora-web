@@ -8,6 +8,7 @@ import {
 import { router, store } from '../core/store.js';
 import library from '../core/library.js';
 import { downloads } from '../core/downloads.js';
+import tracking from '../core/tracking.js';
 
 export const meta = { title: 'Details', nav: false, icon: 'info', order: 99 };
 
@@ -295,6 +296,9 @@ function buildDetails(view, sid, url, manga, chapters, params) {
     el('div', { class: 'd2-actions d2-actions-sub' },
       downloadAllBtn,
       iconBtn('folder', () => openCategories(manga, mangaId), 'Add to category'),
+      tracking.connectedTrackers().length
+        ? iconBtn('bookmark', () => openTracking(manga, mangaId, title), 'Tracking')
+        : null,
       publicUrl ? iconBtn('external', () => {
         if (!openExternal(publicUrl)) toast('That source link doesn’t look valid.');
       }, 'Open site') : null,
@@ -697,6 +701,94 @@ function openCategories(manga, mangaId) {
     });
 
     body.replaceChildren(rows, el('div', { class: 'row' }, input, createBtn));
+  }
+
+  refresh();
+}
+
+// ── Tracking sheet ───────────────────────────────────────────────────────────
+// Mirrors the android/Aidoku model: per connected service, either search + link
+// this manga, or show + edit its status / progress / score, or unlink.
+function openTracking(manga, mangaId, title) {
+  const body = el('div', { class: 'list' });
+  modal({ title: 'Tracking', body, actions: [{ label: 'Done', primary: true }] });
+
+  const STATUSES = ['reading', 'planning', 'completed', 'paused', 'dropped', 'rereading'];
+  const statusLabel = (s) => ({
+    reading: 'Reading', planning: 'Planning', completed: 'Completed',
+    paused: 'On hold', dropped: 'Dropped', rereading: 'Re-reading',
+  }[s] || s);
+  const busy = () => el('div', { class: 'row', style: { justifyContent: 'center', padding: '16px' } }, spinner());
+
+  async function refresh() {
+    body.replaceChildren(busy());
+    const connected = tracking.connectedTrackers();
+    if (!connected.length) {
+      body.replaceChildren(emptyState(
+        'No trackers connected — Connect AniList, MyAnimeList, MangaBaka or Kitsu in Settings → Tracking to sync your progress.',
+        'bookmark'));
+      return;
+    }
+    const rows = el('div', { class: 'list' });
+    for (const t of connected) rows.appendChild(await trackerRow(t));
+    body.replaceChildren(rows);
+  }
+
+  async function trackerRow(t) {
+    const mediaId = tracking.linkedMediaId(t.slug, mangaId);
+    if (mediaId == null) {
+      const trackBtn = btn('Track', { variant: 'accent', icon: 'plus', onClick: () => linkFlow(t) });
+      return el('div', { class: 'row-item' },
+        el('div', { class: 'row-main' }, el('div', { class: 'name' }, t.name), el('div', { class: 'sub' }, 'Not tracked')),
+        el('div', { class: 'row-actions' }, trackBtn));
+    }
+    let st = null;
+    try { st = await tracking.getState(t.slug, mediaId); } catch { /* ignore */ }
+    const status = (st && st.status) || 'reading';
+    const progress = (st && st.progress) || 0;
+    const score10 = st && st.score != null ? Math.round(st.score * 10) : 0;
+
+    const statusSel = menuSelect(
+      STATUSES.map((s) => ({ value: s, label: statusLabel(s) })), status,
+      (v) => tracking.setState(t.slug, mediaId, { status: v }).then((ok) => toast(ok ? `${t.name} updated` : 'Update failed')),
+      { label: `${t.name} status` });
+    const scoreSel = menuSelect(
+      Array.from({ length: 11 }, (_, i) => ({ value: String(i), label: i === 0 ? 'Score' : String(i) })), String(score10),
+      (v) => tracking.setState(t.slug, mediaId, { score: Number(v) / 10 }).then((ok) => toast(ok ? 'Score set' : 'Update failed')),
+      { label: `${t.name} score` });
+    const unlinkBtn = iconBtn('trash', () => { tracking.unlink(t.slug, mangaId); toast(`${t.name} unlinked`); refresh(); }, 'Unlink');
+
+    return el('div', { class: 'row-item' },
+      el('div', { class: 'row-main' },
+        el('div', { class: 'name' }, t.name),
+        el('div', { class: 'sub' }, `Chapter ${progress}${score10 ? ` · score ${score10}` : ''}`)),
+      el('div', { class: 'row-actions', style: { gap: '6px', flexWrap: 'wrap' } }, statusSel, scoreSel, unlinkBtn));
+  }
+
+  async function linkFlow(t) {
+    body.replaceChildren(busy());
+    let results = [];
+    try { results = await tracking.search(t.slug, title); } catch { /* ignore */ }
+    const picker = el('div', { class: 'list' });
+    picker.appendChild(btn('Back', { variant: 'ghost', icon: 'back', onClick: () => refresh() }));
+    if (!results.length) {
+      picker.appendChild(emptyState(`No matches — nothing on ${t.name} matched “${title}”.`, 'search'));
+    } else {
+      for (const r of results.slice(0, 10)) {
+        const pick = el('div', { class: 'row-item', style: { cursor: 'pointer' } },
+          el('div', { class: 'row-main' },
+            el('div', { class: 'name' }, r.title || 'Untitled'),
+            r.altTitle ? el('div', { class: 'sub' }, r.altTitle) : null));
+        pick.addEventListener('click', async () => {
+          tracking.link(t.slug, mangaId, r.id);
+          try { await tracking.setState(t.slug, r.id, { status: 'reading' }); } catch { /* ignore */ }
+          toast(`Tracked on ${t.name}`);
+          refresh();
+        });
+        picker.appendChild(pick);
+      }
+    }
+    body.replaceChildren(picker);
   }
 
   refresh();

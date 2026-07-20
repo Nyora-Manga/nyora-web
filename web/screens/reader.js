@@ -45,6 +45,7 @@ import {
 } from '../core/ui.js';
 import { store, router } from '../core/store.js';
 import library from '../core/library.js';
+import tracking from '../core/tracking.js';
 import { translatePage, onTranslatorStatus } from '../core/translate/engine.js';
 import { attachOverlay } from '../core/translate/overlay.js';
 import { TL_LANGS, TL_SOURCES } from '../core/translate/mt.js';
@@ -596,6 +597,10 @@ export function render(view, params) {
           page,
           total: st.pages.length,
         });
+        // Best-effort scrobble to any connected trackers (deduped per chapter).
+        if (chapter && chapter.number != null) {
+          tracking.scrobbleAll({ mangaId: st.manga.id, title: st.manga.title, chapter: chapter.number });
+        }
       } catch { /* best-effort */ }
     }, 350);
   }

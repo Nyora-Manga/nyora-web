@@ -10,6 +10,7 @@ import {
   store, router, COLOR_SCHEMES, resolveAccent, detectBrowserAccent,
 } from '../core/store.js';
 import sync from '../core/sync.js';
+import tracking from '../core/tracking.js';
 import { showPreferences } from './welcome.js';
 import { TL_LANGS, TL_SOURCES } from '../core/translate/mt.js';
 
@@ -81,6 +82,7 @@ const SECTIONS = [
   { id: 'downloads', name: 'Downloads', sub: 'Format, concurrency and offline storage', icon: 'download', build: buildDownloads },
   { id: 'content', name: 'Content', sub: '18+ sources, languages and sources', icon: 'eye', build: buildContent },
   { id: 'sync', name: 'Cloud Sync', sub: 'Account, sync and restore', icon: 'refresh', build: buildSync },
+  { id: 'tracking', name: 'Tracking', sub: 'Connect AniList, MyAnimeList, MangaBaka or Kitsu — as many as you like', icon: 'bookmark', build: buildTracking },
   { id: 'backup', name: 'Backup & Data', sub: 'Export, import and clear data', icon: 'download', build: buildBackupData },
   { id: 'advanced', name: 'Advanced', sub: 'Storage, caches and servers', icon: 'bars', build: buildAdvanced },
   { id: 'experimental', name: 'Experimental', sub: 'On-device AI translation & colorization (beta)', icon: 'flask', build: buildExperimental },
@@ -753,6 +755,70 @@ function buildAbout() {
 
   section.append(credits);
   return section;
+}
+
+// ── Tracking ─────────────────────────────────────────────────────────────────
+
+function buildTracking() {
+  const section = el('section', { class: 'settings-section' });
+  const rerender = () => section.replaceWith(buildTracking());
+  section.append(el('p', { class: 'exp-hint' },
+    'Connect any of these services — you can enable several at once, and each linked '
+    + 'manga scrobbles to all of them once per chapter as you read. Use the toggle to '
+    + 'pause a service without signing out; link/change status per manga from a title’s '
+    + 'Tracking button. Tokens are stored on this device.'));
+  for (const t of tracking.TRACKERS) section.append(trackerRow(t, rerender));
+  return section;
+}
+
+function trackerRow(t, refresh) {
+  if (tracking.isConnected(t.slug)) {
+    const toggle = m3Switch(tracking.isEnabled(t.slug), (on) => tracking.setEnabled(t.slug, on));
+    const signOut = btn('Disconnect', {
+      variant: 'ghost', class: 'btn-sm btn-danger',
+      onClick: () => { tracking.disconnect(t.slug); toast(`${t.name} disconnected`); refresh(); },
+    });
+    return el('div', { class: 'setting-row' },
+      el('div', { class: 'row-main' },
+        el('div', { class: 'name' }, t.name),
+        el('div', { class: 'sub' }, 'Connected — scrobbling on chapter open')),
+      el('div', { class: 'row-actions', style: { gap: '8px' } }, toggle, signOut));
+  }
+  if (t.auth === 'password') return trackerPasswordRow(t, refresh);
+  const connectBtn = btn('Connect', {
+    variant: 'ghost', class: 'btn-sm',
+    onClick: async () => {
+      connectBtn.disabled = true;
+      try { await tracking.connect(t.slug); toast(`${t.name} connected`); refresh(); }
+      catch (e) { toast(e && e.message ? e.message : 'Sign-in failed'); connectBtn.disabled = false; }
+    },
+  });
+  return el('div', { class: 'setting-row' },
+    el('div', { class: 'row-main' },
+      el('div', { class: 'name' }, t.name),
+      el('div', { class: 'sub' }, 'Not connected')),
+    el('div', { class: 'row-actions' }, connectBtn));
+}
+
+function trackerPasswordRow(t, refresh) {
+  const email = el('input', { class: 'input', type: 'email', placeholder: 'Email', autocomplete: 'off' });
+  const pass = el('input', { class: 'input', type: 'password', placeholder: 'Password', autocomplete: 'off' });
+  const loginBtn = btn('Log in', {
+    variant: 'ghost', class: 'btn-sm',
+    onClick: async () => {
+      if (!email.value || !pass.value) { toast('Enter your email and password'); return; }
+      loginBtn.disabled = true;
+      try {
+        await tracking.connect(t.slug, { username: email.value, password: pass.value });
+        toast(`${t.name} connected`); refresh();
+      } catch (e) { toast(e && e.message ? e.message : 'Login failed'); loginBtn.disabled = false; }
+    },
+  });
+  return el('div', { class: 'setting-row setting-row--stack' },
+    el('div', { class: 'row-main' },
+      el('div', { class: 'name' }, t.name),
+      el('div', { class: 'sub' }, 'Sign in with your Kitsu email and password')),
+    el('div', { class: 'row-actions', style: { gap: '6px', flexWrap: 'wrap' } }, email, pass, loginBtn));
 }
 
 export default { meta, render };
