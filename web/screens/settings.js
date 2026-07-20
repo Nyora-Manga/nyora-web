@@ -4,7 +4,7 @@ import library from '../core/library.js';
 import { downloads } from '../core/downloads.js';
 import { colorizeModelReady, downloadColorizeModel } from '../core/colorize/engine.js';
 import {
-  el, toast, btn, sectionHeader, confirmDialog, icon, iconBtn, menuSelect, m3Range, schemeCard, infoDot, segmented, stepper, m3Switch,
+  el, toast, btn, sectionHeader, confirmDialog, icon, iconBtn, menuSelect, m3Range, schemeCard, infoDot, segmented, stepper, m3Switch, modal, spinner,
 } from '../core/ui.js';
 import {
   store, router, COLOR_SCHEMES, resolveAccent, detectBrowserAccent,
@@ -801,24 +801,66 @@ function trackerRow(t, refresh) {
 }
 
 function trackerPasswordRow(t, refresh) {
-  const email = el('input', { class: 'input', type: 'email', placeholder: 'Email', autocomplete: 'off' });
-  const pass = el('input', { class: 'input', type: 'password', placeholder: 'Password', autocomplete: 'off' });
-  const loginBtn = btn('Log in', {
+  // Kitsu has no OAuth popup — collect email/password in a proper Material dialog,
+  // so its row looks and behaves like the OAuth trackers (a single Connect button).
+  const connectBtn = btn('Connect', {
     variant: 'ghost', class: 'btn-sm',
-    onClick: async () => {
-      if (!email.value || !pass.value) { toast('Enter your email and password'); return; }
-      loginBtn.disabled = true;
-      try {
-        await tracking.connect(t.slug, { username: email.value, password: pass.value });
-        toast(`${t.name} connected`); refresh();
-      } catch (e) { toast(e && e.message ? e.message : 'Login failed'); loginBtn.disabled = false; }
-    },
+    onClick: () => openPasswordLogin(t, refresh),
   });
-  return el('div', { class: 'setting-row setting-row--stack' },
+  return el('div', { class: 'setting-row' },
     el('div', { class: 'row-main' },
       el('div', { class: 'name' }, t.name),
-      el('div', { class: 'sub' }, 'Sign in with your Kitsu email and password')),
-    el('div', { class: 'row-actions', style: { gap: '6px', flexWrap: 'wrap' } }, email, pass, loginBtn));
+      el('div', { class: 'sub' }, 'Sign in with your email and password')),
+    el('div', { class: 'row-actions' }, connectBtn));
+}
+
+function openPasswordLogin(t, refresh) {
+  const email = el('input', {
+    type: 'email', placeholder: 'you@example.com',
+    autocomplete: 'username', autocapitalize: 'off', spellcheck: 'false',
+  });
+  const pass = el('input', { type: 'password', placeholder: 'Password', autocomplete: 'current-password' });
+  const errLine = el('div', {
+    style: { color: 'var(--danger, #ef5350)', fontSize: '12.5px', minHeight: '15px', margin: '-8px 0 12px' },
+  });
+  const loginBtn = btn('Log in', { variant: 'accent' });
+  loginBtn.style.width = '100%';
+
+  const body = el('div', {},
+    el('p', { class: 'exp-hint', style: { margin: '0 0 16px' } },
+      `Sign in with your ${t.name} email and password. Your password is sent once to fetch an `
+      + 'access token and is never stored — only the token is kept on this device.'),
+    el('div', { class: 'field' }, el('label', null, 'Email'), email),
+    el('div', { class: 'field' }, el('label', null, 'Password'), pass),
+    errLine,
+    loginBtn,
+  );
+  const close = modal({ title: `Sign in to ${t.name}`, body });
+
+  let busy = false;
+  async function submit() {
+    if (busy) return;
+    errLine.textContent = '';
+    if (!email.value.trim() || !pass.value) { errLine.textContent = 'Enter your email and password.'; return; }
+    busy = true;
+    loginBtn.disabled = email.disabled = pass.disabled = true;
+    loginBtn.replaceChildren(spinner(), el('span', null, 'Signing in…'));
+    try {
+      await tracking.connect(t.slug, { username: email.value.trim(), password: pass.value });
+      close();
+      toast(`${t.name} connected`);
+      refresh();
+    } catch (e) {
+      errLine.textContent = (e && e.message) || 'Login failed — check your email and password.';
+      busy = false;
+      loginBtn.disabled = email.disabled = pass.disabled = false;
+      loginBtn.replaceChildren(el('span', null, 'Log in'));
+    }
+  }
+  loginBtn.addEventListener('click', submit);
+  email.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); pass.focus(); } });
+  pass.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); submit(); } });
+  setTimeout(() => { try { email.focus(); } catch { /* ignore */ } }, 60);
 }
 
 export default { meta, render };
