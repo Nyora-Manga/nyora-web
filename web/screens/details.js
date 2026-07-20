@@ -297,7 +297,12 @@ function buildDetails(view, sid, url, manga, chapters, params) {
       downloadAllBtn,
       iconBtn('folder', () => openCategories(manga, mangaId), 'Add to category'),
       tracking.connectedTrackers().length
-        ? iconBtn('bookmark', () => openTracking(manga, mangaId, title), 'Tracking')
+        ? iconBtn('bookmark', () => {
+          const lu = lastReadChapterUrl(mangaId, readingOrder);
+          const lc = readingOrder.find((c) => c.url === lu);
+          const cur = lc && lc.number != null ? Math.floor(Number(lc.number)) : 0;
+          openTracking(manga, mangaId, title, cur);
+        }, 'Tracking')
         : null,
       publicUrl ? iconBtn('external', () => {
         if (!openExternal(publicUrl)) toast('That source link doesn’t look valid.');
@@ -709,7 +714,7 @@ function openCategories(manga, mangaId) {
 // ── Tracking sheet ───────────────────────────────────────────────────────────
 // Mirrors the android/Aidoku model: per connected service, either search + link
 // this manga, or show + edit its status / progress / score, or unlink.
-function openTracking(manga, mangaId, title) {
+function openTracking(manga, mangaId, title, currentChapter = 0) {
   const body = el('div', { class: 'list' });
   modal({ title: 'Tracking', body, actions: [{ label: 'Done', primary: true }] });
 
@@ -745,7 +750,14 @@ function openTracking(manga, mangaId, title) {
     let st = null;
     try { st = await tracking.getState(t.slug, mediaId); } catch { /* ignore */ }
     const status = (st && st.status) || 'reading';
-    const progress = (st && st.progress) || 0;
+    let progress = (st && st.progress) || 0;
+    // Bring the tracker up to your current Nyora progress (never regress it) —
+    // this backfills a freshly-linked service that starts at 0 (e.g. MangaBaka)
+    // and keeps a linked tracker in step with what you've actually read here.
+    if (currentChapter > progress) {
+      progress = currentChapter;
+      tracking.setState(t.slug, mediaId, { status, progress }).catch(() => { /* best-effort */ });
+    }
     const score10 = st && st.score != null ? Math.round(st.score * 10) : 0;
 
     const statusSel = menuSelect(
