@@ -82,7 +82,7 @@ const SECTIONS = [
   { id: 'downloads', name: 'Downloads', sub: 'Format, concurrency and offline storage', icon: 'download', build: buildDownloads },
   { id: 'content', name: 'Content', sub: '18+ sources, languages and sources', icon: 'eye', build: buildContent },
   { id: 'sync', name: 'Cloud Sync', sub: 'Account, sync and restore', icon: 'refresh', build: buildSync },
-  { id: 'tracking', name: 'Tracking', sub: 'Connect AniList, MyAnimeList, MangaBaka or Kitsu — as many as you like', icon: 'bookmark', build: buildTracking },
+  { id: 'tracking', name: 'Tracking', sub: 'AniList, MyAnimeList, MangaBaka and Kitsu', icon: 'bookmark', build: buildTracking },
   { id: 'backup', name: 'Backup & Data', sub: 'Export, import and clear data', icon: 'download', build: buildBackupData },
   { id: 'advanced', name: 'Advanced', sub: 'Storage, caches and servers', icon: 'bars', build: buildAdvanced },
   { id: 'experimental', name: 'Experimental', sub: 'On-device AI translation & colorization (beta)', icon: 'flask', build: buildExperimental },
