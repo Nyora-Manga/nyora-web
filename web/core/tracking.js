@@ -196,7 +196,9 @@ export async function setState(slug, mediaId, { status, progress, score } = {}) 
   const res = await fetch(`${HELPER}/tracker/${slug}/scrobble?${p.toString()}`, {
     method: 'POST', headers: { Authorization: `Bearer ${token(slug)}` },
   });
-  return res.ok;
+  const data = await res.json().catch(() => ({}));
+  const ok = res.ok && data.ok !== false;
+  return { ok, error: ok ? null : (data.error || `HTTP ${res.status}`) };
 }
 
 /**

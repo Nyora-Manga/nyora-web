@@ -756,26 +756,30 @@ function openTracking(manga, mangaId, title, currentChapter = 0) {
     // Only advance the SHOWN progress if the tracker actually accepted the write
     // (setState resolves false on a rejected write), so we never display a sync
     // that didn't land on the tracker's side.
+    let syncError = null;
     if (currentChapter > progress) {
-      const ok = await tracking.setState(t.slug, mediaId, { status, progress: currentChapter }).catch(() => false);
-      if (ok) progress = currentChapter;
+      const r = await tracking.setState(t.slug, mediaId, { status, progress: currentChapter }).catch(() => ({ ok: false }));
+      if (r.ok) progress = currentChapter;
+      else syncError = r.error;
     }
     const score10 = st && st.score != null ? Math.round(st.score * 10) : 0;
 
     const statusSel = menuSelect(
       STATUSES.map((s) => ({ value: s, label: statusLabel(s) })), status,
-      (v) => tracking.setState(t.slug, mediaId, { status: v }).then((ok) => toast(ok ? `${t.name} updated` : 'Update failed')),
+      (v) => tracking.setState(t.slug, mediaId, { status: v }).then((r) => toast(r.ok ? `${t.name} updated` : (r.error || 'Update failed'))),
       { label: `${t.name} status` });
     const scoreSel = menuSelect(
       Array.from({ length: 11 }, (_, i) => ({ value: String(i), label: i === 0 ? 'Score' : String(i) })), String(score10),
-      (v) => tracking.setState(t.slug, mediaId, { score: Number(v) / 10 }).then((ok) => toast(ok ? 'Score set' : 'Update failed')),
+      (v) => tracking.setState(t.slug, mediaId, { score: Number(v) / 10 }).then((r) => toast(r.ok ? 'Score set' : (r.error || 'Update failed'))),
       { label: `${t.name} score` });
     const unlinkBtn = iconBtn('trash', () => { tracking.unlink(t.slug, mangaId); toast(`${t.name} unlinked`); refresh(); }, 'Unlink');
 
     return el('div', { class: 'row-item' },
       el('div', { class: 'row-main' },
         el('div', { class: 'name' }, t.name),
-        el('div', { class: 'sub' }, `Chapter ${progress}${score10 ? ` · score ${score10}` : ''}`)),
+        el('div', { class: 'sub' }, syncError
+          ? `Chapter ${progress} · didn’t sync: ${syncError}`
+          : `Chapter ${progress}${score10 ? ` · score ${score10}` : ''}`)),
       el('div', { class: 'row-actions', style: { gap: '6px', flexWrap: 'wrap' } }, statusSel, scoreSel, unlinkBtn));
   }
 
