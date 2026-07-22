@@ -20,7 +20,7 @@
 import sync from './sync.js';
 import library from './library.js';
 
-const QUIET_MS = 12_000;          // push this long after the last local change
+const QUIET_MS = 5_000;           // push this long after the last local change
 const MAX_DEFER_MS = 5 * 60_000;  // ...but never defer a dirty push beyond this
 const FOCUS_IDLE_MS = 90_000;     // on tab focus, resync if it's been this long
 const PERIODIC_MS = 60_000;       // safety-net: pull+push at least this often
@@ -67,9 +67,16 @@ function schedule() {
   timer = setTimeout(() => { timer = null; runSync('debounced'); }, delay);
 }
 
-function onLibraryChange() {
+function onLibraryChange(detail) {
   dirty = true;
-  if (!running) schedule(); // if a sync is in flight, it reschedules on finish
+  // A new chapter read is a meaningful checkpoint — push it right away instead
+  // of waiting out the debounce, so each chapter syncs the moment it's opened.
+  if (detail && detail.type === 'history' && detail.chapterChanged) {
+    if (running) return;            // in-flight sync will reschedule on finish
+    runSync('chapter');
+    return;
+  }
+  if (!running) schedule();         // progress-within-chapter: coalesce
 }
 
 // Safety-net loop. Even if no change event or focus change fires, this pulls

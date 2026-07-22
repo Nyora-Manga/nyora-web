@@ -112,7 +112,7 @@ function mergeShape(base, stored) {
 const _changeListeners = new Set();
 let _muteNotify = false;
 
-function save() {
+function save(detail) {
   // Mirror into the IndexedDB schema store (mac/Supabase shape) for future
   // cross-platform sync — best-effort, debounced, never blocks the UI.
   try { db.mirrorAll(_data); } catch { /* ignore */ }
@@ -125,7 +125,10 @@ function save() {
     }
   }
   if (!_muteNotify) {
-    for (const cb of _changeListeners) { try { cb(); } catch { /* ignore */ } }
+    // `detail` lets a listener react differently to significant mutations — e.g.
+    // auto-sync forces an immediate push on a new chapter ({type:'history',
+    // chapterChanged:true}) instead of the usual debounce.
+    for (const cb of _changeListeners) { try { cb(detail); } catch { /* ignore */ } }
   }
 }
 
@@ -318,12 +321,18 @@ export const library = {
         if (!nextManga[k] && prev.manga[k]) nextManga[k] = prev.manga[k];
       }
     }
+    const newChapterId = body.chapterId != null ? body.chapterId
+      : (body.chapterUrl != null ? body.chapterUrl : (prev.chapterId || ''));
+    // A new/different chapter (or the first time this manga is recorded) is a
+    // meaningful reading event — auto-sync pushes it to the cloud immediately
+    // rather than waiting for the idle debounce, so each chapter read syncs at
+    // once. Same-chapter page progress stays coalesced.
+    const chapterChanged = String(newChapterId) !== String(prev.chapterId || '');
     _data.history[id] = {
       manga: nextManga,
       sourceId,
       chapterUrl: body.chapterUrl != null ? body.chapterUrl : (prev.chapterUrl || ''),
-      chapterId: body.chapterId != null ? body.chapterId
-        : (body.chapterUrl != null ? body.chapterUrl : (prev.chapterId || '')),
+      chapterId: newChapterId,
       chapterTitle: body.chapterTitle != null ? body.chapterTitle : (prev.chapterTitle || ''),
       chapterNumber: body.chapterNumber != null ? body.chapterNumber : (prev.chapterNumber ?? null),
       page,
@@ -331,7 +340,7 @@ export const library = {
       percent,
       updatedAt: now(),
     };
-    save();
+    save({ type: 'history', chapterChanged });
   },
 
   // Repair metadata on an existing history entry WITHOUT touching updatedAt,
