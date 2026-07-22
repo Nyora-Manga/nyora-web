@@ -105,16 +105,27 @@ function mergeShape(base, stored) {
   return out;
 }
 
+// Change subscribers (auto-sync). Notified after every persisted mutation so a
+// background push can be scheduled — EXCEPT while `_muteNotify` is set, which
+// wraps importData() so a cloud PULL's writes don't immediately echo back as a
+// push (which would loop forever). Genuine user mutations always notify.
+const _changeListeners = new Set();
+let _muteNotify = false;
+
 function save() {
   // Mirror into the IndexedDB schema store (mac/Supabase shape) for future
   // cross-platform sync — best-effort, debounced, never blocks the UI.
   try { db.mirrorAll(_data); } catch { /* ignore */ }
-  if (!_storageOk) return; // in-memory only — nothing else to persist
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(_data));
-  } catch {
-    // Quota exceeded / disabled mid-session: keep running from memory.
-    _storageOk = false;
+  if (_storageOk) {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(_data));
+    } catch {
+      // Quota exceeded / disabled mid-session: keep running from memory.
+      _storageOk = false;
+    }
+  }
+  if (!_muteNotify) {
+    for (const cb of _changeListeners) { try { cb(); } catch { /* ignore */ } }
   }
 }
 
@@ -810,8 +821,25 @@ export const library = {
 
   importData(obj) {
     if (!obj || typeof obj !== 'object') return;
-    _data = mergeShape(emptyData(), obj);
-    save();
+    // Muted: this is a cloud pull / restore writing remote data locally. It must
+    // persist, but must NOT fire change listeners — otherwise auto-sync would
+    // treat the just-pulled rows as a fresh local change and push them straight
+    // back, looping every debounce interval.
+    _muteNotify = true;
+    try {
+      _data = mergeShape(emptyData(), obj);
+      save();
+    } finally {
+      _muteNotify = false;
+    }
+  },
+
+  // Subscribe to persisted-mutation notifications; returns an unsubscribe fn.
+  // Used by auto-sync to schedule a debounced background push.
+  onChange(cb) {
+    if (typeof cb !== 'function') return () => {};
+    _changeListeners.add(cb);
+    return () => _changeListeners.delete(cb);
   },
 
   clearAll() {

@@ -27,6 +27,7 @@ import { meta as browserMeta, render as browserRender } from './screens/browser.
 import { shouldShowWelcome, showWelcome } from './screens/welcome.js';
 import { shouldShowChangelog, showChangelog, markChangelogSeen } from './core/changelog.js';
 import { runMigrations } from './core/migrations.js';
+import { initAutoSync } from './core/auto-sync.js';
 
 const routes = {
   discover: discoverRender,
@@ -543,6 +544,15 @@ window.addEventListener('nyora:migrated', () => {
 });
 if (typeof requestIdleCallback === 'function') requestIdleCallback(startMigrations, { timeout: 8000 });
 else setTimeout(startMigrations, 4000);
+
+// Continuous cloud sync (startup pull + debounced push + focus resync), so web
+// history/library stays in lockstep with the mac/Android apps instead of only
+// syncing on sign-in or a manual "Sync Now".
+initAutoSync();
+window.addEventListener('nyora:synced', () => {
+  // A pull may have merged in remote reads/favourites — refresh the current view.
+  try { router.reload ? router.reload() : dispatch(); } catch { /* ignore */ }
+});
 
 // Splash failsafes: #splash is a fixed full-screen overlay, so any boot throw or
 // failed module load that skips the rAF above would leave it covering the app
