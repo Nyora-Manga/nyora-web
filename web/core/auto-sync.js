@@ -23,6 +23,8 @@ import library from './library.js';
 const QUIET_MS = 12_000;          // push this long after the last local change
 const MAX_DEFER_MS = 5 * 60_000;  // ...but never defer a dirty push beyond this
 const FOCUS_IDLE_MS = 90_000;     // on tab focus, resync if it's been this long
+const PERIODIC_MS = 60_000;       // safety-net: pull+push at least this often
+const MIN_GAP_MS = 45_000;        // don't let the periodic tick pile onto a recent sync
 
 let timer = null;
 let firstDirtyAt = 0;
@@ -70,6 +72,17 @@ function onLibraryChange() {
   if (!running) schedule(); // if a sync is in flight, it reschedules on finish
 }
 
+// Safety-net loop. Even if no change event or focus change fires, this pulls
+// (to pick up other devices' reads) and pushes (dirty local reads) on a fixed
+// cadence while the tab is open — so "it only syncs when I click Sync Now" can
+// never happen. Skipped when a sync ran very recently or the tab is hidden.
+function periodicTick() {
+  if (!authed() || running) return;
+  if (document.visibilityState !== 'visible') return;
+  if (Date.now() - lastSyncAt < MIN_GAP_MS) return;
+  runSync('periodic');
+}
+
 export function initAutoSync() {
   if (started) return;
   started = true;
@@ -83,6 +96,8 @@ export function initAutoSync() {
       runSync('hide'); // best-effort flush on the way out
     }
   });
+
+  setInterval(periodicTick, PERIODIC_MS);
 
   // Startup pull+push (deferred so it never competes with first paint). Signing
   // in mid-session already merges via signInAndFetch; onChange keeps it flowing.
