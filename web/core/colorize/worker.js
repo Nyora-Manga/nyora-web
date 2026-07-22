@@ -57,13 +57,17 @@ async function init() {
   post({ type: 'progress', label: 'Loading AI runtime', pct: 0 });
   ort = await import(ORT_URL);
   ort.env.wasm.wasmPaths = ORT_WASM_PATH;
-  // Force single-threaded wasm. Multi-threaded ORT (which the threaded wasm build
-  // spins up when the page is crossOriginIsolated) HANGS at load on the deployed
-  // site — colorize gets stuck on "Loading AI runtime" forever and never inits, so
-  // pages stay black-and-white even with the toggle on. The WebGPU EP does the
-  // actual colouring, and single-thread wasm is a correct, working fallback, so
-  // pinning numThreads = 1 costs nothing and fixes the hang.
-  ort.env.wasm.numThreads = 1;
+  // Multi-thread the wasm backend when the page is cross-origin isolated (the SW
+  // injects COOP/COEP, so it is) — SharedArrayBuffer threads are exactly what COI
+  // exists for. This is the FAST fallback path: the colorizer is a full-page GAN,
+  // and single-threaded wasm takes ~35s/page (measured), which reads as "colorize
+  // is broken." Threaded wasm brings that down to a few seconds. WebGPU is still
+  // tried first (faster yet); this only matters when WebGPU is unavailable.
+  // (An earlier build forced numThreads=1 to dodge a hang seen ONLY in headless
+  // Chrome/SwiftShader — real browsers under COI run threaded wasm fine.)
+  if (self.crossOriginIsolated) {
+    ort.env.wasm.numThreads = Math.min(8, Math.max(1, (navigator.hardwareConcurrency || 4) - 1));
+  }
   const buf = await fetchWithProgress(MODEL_URL, 'colorizer model', MODEL_BYTES);
   const hasGpu = typeof navigator !== 'undefined' && !!navigator.gpu;
   if (hasGpu) {
