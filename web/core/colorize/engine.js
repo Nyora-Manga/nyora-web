@@ -91,11 +91,17 @@ function ensureWorker() {
     worker.onmessage = (ev) => {
       const m = ev.data || {};
       if (m.type === 'progress') status(m.label, m.pct);
-      else if (m.type === 'ready') { settled = true; status('Colorizer ready'); resolve(); }
+      else if (m.type === 'ready') {
+        settled = true;
+        // Surface the backend so a stuck/slow colorize is diagnosable: GPU =
+        // WebGPU (fast), CPU = wasm fallback (threads shown; single-thread is slow).
+        status(`Colorizer ready — ${m.backend || '?'}${m.backend === 'CPU' ? ` (${m.threads || 1} thread${(m.threads || 1) > 1 ? 's' : ''})` : ''}`);
+        resolve();
+      }
       else if (m.type === 'init-error') fail(new Error(m.error));
       else if (m.type === 'color' || m.type === 'color-error') {
         const p = pending.get(m.id); if (!p) return; pending.delete(m.id);
-        if (m.type === 'color') p.resolve(m);
+        if (m.type === 'color') { if (m.ms != null) status(`Coloured a page in ${(m.ms / 1000).toFixed(1)}s`); p.resolve(m); }
         else p.reject(new Error(m.error));
       }
     };

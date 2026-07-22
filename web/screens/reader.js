@@ -833,15 +833,19 @@ export function render(view, params) {
     }
     return colorizeObserver;
   }
+  let colorizeStarted = false;
   async function applyColorize(img) {
-    if (st.destroyed || !colorize || !img.__tlPage) return;
+    if (st.destroyed || !colorize) return;
+    if (!img.__tlPage) { toast('Colorize: page has no source URL — skipped'); return; }
+    if (!colorizeStarted) { colorizeStarted = true; toast('Colorizing… first page downloads the model'); }
     try {
       const url = await colorizePage(img.__tlPage.url, img.__tlPage.headers);
       if (st.destroyed || !colorize || !img.isConnected) return;
       if (img.__colorOrig == null) img.__colorOrig = img.getAttribute('src') || '';
       img.src = url;
     } catch (e) {
-      if (!colorizeErrored && !st.destroyed && colorize) { colorizeErrored = true; toast('Colorize failed: ' + ((e && e.message) || e)); }
+      // Show every failure while debugging so the real cause is visible.
+      if (!st.destroyed && colorize) { colorizeErrored = true; toast('Colorize failed: ' + ((e && e.message) || e)); }
     }
   }
   function resetColorize() {
@@ -852,10 +856,17 @@ export function render(view, params) {
       if (img.__colorOrig != null) { img.src = img.__colorOrig; img.__colorOrig = null; }
     });
   }
-  function beginColorizeAll() { $$('img.reader-page', view).forEach((img) => observeColorize(img)); }
+  function beginColorizeAll() {
+    const imgs = $$('img.reader-page', view);
+    const withPage = imgs.filter((img) => img.__tlPage);
+    toast(`Colorize: watching ${withPage.length}/${imgs.length} page${imgs.length === 1 ? '' : 's'}`);
+    imgs.forEach((img) => observeColorize(img));
+  }
   function setColorize(on) {
     colorize = !!on;
+    colorizeStarted = false;
     store.set({ reader: { colorize } });
+    if (colorize) toast('AI colorize on');
     savePrefs();
     if (colorize) beginColorizeAll();
     else { resetColorize(); restoreColorize(); }

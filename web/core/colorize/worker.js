@@ -40,7 +40,7 @@ const post = (m, t) => self.postMessage(m, t || []);
 self.onmessage = (ev) => {
   const m = ev.data || {};
   if (m.type === 'init') {
-    ensureInit().then(() => post({ type: 'ready' }))
+    ensureInit().then(() => post({ type: 'ready', backend: webgpu ? 'GPU' : 'CPU', threads: (ort && ort.env.wasm.numThreads) || 1 }))
       .catch((e) => post({ type: 'init-error', error: String((e && e.message) || e) }));
   } else if (m.type === 'page') {
     queue = queue.then(() => ensureInit()).then(() => handle(m.id, m.bitmap))
@@ -115,6 +115,7 @@ async function fetchWithProgress(url, label, sizeHint) {
 }
 
 async function handle(id, bitmap) {
+  const t0 = (typeof performance !== 'undefined') ? performance.now() : Date.now();
   const OW = bitmap.width;
   const OH = bitmap.height;
   // Match the reference implementation's resize_pad EXACTLY (utils/utils.py):
@@ -194,7 +195,8 @@ async function handle(id, bitmap) {
     outData[p + 2] = clamp255(Y + 1.772 * Cb);
     outData[p + 3] = 255;
   }
-  post({ type: 'color', id, width: OW, height: OH, data: outData.buffer }, [outData.buffer]);
+  const ms = Math.round(((typeof performance !== 'undefined') ? performance.now() : Date.now()) - t0);
+  post({ type: 'color', id, width: OW, height: OH, data: outData.buffer, ms }, [outData.buffer]);
 }
 
 function clamp255(v) { return v < 0 ? 0 : v > 255 ? 255 : v; }
