@@ -126,11 +126,12 @@ async function init() {
   post({ type: 'progress', label: 'Loading AI runtime', pct: 0 });
   ort = await import(ORT_URL);
   ort.env.wasm.wasmPaths = ORT_WASM_PATH;
-  // The service worker injects COOP/COEP, so the page is usually cross-origin
-  // isolated → SharedArrayBuffer threads are available. Use most of the cores.
-  if (self.crossOriginIsolated) {
-    ort.env.wasm.numThreads = Math.min(8, Math.max(1, (navigator.hardwareConcurrency || 4) - 1));
-  }
+  // Force single-threaded wasm. The threaded ORT build spins up when the page is
+  // crossOriginIsolated (the service worker injects COOP/COEP, so repeat visitors
+  // always are) and HANGS at load on the deployed site — translation gets stuck on
+  // "Loading AI runtime" forever and never inits. WebGPU does the real work and
+  // single-thread wasm is a correct fallback, so pinning numThreads = 1 fixes it.
+  ort.env.wasm.numThreads = 1;
   detector = await createSession(await fetchWithProgress(DETECTOR_URL, 'bubble detector', 6_100_000), false);
 }
 

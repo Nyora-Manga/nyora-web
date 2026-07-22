@@ -1728,16 +1728,21 @@ export function render(view, params) {
     );
 
     const colorSection = el('div', { class: 'settings-section' }, el('h2', null, 'Colour'));
-    // AI colorize toggle — the top-bar droplet only appears while colorize is
-    // on, so this is how you enable it from inside the reader. Requires the
-    // model to be downloaded first (Settings → Experimental → Colorization);
-    // without that gate this switch would kick off a silent 62 MB fetch.
-    if (experimental && colorReady) {
+    // AI colorize toggle — the top-bar droplet only appears while colorize is on,
+    // so this is how you enable it from inside the reader. Shown whenever the
+    // Experimental gate is on (mirrors the Translate toggle); the model downloads
+    // on first use with progress toasts (via onColorizeStatus) — the same way the
+    // translation models do — so there's no separate "download first" step.
+    if (experimental) {
       const czInput = el('input', { type: 'checkbox' });
       czInput.checked = colorize;
       czInput.addEventListener('change', () => setColorize(czInput.checked));
+      const hint = colorReady ? null
+        : el('div', { style: { fontSize: '12px', color: 'var(--text-dim)', lineHeight: '1.5' } },
+          'First use downloads the colorization model (~62 MB) — you’ll see progress, then pages colour in.');
       colorSection.appendChild(inlineRow('AI colorize (beta)',
         el('label', { class: 'switch' }, czInput, el('span', { class: 'slider' }))));
+      if (hint) colorSection.appendChild(hint);
     }
     function gradeSlider(label, key, min, max, step, fmtVal) {
       const valOut = el('span', { class: 'counter' }, fmtVal(live[key]));
