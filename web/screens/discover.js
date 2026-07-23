@@ -377,9 +377,7 @@ function rail(title, iconName, items) {
   const track = el('div', { class: 'discover-rail-track' });
   for (const item of items) track.appendChild(railCard(item));
   return el('div', { class: 'discover-rail' },
-    sectionHeader(title,
-      btn('Show all', { variant: 'ghost', onClick: () => router.navigate('suggestions') }),
-    ),
+    sectionHeader(title),
     track,
   );
 }
