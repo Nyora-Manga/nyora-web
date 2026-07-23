@@ -128,7 +128,7 @@ Add Nyora to your home screen or install it from your browser and it becomes a r
 
 Nyora Web is **just static files**, so it deploys **anywhere static** — a plain web server, Cloudflare Pages, GitHub-style static hosts, your own box, or even a USB stick. The one server-side dependency is the **Nyora helper** (`api.nyora.xyz`) — it serves the source content, sends permissive CORS, and proxies cover/page images through its own `/image` endpoint, so the browser talks only to the helper and needs no separate CORS proxy. Point the SPA at your own helper and you own the reader end to end. See [Build from Source](#build-from-source) for the exact commands.
 
-Prefer a **one-command, fully-local Docker deployment** — the SPA plus a bundled parser **helper** in one container, with no Cloudflare Worker to run? Use **[nyora-selfhost](https://github.com/Hasan72341/nyora-selfhost)**: `docker compose up` and open `localhost:8080`.
+Prefer a **one-command, fully-local Docker deployment** — the SPA plus a bundled parser **helper** in one container, with no Cloudflare Worker to run? Use **[nyora-selfhost](https://github.com/Nyora-Manga/nyora-selfhost)**: `docker compose up` and open `localhost:8080`.
 
 ### Privacy & Open Source
 
@@ -274,7 +274,7 @@ Use `127.0.0.1:3000` for local development. Any static host works in production 
 
 ### Point it at a helper
 
-The SPA reads all content and images from the **Nyora helper**, configured in `web/env.js` (`NYORA_HELPER_URL`, default `https://api.nyora.xyz`). The helper handles CORS and the `/image` proxy, so **there is no separate proxy to deploy**. To self-host the helper itself, see [`nyora-selfhost`](https://github.com/Hasan72341/nyora-selfhost) (SPA + bundled helper in one container).
+The SPA reads all content and images from the **Nyora helper**, configured in `web/env.js` (`NYORA_HELPER_URL`, default `https://api.nyora.xyz`). The helper handles CORS and the `/image` proxy, so **there is no separate proxy to deploy**. To self-host the helper itself, see [`nyora-selfhost`](https://github.com/Nyora-Manga/nyora-selfhost) (SPA + bundled helper in one container).
 
 ## Tech Stack
 
@@ -304,18 +304,18 @@ web/                  ← the SPA (deployed)
 | Platform | Repo | Get it |
 |---|---|---|
 | Web | **nyora-web** *(you are here)* | [web.nyora.xyz](https://web.nyora.xyz) |
-| Android | [nyora-android](https://github.com/Hasan72341/nyora-android) | [APK](https://github.com/Hasan72341/nyora-android/releases/latest) |
-| Windows | [nyora-windows](https://github.com/Hasan72341/nyora-windows) | [.exe (x64/ARM64)](https://github.com/Hasan72341/nyora-windows/releases/latest) |
-| macOS | [nyora-mac](https://github.com/Hasan72341/nyora-mac) | [.dmg / `brew`](https://github.com/Hasan72341/nyora-mac/releases/latest) |
-| Linux | [nyora-linux](https://github.com/Hasan72341/nyora-linux) | [deb · rpm · curl](https://github.com/Hasan72341/nyora-linux/releases/latest) |
-| iOS / iPadOS | [nyora-ios](https://github.com/Hasan72341/nyora-ios) | [sideload IPA](https://github.com/Hasan72341/nyora-ios/releases/latest) |
+| Android | [nyora-android](https://github.com/Nyora-Manga/nyora-android) | [APK](https://github.com/Nyora-Manga/nyora-android/releases/latest) |
+| Windows | [nyora-windows](https://github.com/Nyora-Manga/nyora-windows) | [.exe (x64/ARM64)](https://github.com/Nyora-Manga/nyora-windows/releases/latest) |
+| macOS | [nyora-mac](https://github.com/Nyora-Manga/nyora-mac) | [.dmg / `brew`](https://github.com/Nyora-Manga/nyora-mac/releases/latest) |
+| Linux | [nyora-linux](https://github.com/Nyora-Manga/nyora-linux) | [deb · rpm · curl](https://github.com/Nyora-Manga/nyora-linux/releases/latest) |
+| iOS / iPadOS | [nyora-ios](https://github.com/Nyora-Manga/nyora-ios) | [sideload IPA](https://github.com/Nyora-Manga/nyora-ios/releases/latest) |
 
 ## Roadmap
 
 No dates, no promises — just the honest direction.
 
 - **Broader source parity.** Ongoing work expanding and hardening the shared source catalogue (the Kotatsu engine) so newer and trickier sources keep up across platforms.
-- **Native-app companions.** Whole-page AI translation and offline downloads stay in Nyora's native apps; the cross-platform [iOS](https://github.com/Hasan72341/nyora-ios) build has a signed TestFlight release planned to follow. Your synced web library comes along to all of them.
+- **Native-app companions.** Whole-page AI translation and offline downloads stay in Nyora's native apps; the cross-platform [iOS](https://github.com/Nyora-Manga/nyora-ios) build has a signed TestFlight release planned to follow. Your synced web library comes along to all of them.
 
 ## FAQ
 
@@ -341,7 +341,7 @@ Nyora does not host any manga. It reads publicly available online sources throug
 The PWA app shell is cached for offline use, and parser bundles ship with bundled fallbacks, so the interface and discovery remain resilient without a connection. There are no offline chapter downloads in the browser — for full offline reading and CBZ export, use one of Nyora's native apps from the platform table above; your synced library comes with you.
 
 **Can I self-host it?**
-Absolutely. The SPA is just static files you can serve from any static host; the only server-side dependency is the **Nyora helper** (which handles content, CORS and image proxying). Run the whole thing in one container with [`nyora-selfhost`](https://github.com/Hasan72341/nyora-selfhost), or see [Build from Source](#build-from-source).
+Absolutely. The SPA is just static files you can serve from any static host; the only server-side dependency is the **Nyora helper** (which handles content, CORS and image proxying). Run the whole thing in one container with [`nyora-selfhost`](https://github.com/Nyora-Manga/nyora-selfhost), or see [Build from Source](#build-from-source).
 
 **How do I get AI translation and offline downloads?**
 Those engines live in Nyora's native apps. Install one from the [platform table](#nyora-on-every-platform), sign in with the same Nyora Cloud account, and your web library syncs straight over.

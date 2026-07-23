@@ -19,7 +19,7 @@
 // previews stay viewable. Requests already on web.nyora.xyz never reach this
 // Function (that host is on the VM), so there is no redirect loop.
 const CANONICAL = "web.nyora.xyz";
-const LEGACY = new Set(["nyoraweb.pages.dev", "nyoramanga.hasanraza.tech"]);
+const LEGACY = new Set(["nyora.xyz", "web.nyora.xyz"]);
 
 export async function onRequest(context) {
   const { request } = context;

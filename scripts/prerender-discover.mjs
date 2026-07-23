@@ -1,7 +1,7 @@
 // scripts/prerender-discover.mjs — bake the Discover feed into dist/ at deploy
 // time, so it ships to the cluster as a static file.
 //
-// Why not real SSR: the cluster nodes serve the app as static files through Caddy
+// Why not real SSR: the three nodes serve the app as static files through Caddy
 // with no application runtime, so there is nothing to render on per request.
 // Prerendering gets the same user-visible result — Discover is identical for
 // every visitor, so it does not need to be per-request — while keeping the

@@ -7,7 +7,7 @@
 // CI deploys instead of the raw web/. Local dev is untouched.
 //
 //   web/  →  edit + serve unbundled (python3 -m http.server in web/)
-//   dist/ →  built bundle, deployed to nyoraweb.pages.dev
+//   dist/ →  built bundle, deployed to nyora.xyz
 import { build } from 'esbuild';
 import { rm, cp, readFile, writeFile, readdir } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
