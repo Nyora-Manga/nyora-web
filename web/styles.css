@@ -350,11 +350,11 @@ button { cursor: pointer; }
 .nav-item:focus-visible { outline: 2px solid var(--accent); outline-offset: -1px; }
 .nav-item-community {
   color: var(--text);
-  background: color-mix(in srgb, #5865f2 16%, transparent);
-  border: 1px solid color-mix(in srgb, #7180ff 28%, transparent);
+  background: var(--accent-tint-soft);
+  border: 1px solid transparent;
 }
-.nav-item-community:hover { color: #fff; background: color-mix(in srgb, #5865f2 26%, transparent); }
-.nav-item-community .icon:first-child { color: #8993ff; }
+.nav-item-community:hover { color: var(--text); background: var(--accent-tint); }
+.nav-item-community .icon:first-child { color: var(--accent); }
 .nav-item-community .icon:last-child { width: 15px; height: 15px; margin-inline-start: auto; color: var(--text-faint); }
 .nav-item-community .icon:last-child svg { width: 14px; height: 14px; }
 
@@ -409,21 +409,23 @@ button { cursor: pointer; }
   flex: 0 0 auto;
   display: inline-flex; align-items: center; gap: 8px;
   height: 40px; padding: 0 15px; border-radius: 999px;
-  color: #fff; background: #5865f2; border: 1px solid #7180ff;
-  font-size: 13px; font-weight: 700; line-height: 1; white-space: nowrap;
-  box-shadow: 0 8px 22px color-mix(in srgb, #5865f2 22%, transparent);
+  color: var(--text);
+  background: var(--accent-tint);
+  border: 1px solid transparent;
+  font-size: 13px; font-weight: 650; line-height: 1; white-space: nowrap;
+  box-shadow: none;
   transition: background 0.15s var(--ease), transform 0.12s var(--ease);
 }
-.community-site:hover { background: #6673f5; }
+.community-site svg { color: var(--accent); }
+.community-site:hover { background: var(--accent-tint-strong); }
 .community-site:active { transform: scale(0.97); }
-.community-site:focus-visible { outline: 2px solid #9da6ff; outline-offset: 2px; }
+.community-site:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .visit-site svg { flex: 0 0 auto; color: var(--accent); }
 .visit-site:hover { background: color-mix(in srgb, var(--accent) 20%, var(--surface1)); border-color: color-mix(in srgb, var(--accent) 40%, transparent); }
 .visit-site:active { transform: scale(0.97); }
 .visit-site:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 @media (max-width: 760px) {
-  .community-site-label { display: none; }
-  .community-site { width: 40px; padding: 0; justify-content: center; }
+  .community-site { display: none; }
   .visit-site-label { display: none; }   /* icon-only on phones to save space */
   .visit-site { width: 40px; padding: 0; justify-content: center; }
 }
@@ -2669,19 +2671,24 @@ body.reader-active .view {
   min-height: 42px;
   margin-top: 22px;
   padding: 0 15px;
-  border: 1px solid color-mix(in srgb, #7180ff 42%, transparent);
-  border-radius: 13px;
-  color: #fff;
-  background: color-mix(in srgb, #5865f2 22%, var(--wlc-card-top));
+  border: 1px solid color-mix(in srgb, var(--accent) 28%, transparent);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  background: color-mix(in srgb, var(--accent) 14%, var(--wlc-card-top));
   font-size: 12.5px;
   font-weight: 700;
   letter-spacing: 0.01em;
-  box-shadow: 0 10px 28px color-mix(in srgb, #5865f2 14%, transparent);
+  box-shadow: none;
   transition: background 0.16s var(--ease), border-color 0.16s var(--ease), transform 0.14s var(--ease);
 }
-.wlc-community:hover { background: color-mix(in srgb, #5865f2 34%, var(--wlc-card-top)); border-color: #8993ff; }
+.wlc-community:hover { background: color-mix(in srgb, var(--accent) 22%, var(--wlc-card-top)); border-color: color-mix(in srgb, var(--accent) 55%, transparent); }
 .wlc-community:active { transform: scale(0.98); }
-.wlc-community-icon { display: inline-flex; color: #aab1ff; }
+.wlc-community-icon { display: inline-flex; color: var(--accent); }
+.social-link-discord {
+  color: var(--accent) !important;
+  background: var(--accent-tint) !important;
+}
+.social-link-discord:hover { background: var(--accent-tint-strong) !important; }
 
 /* ---- right: auth panel ------------------------------------------------ */
 .wlc-auth {

@@ -720,7 +720,7 @@ function buildAbout() {
 
   const iconLink = (iconName, url, title) => el('a', {
     href: url, target: '_blank', rel: 'noopener', title, 'aria-label': title,
-    class: 'social-link',
+    class: 'social-link' + (iconName === 'discord' ? ' social-link-discord' : ''),
     style: {
       display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
       width: '42px', height: '42px', borderRadius: 'var(--radius)',
