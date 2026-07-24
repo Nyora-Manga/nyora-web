@@ -15,6 +15,7 @@ const ONBOARD_KEY = 'nyora.web.onboarded.v1';
 
 const ICON_GUEST = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/></svg>';
 const ICON_RESTORE = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m8 11 4 4 4-4"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>';
+const ICON_DISCORD = '<svg viewBox="0 0 24 24" width="17" height="17" fill="currentColor" aria-hidden="true"><path d="M20.317 4.37a19.8 19.8 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.211.375-.445.865-.608 1.25a19.04 19.04 0 0 0-5.487 0 12.64 12.64 0 0 0-.618-1.25.077.077 0 0 0-.078-.037A19.74 19.74 0 0 0 3.677 4.37a.07.07 0 0 0-.032.028C.533 9.046-.319 13.58.099 18.058a.082.082 0 0 0 .031.056c2.053 1.508 4.041 2.423 5.993 3.03a.078.078 0 0 0 .084-.028c.462-.63.873-1.295 1.226-1.994a.076.076 0 0 0-.042-.106 12.3 12.3 0 0 1-1.872-.892.077.077 0 0 1-.008-.128c.126-.094.252-.192.372-.291a.074.074 0 0 1 .078-.01c3.928 1.793 8.18 1.793 12.061 0a.074.074 0 0 1 .079.009c.12.099.246.198.373.292a.077.077 0 0 1-.007.128c-.598.343-1.22.645-1.873.891a.077.077 0 0 0-.041.107c.36.698.772 1.363 1.225 1.993a.076.076 0 0 0 .084.029c1.961-.607 3.95-1.522 6.002-3.03a.077.077 0 0 0 .031-.055c.5-5.177-.838-9.674-3.548-13.66a.061.061 0 0 0-.031-.029ZM8.02 15.331c-1.183 0-2.157-1.086-2.157-2.419s.956-2.419 2.157-2.419c1.21 0 2.176 1.095 2.157 2.419 0 1.333-.956 2.419-2.157 2.419Zm7.975 0c-1.183 0-2.157-1.086-2.157-2.419s.955-2.419 2.157-2.419c1.21 0 2.176 1.095 2.157 2.419 0 1.333-.946 2.419-2.157 2.419Z"/></svg>';
 
 /** True when the welcome screen should be shown (not signed in, not dismissed). */
 export function shouldShowWelcome() {
@@ -177,6 +178,15 @@ export function showWelcome(onDone) {
       el('li', null, 'Hundreds of sources'),
       el('li', null, 'Picks up on every device'),
       el('li', null, 'No ads, ever')),
+    el('a', {
+      class: 'wlc-community',
+      href: 'https://discord.gg/f9DWbBn76',
+      target: '_blank',
+      rel: 'noopener',
+    },
+      el('span', { class: 'wlc-community-icon', html: ICON_DISCORD }),
+      el('span', null, 'Join the Nyora Discord'),
+      el('span', { 'aria-hidden': 'true' }, '↗')),
   );
 
   // ── Right: auth panel ───────────────────────────────────────────────────
@@ -235,7 +245,7 @@ export function showWelcome(onDone) {
     const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
     if (gsap && !reduce) {
       const items = overlay.querySelectorAll(
-        '.wlc-brand, .wlc-eyebrow, .wlc-title, .wlc-sub, .wlc-features, .wlc-auth',
+        '.wlc-brand, .wlc-eyebrow, .wlc-title, .wlc-sub, .wlc-features, .wlc-community, .wlc-auth',
       );
       gsap.fromTo(items,
         { y: 26, autoAlpha: 0 },

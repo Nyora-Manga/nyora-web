@@ -29,6 +29,8 @@ import { shouldShowChangelog, showChangelog, markChangelogSeen } from './core/ch
 import { runMigrations } from './core/migrations.js';
 import { initAutoSync } from './core/auto-sync.js';
 
+const DISCORD_URL = 'https://discord.gg/f9DWbBn76';
+
 const routes = {
   discover: discoverRender,
   explore: exploreRender,
@@ -91,6 +93,7 @@ const NAV_GROUPS = [
     { key: 'search', label: 'Search', icon: 'search' },
   ] },
   { label: 'App', items: [
+    { key: 'discord', label: 'Join Discord', icon: 'discord', href: DISCORD_URL },
     { key: 'settings', label: 'Settings', icon: 'settings' },
   ] },
 ];
@@ -206,10 +209,30 @@ function buildSidebar() {
     el('span', null, item.label),
   );
 
+  const externalNavItem = (item) => el(
+    'a',
+    {
+      class: 'nav-item nav-item-community',
+      href: item.href,
+      target: '_blank',
+      rel: 'noopener',
+      title: item.label,
+      'aria-label': item.label,
+      onClick: () => document.body.classList.remove('nav-open'),
+    },
+    icon(item.icon),
+    el('span', null, item.label),
+    icon('external'),
+  );
+
   const children = [brand];
   for (const group of NAV_GROUPS) {
     children.push(el('div', { class: 'nav-label' }, group.label));
     for (const item of group.items) {
+      if (item.href) {
+        children.push(externalNavItem(item));
+        continue;
+      }
       if (!routes[item.key]) continue; // skip if the route isn't registered
       children.push(navItem(item));
     }
