@@ -48,6 +48,7 @@ let renderToken = 0;
 
 export function render(view, _params) {
   view.replaceChildren();
+  disconnectRails();  // the previous view's rails are gone; stop watching them
 
   const root = el('section', { class: 'discover' });
   view.append(root);
@@ -61,10 +62,10 @@ export function render(view, _params) {
 async function load(body, { forceRefresh = false } = {}) {
   const token = ++renderToken;
 
-  // Stale-while-revalidate. Anything cached within FEED_MAX_AGE paints NOW,
-  // synchronously — no skeleton, no await, no network on the critical path.
-  // If it's past FEED_TTL we still refresh underneath and swap the content in
-  // when it lands, so the user sees instant content that is also current.
+  // Stale-while-revalidate. ANY cached feed paints NOW, synchronously and at
+  // any age — no skeleton, no await, no network on the critical path. If it is
+  // past FEED_TTL we still refresh underneath and swap the content in when it
+  // lands, so the user sees instant content that also becomes current.
   const cached = forceRefresh ? null : cachedFeed();
   if (cached) {
     paint(body, cached, token);
@@ -129,6 +130,7 @@ function sameFeed(a, b) {
 
 function paint(body, feed, token) {
   if (token !== renderToken) return;
+  disconnectRails();
   const trending = feed.trending || [];
   const children = [];
   if (trending.length) children.push(heroCard(trending[0]));
@@ -142,10 +144,20 @@ function paint(body, feed, token) {
     ['Romance', 'heart', feed.romance],
     ['Fantasy', 'compass', feed.fantasy],
   ];
+  // The first rail sits right under the hero, so it is built now — an observer
+  // callback lands a frame late and the top of a cached feed would flash
+  // skeletons on every visit. Everything below it waits until it is approached.
+  let eager = true;
   for (const [title, iconName, items] of rails) {
-    if (items && items.length) children.push(rail(title, iconName, items));
+    if (!items || !items.length) continue;
+    children.push(rail(title, iconName, items, { eager }));
+    eager = false;
   }
   body.replaceChildren(...children);
+  // Observed only now, with the rails in the document — an element handed to an
+  // IntersectionObserver before it is attached has no box to intersect, and the
+  // first useful report would depend on when the observer re-checks it.
+  for (const child of children) if (child.__mountRail) observeRail(child);
 }
 
 
@@ -158,12 +170,17 @@ function paint(body, feed, token) {
 // AniList's public API is capped at ~30 requests/min. To keep AniList as the REAL
 // source of Discover (instead of tripping the limit and silently degrading), the
 // whole feed is cached in-memory + localStorage and served stale-while-revalidate:
-// under FEED_TTL it's used as-is with no request at all; between TTL and
-// FEED_MAX_AGE it paints immediately and refreshes in the background. When
+// under FEED_TTL it's used as-is with no request at all; older than that it
+// paints immediately and refreshes in the background, however old it is. When
 // AniList is rate-limited we keep showing the cached feed rather than falling
 // back. MangaBaka is only a last resort if AniList has never answered.
 const FEED_TTL = 15 * 60 * 1000;          // considered fresh — no refetch at all
-const FEED_MAX_AGE = 7 * 24 * 60 * 60 * 1000; // still worth SHOWING while we revalidate
+// There is deliberately NO maximum age. A cached feed used to be thrown away
+// after seven days, so someone who came back after a fortnight got the cold
+// path: skeletons, and an error box if AniList happened to be unreachable or
+// rate-limiting them at that moment. Ranking data does not rot — a two-week-old
+// trending list is a fine thing to look at for the second it takes the
+// background revalidate to land, and infinitely better than an empty screen.
 // localStorage, not sessionStorage: session storage dies with the tab, so every
 // returning visitor paid a cold AniList round trip and stared at skeletons. The
 // feed is public, non-personal ranking data — persisting it is what makes
@@ -190,7 +207,7 @@ function writeFeedCache(feed, at) {
 // costs a frame and reintroduces the skeleton flash we're removing.
 export function cachedFeed() {
   const c = readFeedCache();
-  return c && (Date.now() - c.at) < FEED_MAX_AGE ? c.feed : null;
+  return c ? c.feed : null;
 }
 export function feedIsFresh() {
   const c = readFeedCache();
@@ -212,7 +229,9 @@ async function fetchSnapshot() {
     if (!res.ok) return null;
     const obj = await res.json();
     if (!obj || typeof obj.at !== 'number' || !feedNonEmpty(obj.feed)) return null;
-    if (Date.now() - obj.at > FEED_MAX_AGE) return null; // deploy is ancient — refetch live
+    // Age is not a reason to reject it either. Even a snapshot from an old
+    // deploy gives a first-ever visitor something on screen immediately, and
+    // the timestamp below means it revalidates against AniList right away.
     // Seed the browser cache with the snapshot's OWN timestamp, not now(): the
     // feed is as old as the deploy, so this still revalidates on schedule
     // instead of pretending it is fresh for another 15 minutes.
@@ -373,13 +392,76 @@ function heroCard(item) {
 
 // ---- rails -------------------------------------------------------------
 
-function rail(title, iconName, items) {
+// A full feed is seven rails of thirty entries. Building all ~210 cards up
+// front is one unbroken task — every card is an <md-elevated-card>, so that is
+// 210 custom-element upgrades and shadow roots plus 210 cover requests — for the
+// one rail that is actually on screen. On a low-end laptop that is seconds of
+// frozen UI. So a rail paints as placeholders, materializes when it comes near
+// the viewport, and fills in batches as it is scrolled sideways: the tail of a
+// rail is never built for someone who never scrolls it.
+const RAIL_PLACEHOLDERS = 6;
+const RAIL_BATCH = 10;
+
+let railObserver = null;
+
+function disconnectRails() {
+  if (railObserver) { railObserver.disconnect(); railObserver = null; }
+}
+
+function observeRail(node) {
+  if (!railObserver) {
+    // Mount well before the rail is visible so the cards are ready by the time
+    // it scrolls in, and so the height it gains lands below the viewport.
+    railObserver = new IntersectionObserver((entries) => {
+      for (const en of entries) {
+        if (!en.isIntersecting) continue;
+        railObserver.unobserve(en.target);
+        const mount = en.target.__mountRail;
+        en.target.__mountRail = null;
+        if (mount) mount();
+      }
+    }, { rootMargin: '800px 0px' });
+  }
+  railObserver.observe(node);
+}
+
+function rail(title, iconName, items, { eager = false } = {}) {
   const track = el('div', { class: 'discover-rail-track' });
-  for (const item of items) track.appendChild(railCard(item));
-  return el('div', { class: 'discover-rail' },
+  const node = el('div', { class: 'discover-rail' },
     sectionHeader(title),
     track,
   );
+  if (eager) { fillRail(track, items); return node; }
+
+  for (let i = 0; i < Math.min(RAIL_PLACEHOLDERS, items.length); i++) {
+    track.appendChild(skeletonCard('discover-rail-card'));
+  }
+  node.__mountRail = () => fillRail(track, items);  // paint() observes it once attached
+  return node;
+}
+
+function fillRail(track, items) {
+  let built = 0;
+  const batch = (count) => {
+    const frag = document.createDocumentFragment();
+    const end = Math.min(items.length, built + count);
+    for (; built < end; built++) frag.appendChild(railCard(items[built]));
+    return frag;
+  };
+
+  track.replaceChildren(batch(RAIL_BATCH));
+  if (built >= items.length) return;
+
+  const onScroll = () => {
+    // Strictly "about to run out of cards". A generous look-ahead would fire on
+    // the scroll event the snap container emits when the first batch lands —
+    // growing rails nobody has touched, which is the cost this avoids.
+    const remaining = track.scrollWidth - (track.scrollLeft + track.clientWidth);
+    if (remaining > 300) return;
+    track.appendChild(batch(RAIL_BATCH));
+    if (built >= items.length) track.removeEventListener('scroll', onScroll);
+  };
+  track.addEventListener('scroll', onScroll, { passive: true });
 }
 
 function railCard(item) {

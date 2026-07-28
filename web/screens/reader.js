@@ -49,7 +49,10 @@ import tracking from '../core/tracking.js';
 import { translatePage, onTranslatorStatus } from '../core/translate/engine.js';
 import { attachOverlay } from '../core/translate/overlay.js';
 import { TL_LANGS, TL_SOURCES } from '../core/translate/mt.js';
-import { colorizePage, onColorizeStatus, clearColorizeCache, colorizeModelReady } from '../core/colorize/engine.js';
+import { colorizePage, onColorizeStatus, clearColorizeCache, colorizeModelReady, setColorizeRetention } from '../core/colorize/engine.js';
+import { pageMetrics, pagePriority } from './reader/viewport-priority.js';
+import { createAutoScroll } from './reader/auto-scroll.js';
+import { createPresentation, keepScreenAwake } from './reader/presentation.js';
 
 export const meta = { title: 'Reader', nav: false, icon: 'library', order: 99 };
 
@@ -202,14 +205,10 @@ export function render(view, params) {
   // Auto-scroll: a hands-free reading mode. In WEBTOON it drives a smooth,
   // time-based vertical scroll (px/sec by level); in PAGED/PAGED_RTL it auto-
   // advances one page every N seconds. It rides over chapter boundaries so a
-  // whole binge plays through. `autoLevel` (1–10) is the shared speed and is
-  // persisted; `autoOn` is session intent (always starts off).
+  // whole binge plays through. `autoLevel` (1–10) is the shared speed and is the
+  // only piece persisted — running state is session intent and always starts off.
   const clampLevel = (v) => { v = Math.round(Number(v)); return Number.isFinite(v) ? Math.max(1, Math.min(10, v)) : 4; };
   let autoLevel = clampLevel(gp.autoScrollLevel);
-  let autoOn = false;
-  let autoRaf = null;
-  let autoLastTs = 0;
-  let autoAccum = 0;
 
   let scrollListener = null;
   let scrollTarget = null;
@@ -232,7 +231,7 @@ export function render(view, params) {
         // Space toggles auto-scroll in WEBTOON (where it has no page meaning);
         // in PAGED it turns the page.
         e.preventDefault();
-        if (mode === 'WEBTOON') toggleAuto(); else pageStep(1);
+        if (mode === 'WEBTOON') auto.toggle(); else pageStep(1);
         break;
       case 'ArrowUp':
         if (mode === 'WEBTOON') return;
@@ -240,7 +239,7 @@ export function render(view, params) {
       case 'n': case 'N': e.preventDefault(); goReadingChapter(1); break;   // next chapter
       case 'p': case 'P': e.preventDefault(); goReadingChapter(-1); break;  // previous chapter
       case 'f': case 'F': e.preventDefault(); toggleFit(); break;
-      case 'a': case 'A': e.preventDefault(); toggleAuto(); break;          // auto-scroll
+      case 'a': case 'A': e.preventDefault(); auto.toggle(); break;          // auto-scroll
       case 't': case 'T': e.preventDefault(); if (translate) setTlVisible(!tlVisible); break; // peek original
       case '+': case '=': e.preventDefault(); bumpSpeed(1); break;          // faster
       case '-': case '_': e.preventDefault(); bumpSpeed(-1); break;         // slower
@@ -253,35 +252,18 @@ export function render(view, params) {
 
   document.addEventListener('keydown', onKey);
 
-  // ── screen wake lock ─ keep the display awake while reading (best-effort) ────
-  // The OS releases the lock automatically when the tab is hidden, so re-acquire
-  // on visibilitychange. Silently no-ops where the API is unsupported/denied.
-  let wakeLock = null;
-  async function acquireWakeLock() {
-    try {
-      if ((store.get().reader || {}).keepAwake === false) return; // user opted out
-      if ('wakeLock' in navigator && document.visibilityState === 'visible' && !st.destroyed) {
-        wakeLock = await navigator.wakeLock.request('screen');
-      }
-    } catch { /* denied / unsupported — ignore */ }
-  }
-  function releaseWakeLock() { try { if (wakeLock) wakeLock.release(); } catch { /* ignore */ } wakeLock = null; }
-  function onVisibility() { if (document.visibilityState === 'visible') acquireWakeLock(); }
-  document.addEventListener('visibilitychange', onVisibility);
-  acquireWakeLock();
+  const wake = keepScreenAwake({
+    isEnabled: () => (store.get().reader || {}).keepAwake !== false,
+    isAlive: () => !st.destroyed,
+  });
 
   function teardown() {
     st.destroyed = true;
     document.removeEventListener('keydown', onKey);
-    document.removeEventListener('fullscreenchange', onFullscreenChange);
-    document.removeEventListener('webkitfullscreenchange', onFullscreenChange);
-    document.removeEventListener('visibilitychange', onVisibility);
-    releaseWakeLock();
+    wake.dispose();
+    presentation.dispose();
     document.body.classList.remove('reader-active');
-    document.body.classList.remove('reader-immersive');
-    document.body.classList.remove('reader-fullscreen');
-    if (document.fullscreenElement) { try { document.exitFullscreen(); } catch { /* ignore */ } }
-    cancelAutoLoop();
+    auto.cancel();
     resetTranslations();
     resetColorize();
     clearColorizeCache();  // revoke the session's cached full-res colorized blob URLs
@@ -289,47 +271,13 @@ export function render(view, params) {
   }
   view.__readerTeardown = teardown;
 
-  // Toggle the distraction-free "hide sidebar" mode (desktop). Persisted so it
-  // sticks across chapters/sessions; the sidebar returns automatically when the
-  // reader closes (CSS gates it on .reader-active.reader-immersive).
-  function toggleImmersive(e) {
-    if (e) e.stopPropagation();
-    const on = !document.body.classList.contains('reader-immersive');
-    document.body.classList.toggle('reader-immersive', on);
-    store.set({ reader: { immersive: on } });
-    $$('.reader-sidebar-toggle', view).forEach((n) => {
-      n.classList.toggle('active', on);
-      n.title = on ? 'Show sidebar' : 'Hide sidebar';
-    });
-    toast(on ? 'Sidebar hidden' : 'Sidebar shown');
-  }
-
-  // Toggle true browser fullscreen (Fullscreen API) for the best reading view —
-  // hides the browser chrome AND the app sidebar (via .reader-fullscreen).
-  function toggleFullscreen(e) {
-    if (e) e.stopPropagation();
-    const fsEl = document.fullscreenElement || document.webkitFullscreenElement;
-    if (!fsEl) {
-      const de = document.documentElement;
-      const req = de.requestFullscreen || de.webkitRequestFullscreen;
-      if (req) { Promise.resolve(req.call(de)).catch(() => toast('Fullscreen not available')); }
-      else toast('Fullscreen not supported');
-    } else {
-      const exit = document.exitFullscreen || document.webkitExitFullscreen;
-      if (exit) { Promise.resolve(exit.call(document)).catch(() => {}); }
-    }
-  }
-  function onFullscreenChange() {
-    const on = !!(document.fullscreenElement || document.webkitFullscreenElement);
-    document.body.classList.toggle('reader-fullscreen', on);
-    $$('.reader-fs-toggle', view).forEach((n) => {
-      n.classList.toggle('active', on);
-      n.title = on ? 'Exit fullscreen' : 'Fullscreen';
-      n.replaceChildren(icon(on ? 'fullscreenExit' : 'fullscreen'));
-    });
-  }
-  document.addEventListener('fullscreenchange', onFullscreenChange);
-  document.addEventListener('webkitfullscreenchange', onFullscreenChange);
+  const presentation = createPresentation({
+    view,
+    toast,
+    onImmersiveChange: (on) => store.set({ reader: { immersive: on } }),
+  });
+  const toggleImmersive = presentation.toggleImmersive;
+  const toggleFullscreen = presentation.toggleFullscreen;
 
   // ── navigation ─────────────────────────────────────────────────────────
   function backToDetails() {
@@ -814,46 +762,122 @@ export function render(view, params) {
   // Swaps each visible page's image for an AI-coloured version. The colourised
   // image keeps the page's crisp line art (luminance) with model chroma. Result
   // cached per page url; toggling off restores the original.
-  let colorizeObserver = null;
-  let colorizeErrored = false;
+  let colorizeNearObserver = null;
+  let colorizeVisibleObserver = null;
   onColorizeStatus((m) => { if (!st.destroyed) toast(m); });
 
   function observeColorize(img) {
-    if (colorize && img.__tlPage) colorizeObs().observe(img);
+    if (!colorize || !img.__tlPage || img.__colorized === true) return;
+    colorizeObservers();
+    colorizeNearObserver.observe(img);
+    colorizeVisibleObserver.observe(img);
   }
-  function colorizeObs() {
-    if (!colorizeObserver) {
-      colorizeObserver = new IntersectionObserver((entries) => {
+
+  // The reader's content area, which clips what the user can actually see.
+  function colorizeContentRoot() {
+    return mode === 'WEBTOON' ? $('.reader.webtoon', view) : $('.reader-paged-track', view);
+  }
+
+  function pageColorizePriority(img, visibleBand, measured = null) {
+    return pagePriority(measured || pageMetrics(img, colorizeContentRoot()), visibleBand);
+  }
+
+  // What this page is worth RIGHT NOW — handed to the queue so it can re-rank
+  // while work is waiting. The band follows the current measurement rather than
+  // whichever observer happened to enqueue it, so a page that has scrolled out
+  // of the viewport falls back to the prefetch band by itself.
+  function livePageColorizePriority(img) {
+    if (!img.isConnected) return -1;   // gone from the DOM: last in line
+    const metrics = pageMetrics(img, colorizeContentRoot());
+    return pagePriority(metrics, metrics.visible);
+  }
+
+  function colorizedPageImages(pageUrl) {
+    return $$('img.reader-page', view).filter((img) => img.__tlPage && img.__tlPage.url === pageUrl);
+  }
+
+  // The engine keeps only a handful of coloured blobs alive. Revoking one an
+  // <img> is displaying would leave a broken page that never recovers (the
+  // colorized flag keeps it out of the observers), so on-screen pages are held
+  // back and an evicted page is put back to its original image — ready to be
+  // coloured again from cache-warm state if the reader scrolls to it.
+  setColorizeRetention({
+    isRetained: (pageUrl) => colorizedPageImages(pageUrl).some((img) => img.isConnected
+      && pageMetrics(img, colorizeContentRoot()).visible),
+    onEvicted: (pageUrl) => {
+      if (st.destroyed) return;
+      colorizedPageImages(pageUrl).forEach((img) => {
+        if (img.__colorized !== true) return;
+        img.__colorized = false;
+        if (img.__colorOrig != null) { img.src = img.__colorOrig; img.__colorOrig = null; }
+        observeColorize(img);
+      });
+    },
+  });
+
+  function colorizeObservers() {
+    if (!colorizeNearObserver) {
+      colorizeNearObserver = new IntersectionObserver((entries) => {
         for (const en of entries) {
           if (!en.isIntersecting) continue;
-          colorizeObserver.unobserve(en.target);
-          applyColorize(en.target);
+          applyColorize(en.target, pageColorizePriority(en.target, false));
         }
-      }, { rootMargin: '100% 0px' });
+      // Grow on both axes: vertical webtoon pages and horizontal paged slides
+      // can warm nearby content without sharing the visible-page priority band.
+      }, { rootMargin: '75%', threshold: 0 });
     }
-    return colorizeObserver;
+    if (!colorizeVisibleObserver) {
+      colorizeVisibleObserver = new IntersectionObserver((entries) => {
+        for (const en of entries) {
+          if (!en.isIntersecting) continue;
+          applyColorize(en.target, pageColorizePriority(en.target, true));
+        }
+      }, { rootMargin: '0px', threshold: [0, 0.01, 0.25, 0.5, 0.75] });
+    }
   }
+
   let colorizeStarted = false;
-  async function applyColorize(img) {
+  function applyColorize(img, priority = 0) {
     if (st.destroyed || !colorize) return;
     if (!img.__tlPage) { toast('Colorize: page has no source URL — skipped'); return; }
-    if (!colorizeStarted) { colorizeStarted = true; toast('Colorizing… first page downloads the model'); }
-    try {
-      const url = await colorizePage(img.__tlPage.url, img.__tlPage.headers);
-      if (st.destroyed || !colorize || !img.isConnected) return;
-      if (img.__colorOrig == null) img.__colorOrig = img.getAttribute('src') || '';
-      img.src = url;
-    } catch (e) {
-      // Show every failure while debugging so the real cause is visible.
-      if (!st.destroyed && colorize) { colorizeErrored = true; toast('Colorize failed: ' + ((e && e.message) || e)); }
+    if (img.__colorized === true) return;
+    const measure = () => livePageColorizePriority(img);
+    if (img.__colorPending) {
+      // Calling again does not duplicate work; it promotes the existing queue
+      // entry when this page moved from the near band into the viewport.
+      colorizePage(img.__tlPage.url, img.__tlPage.headers, { priority, measure }).catch(() => {});
+      return img.__colorPending;
     }
+    if (!colorizeStarted) { colorizeStarted = true; toast('Colorizing visible page… loading model into memory'); }
+
+    const task = (async () => {
+      try {
+        const url = await colorizePage(img.__tlPage.url, img.__tlPage.headers, { priority, measure });
+        if (st.destroyed || !colorize || !img.isConnected) return;
+        if (img.__colorOrig == null) img.__colorOrig = img.getAttribute('src') || '';
+        img.src = url;
+        // Stay observed: `__colorized` already makes the callbacks free, and a
+        // page whose cached blob is later evicted then re-arms on the next
+        // scroll instead of being stranded on its black-and-white original.
+        img.__colorized = true;
+      } catch (e) {
+        if (!st.destroyed && colorize) toast('Colorize failed: ' + ((e && e.message) || e));
+      } finally {
+        if (img.__colorPending === task) img.__colorPending = null;
+      }
+    })();
+    img.__colorPending = task;
+    return task;
   }
+
   function resetColorize() {
-    if (colorizeObserver) { colorizeObserver.disconnect(); colorizeObserver = null; }
+    if (colorizeNearObserver) { colorizeNearObserver.disconnect(); colorizeNearObserver = null; }
+    if (colorizeVisibleObserver) { colorizeVisibleObserver.disconnect(); colorizeVisibleObserver = null; }
   }
   function restoreColorize() {
     $$('img.reader-page', view).forEach((img) => {
       if (img.__colorOrig != null) { img.src = img.__colorOrig; img.__colorOrig = null; }
+      img.__colorized = false;
     });
   }
   function beginColorizeAll() {
@@ -861,6 +885,16 @@ export function render(view, params) {
     const withPage = imgs.filter((img) => img.__tlPage);
     toast(`Colorize: watching ${withPage.length}/${imgs.length} page${imgs.length === 1 ? '' : 's'}`);
     imgs.forEach((img) => observeColorize(img));
+    // Seed viewport work synchronously before near-page observer callbacks can
+    // enqueue prefetches. Sorting matters when two webtoon pages share the view.
+    withPage
+      .map((img) => {
+        const metrics = pageMetrics(img, colorizeContentRoot());
+        return { img, visible: metrics.visible, priority: pageColorizePriority(img, true, metrics) };
+      })
+      .filter(({ visible }) => visible)
+      .sort((a, b) => b.priority - a.priority)
+      .forEach(({ img, priority }) => applyColorize(img, priority));
   }
   function setColorize(on) {
     colorize = !!on;
@@ -874,70 +908,18 @@ export function render(view, params) {
   }
 
   // ── auto-scroll ────────────────────────────────────────────────────────────
-  // Level → speed. WEBTOON: pixels per second. PAGED: milliseconds per page.
-  function webtoonPxPerSec() { return 24 + (autoLevel - 1) * 26; }        // 24 … 258 px/s
-  function pagedDelayMs() { return Math.max(1500, 9500 - autoLevel * 780); } // ~8.7s … 1.7s
-  function webtoonScrollEl() { return $('.reader.webtoon', view); }
-
-  // Single time-based rAF clock for both modes — no setTimeout races, and it's
-  // trivially cancelled/restarted on every renderReader (mode or chapter change).
-  function autoFrame(ts) {
-    if (!autoOn) { autoRaf = null; return; }
-    if (!autoLastTs) autoLastTs = ts;
-    // Clamp dt so a backgrounded tab (rAF pauses) doesn't bank a giant jump.
-    const dt = Math.min(100, ts - autoLastTs);
-    autoLastTs = ts;
-    if (mode === 'WEBTOON') {
-      const target = webtoonScrollEl();
-      if (target) {
-        autoAccum += webtoonPxPerSec() * (dt / 1000);
-        const whole = Math.floor(autoAccum);
-        if (whole >= 1) {
-          autoAccum -= whole;
-          const before = target.scrollTop;
-          target.scrollTop = before + whole;
-          const moved = target.scrollTop - before;
-          const canScroll = target.scrollHeight > target.clientHeight + 4;
-          const atBottom = target.scrollTop + target.clientHeight >= target.scrollHeight - 2;
-          // Only end on the LAST page — guards against lazy-loaded images that
-          // briefly make scrollHeight look short (which would skip a chapter).
-          const onLastPage = st.currentPage >= st.pages.length - 1;
-          if (onLastPage && (atBottom || !canScroll)) { autoReachedEnd(); return; }
-          // Hit a wall while lower images still load — don't bank a jump.
-          if (moved < whole - 0.5) autoAccum = 0;
-        }
-      }
-    } else {
-      autoAccum += dt;
-      if (autoAccum >= pagedDelayMs()) {
-        autoAccum = 0;
-        if (st.currentPage >= st.pages.length - 1) { autoReachedEnd(); return; }
-        pageStep(1);
-      }
-    }
-    autoRaf = requestAnimationFrame(autoFrame);
-  }
-
-  // End of the current chapter while auto-scrolling: roll on to the next chapter
-  // (auto stays on → the loop restarts once it renders) or stop at the very end.
-  function autoReachedEnd() {
-    autoRaf = null;
-    if (chapterExists(1)) { goReadingChapter(1); }
-    else { stopAuto(); toast('You’re all caught up — last chapter.'); }
-  }
-
-  function cancelAutoLoop() { if (autoRaf) cancelAnimationFrame(autoRaf); autoRaf = null; }
-  function startAutoLoop() { autoLastTs = 0; autoAccum = 0; cancelAutoLoop(); autoRaf = requestAnimationFrame(autoFrame); }
-
-  function startAuto() {
-    if (!st.pages.length) return;
-    autoOn = true;
-    if (!st.controlsVisible) toggleControls();  // reveal chrome so the pause control shows
-    startAutoLoop();
-    syncAutoUi();
-  }
-  function stopAuto() { autoOn = false; cancelAutoLoop(); syncAutoUi(); }
-  function toggleAuto() { autoOn ? stopAuto() : startAuto(); }
+  const auto = createAutoScroll({
+    getMode: () => mode,
+    getLevel: () => autoLevel,
+    getScrollEl: () => $('.reader.webtoon', view),
+    getPageState: () => ({ currentPage: st.currentPage, pageCount: st.pages.length }),
+    advancePage: () => pageStep(1),
+    revealControls: () => { if (!st.controlsVisible) toggleControls(); },
+    hasNextChapter: () => chapterExists(1),
+    goNextChapter: () => goReadingChapter(1),
+    onStateChange: () => syncAutoUi(),
+    onFinished: () => toast('You’re all caught up — last chapter.'),
+  });
 
   function bumpSpeed(delta, silent) {
     const next = clampLevel(autoLevel + delta);
@@ -970,9 +952,10 @@ export function render(view, params) {
   // and the speed slider in Settings (whichever are mounted).
   function syncAutoUi() {
     $$('.reader-auto-toggle', view).forEach((n) => {
-      n.classList.toggle('active', autoOn);
-      n.replaceChildren(icon(autoOn ? 'pause' : 'play'));
-      n.title = autoOn ? 'Stop auto-scroll (a)' : 'Auto-scroll (a / space)';
+      const on = auto.isRunning();
+      n.classList.toggle('active', on);
+      n.replaceChildren(icon(on ? 'pause' : 'play'));
+      n.title = on ? 'Stop auto-scroll (a)' : 'Auto-scroll (a / space)';
     });
     $$('.reader-autospeed', view).forEach((n) => { if (Number(n.value) !== autoLevel) n.value = String(autoLevel); });
   }
@@ -1113,9 +1096,9 @@ export function render(view, params) {
       bmBtn.classList.add('reader-btn', 'reader-bm');
       if (st.bookmarked) bmBtn.classList.add('active');
 
-      const autoBtn = iconBtn(autoOn ? 'pause' : 'play', toggleAuto, autoOn ? 'Stop auto-scroll (a)' : 'Auto-scroll (a / space)');
+      const autoBtn = iconBtn(auto.isRunning() ? 'pause' : 'play', auto.toggle, auto.isRunning() ? 'Stop auto-scroll (a)' : 'Auto-scroll (a / space)');
       autoBtn.classList.add('reader-btn', 'reader-auto-toggle');
-      if (autoOn) autoBtn.classList.add('active');
+      if (auto.isRunning()) autoBtn.classList.add('active');
 
       let tlBtn = null;
       if (translate) {
@@ -1247,7 +1230,7 @@ export function render(view, params) {
   // ── body renderers ─────────────────────────────────────────────────────────
   function renderReader() {
     // A running loop must not outlive the DOM it scrolls (mode/chapter change).
-    cancelAutoLoop();
+    auto.cancel();
     resetTranslations();   // overlays/observer die with the old DOM
     resetColorize();       // observer dies with the old imgs (cache survives)
     zoomReset = null;   // the previous render's zoom controller is gone
@@ -1316,7 +1299,7 @@ export function render(view, params) {
     }
     syncPosition();
     syncAutoUi();
-    if (autoOn) startAutoLoop();
+    if (auto.isRunning()) auto.restart();
   }
 
   // Webtoon tail card: makes "end of chapter" a deliberate moment (and the auto-

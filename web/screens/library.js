@@ -158,6 +158,14 @@ export function render(view, params) {
 
   // ---- grid rendering ------------------------------------------------
 
+  // How many favourite tiles are built per pass, and the observer driving the
+  // rest. Both live in the render closure so they die with the screen.
+  const GRID_CHUNK = 24;
+  let gridObserver = null;
+  function stopGridGrowth() {
+    if (gridObserver) { gridObserver.disconnect(); gridObserver = null; }
+  }
+
   function renderSkeleton() {
     const grid = el('div', { class: 'grid' });
     for (let i = 0; i < 12; i++) grid.appendChild(skeletonCard());
@@ -165,6 +173,7 @@ export function render(view, params) {
   }
 
   function renderGrid() {
+    stopGridGrowth();   // any previous grid's sentinel is about to be discarded
     let entries;
     try {
       entries = sortEntries(favEntries(), state.sort);
@@ -179,16 +188,45 @@ export function render(view, params) {
     }
 
     const grid = el('div', { class: 'grid' });
-    for (const manga of entries) {
-      grid.appendChild(
-        card(manga, () => {
-          const sid = resolveSid(manga, state.sources);
-          if (!sid) { toast('Source not installed'); return; }
-          router.navigate('details', { sid, url: manga.url });
-        }),
-      );
-    }
+    const openManga = (manga) => {
+      const sid = resolveSid(manga, state.sources);
+      if (!sid) { toast('Source not installed'); return; }
+      router.navigate('details', { sid, url: manga.url });
+    };
+
+    // A favourites list has no upper bound — a heavy library is hundreds of
+    // titles, and every card is an <md-elevated-card>, so building them all is
+    // one long task plus that many cover requests for the dozen tiles on
+    // screen. Render a screenful and grow as the user scrolls to the end.
+    let built = 0;
+    const growGrid = () => {
+      const end = Math.min(entries.length, built + GRID_CHUNK);
+      const frag = document.createDocumentFragment();
+      for (; built < end; built++) frag.appendChild(card(entries[built], openManga));
+      grid.appendChild(frag);
+      return built >= entries.length;
+    };
+
+    const done = growGrid();
     gridHost.replaceChildren(grid);
+
+    if (!done) {
+      // A sentinel after the grid, kept as the last child so one observer
+      // serves every chunk. rootMargin buys a chunk before the user arrives.
+      const sentinel = el('div', { class: 'grid-sentinel', 'aria-hidden': 'true' });
+      gridHost.appendChild(sentinel);
+      gridObserver = new IntersectionObserver((es) => {
+        if (!es.some((e) => e.isIntersecting)) return;
+        if (growGrid()) { stopGridGrowth(); return; }
+        // The sentinel sits after the grid, so it just moved down — but if it
+        // is still inside the margin nothing has *changed* and no further
+        // callback would come. Re-observing forces a fresh reading, so a tall
+        // viewport keeps filling until the sentinel is genuinely out of reach.
+        gridObserver.unobserve(sentinel);
+        gridObserver.observe(sentinel);
+      }, { rootMargin: '700px 0px' });
+      gridObserver.observe(sentinel);
+    }
 
     // The source `details` endpoint often returns no cover, so favourites can be
     // stored cover-less (blank tile). Resolve the cover from the source's search

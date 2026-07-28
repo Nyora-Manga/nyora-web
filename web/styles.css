@@ -255,6 +255,38 @@ a { color: inherit; text-decoration: none; }
 img { display: block; max-width: 100%; }
 button, input, select, textarea { font-family: inherit; color: inherit; }
 
+/* Autofilled fields keep the Material surface they were given.
+ *
+ * When a value comes from the browser's saved entries (a repeated search query,
+ * a sync email) the UA paints its own background *over* ours — a hard-coded navy
+ * under `color-scheme: dark`, an equally hard-coded pale yellow in light — and no
+ * `background` declaration can beat it. An inset shadow the height of the field is
+ * the only thing that covers that layer, so every input opts into the surface it
+ * already uses via --autofill-surface (defaulting to the common one). Text and
+ * caret are re-stated too, or the UA leaves near-black glyphs on a dark surface.
+ *
+ * Kept as two blocks on purpose: :-webkit-autofill and the standard :autofill are
+ * not understood by the same engines, and grouping them would let the unknown one
+ * invalidate the whole selector list. */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+input:-webkit-autofill:active,
+textarea:-webkit-autofill,
+select:-webkit-autofill {
+  -webkit-box-shadow: 0 0 0 100px var(--autofill-surface, var(--surface1)) inset;
+  box-shadow: 0 0 0 100px var(--autofill-surface, var(--surface1)) inset;
+  -webkit-text-fill-color: var(--text);
+  caret-color: var(--text);
+}
+input:autofill,
+textarea:autofill,
+select:autofill {
+  box-shadow: 0 0 0 100px var(--autofill-surface, var(--surface1)) inset;
+  -webkit-text-fill-color: var(--text);
+  caret-color: var(--text);
+}
+
 /* Display type — headlines & section heads carry the Plus Jakarta Sans face
    with tightened tracking for that editorial, expressive feel. */
 h1, h2, h3,
@@ -377,11 +409,19 @@ button { cursor: pointer; }
   box-sizing: border-box;
   display: flex; align-items: center; gap: 14px;
   padding: 0 24px;
-  /* Seamless with the page — no dark band behind the search. Backdrop blur only
-     shows when content scrolls beneath the sticky header. */
+  /* Seamless with the page — no dark band behind the search.
+     NO backdrop blur. It used to carry saturate(150%) blur(16px) on the premise
+     that content scrolls beneath the sticky header, but on this layout it never
+     does: #view is the scroller (html/body are height:100%, .main is a flex
+     column, .view is overflow-y:auto), so the topbar is a sibling ABOVE the
+     scrolling box and the document itself does not scroll — measured true at
+     every width from 800px up. The filter was blurring nothing but the static
+     page background, while costing a full-width composited layer and a backdrop
+     readback for the life of the app. That is real money on integrated
+     graphics. If the shell ever moves back to document scrolling, this belongs
+     here again — under 760px, where the document DOES scroll, the mobile block
+     already gives the bar an opaque background instead. */
   background: transparent;
-  backdrop-filter: saturate(150%) blur(16px);
-  -webkit-backdrop-filter: saturate(150%) blur(16px);
   border-bottom: 1px solid var(--hairline);
 }
 .topbar .spacer { flex: 1 1 auto; }
@@ -444,14 +484,14 @@ body.hide-search .search-form { display: none; }
 .search-form input {
   width: 100%; height: 40px;
   padding: 0 16px 0 40px;
-  background: var(--surface1);
+  background: var(--surface1); --autofill-surface: var(--surface1);
   border: 1px solid var(--border);
   border-radius: var(--radius-pill);
   color: var(--text);
   transition: border-color 0.16s var(--ease), background 0.16s var(--ease);
 }
 .search-form input::placeholder { color: var(--text-faint); }
-.search-form input:focus { border-color: var(--accent); background: var(--surface2); outline: none; }
+.search-form input:focus { border-color: var(--accent); background: var(--surface2); --autofill-surface: var(--surface2); outline: none; }
 .source-btn {
   display: flex; align-items: center; gap: 8px;
   height: 40px; padding: 0 16px;
@@ -489,6 +529,9 @@ body.hide-search .search-form { display: none; }
   gap: 20px;
 }
 .grid.dense { grid-template-columns: repeat(auto-fill, minmax(124px, 1fr)); gap: 14px; }
+/* Trailing marker a chunked grid observes to know when to build the next batch.
+   Needs a real box to intersect with, hence the 1px. */
+.grid-sentinel { height: 1px; }
 /* Minimal, cover-forward manga card — the artwork IS the card. No surface box,
    no decorative blobs, no accent tint muddying the cover. Anime-grade hover:
    the cover lifts and the art does a slow, subtle zoom (Ken Burns). */
@@ -668,7 +711,7 @@ body.hide-search .search-form { display: none; }
 .source-list { display: flex; flex-direction: column; gap: 10px; min-height: 0; flex: 1 1 auto; }
 .src-search, .source-list .src-search {
   width: 100%; height: 38px; padding: 0 14px; margin: 0; border-radius: var(--radius-pill);
-  background: var(--bg-elev); border: 1px solid var(--border); color: var(--text); flex: 0 0 auto;
+  background: var(--bg-elev); --autofill-surface: var(--bg-elev); border: 1px solid var(--border); color: var(--text); flex: 0 0 auto;
 }
 .src-search:focus { border-color: var(--accent); outline: none; }
 .src-filter-bar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
@@ -1041,7 +1084,7 @@ body[data-route="details"] .view > .details { height: 100%; min-height: 0; }
 .discover-search {
   display: flex; align-items: center; gap: 10px;
   padding: 0 16px; height: 48px;
-  background: var(--surface1); border: 1px solid var(--border);
+  background: var(--surface1); --autofill-surface: var(--surface1); border: 1px solid var(--border);
   border-radius: 999px;
 }
 .discover-search .icon { color: var(--text-dim); flex: 0 0 auto; }
@@ -1060,6 +1103,11 @@ body[data-route="details"] .view > .details { height: 100%; min-height: 0; }
 .discover-hero-bg {
   position: absolute; inset: 0; background-size: cover; background-position: center;
   filter: blur(40px) saturate(135%); transform: scale(1.3); opacity: 0.28; pointer-events: none;
+  /* Own layer. Without it the hover lift — which animates the PARENT's transform
+     and box-shadow — repaints this element too, and a 40px blur over the full
+     hero re-rasterized every frame drops a weak GPU to single digits. Promoted,
+     the blur is computed once and the hover is a pure composite. */
+  will-change: transform;
 }
 /* Fade the banner out toward the text: a left→right wash so it only faintly tints
    behind the cover and reads as solid card behind the title, plus a top/bottom
@@ -1096,8 +1144,17 @@ body[data-route="details"] .view > .details { height: 100%; min-height: 0; }
 /* Cover overlay chips — pinned to the bottom of a cover tile. */
 .cover-chips { position: absolute; left: 8px; right: 8px; bottom: 8px; z-index: 2; }
 
-/* Horizontal rails — snap-scrolling track of fixed-width cover cards. */
-.discover-rail { display: flex; flex-direction: column; gap: 12px; }
+/* Horizontal rails — snap-scrolling track of fixed-width cover cards.
+   content-visibility keeps the renderer off the rails that are scrolled out of
+   view: a screenful of covers is more layout+paint per frame than integrated
+   graphics can hold 60fps through, and only one or two rails are ever on
+   screen. The intrinsic size is a rail's real height, so the scrollbar stays
+   honest and `auto` remembers the measured value once it has been rendered. */
+.discover-rail {
+  display: flex; flex-direction: column; gap: 12px;
+  content-visibility: auto;
+  contain-intrinsic-size: auto 340px;
+}
 .discover-rail .section-header { margin: 0; }
 .discover-rail-track {
   display: flex; gap: 14px; overflow-x: auto;
@@ -1590,7 +1647,7 @@ body.reader-active .view {
 .field input[type="email"], .field input[type="url"], .field input[type="search"], .field input:not([type]),
 .field select, .field textarea, input.field, select.field {
   height: 40px; padding: 0 14px; border-radius: var(--radius-sm);
-  background: var(--bg-elev); border: 1px solid var(--border); color: var(--text); width: 100%;
+  background: var(--bg-elev); --autofill-surface: var(--bg-elev); border: 1px solid var(--border); color: var(--text); width: 100%;
   transition: border-color 0.15s var(--ease);
 }
 .field input:focus, .field select:focus, .field textarea:focus, input.field:focus { border-color: var(--accent); outline: none; }
@@ -1828,7 +1885,7 @@ body.reader-active .view {
     align-items: center; gap: 0;
     height: 54px; padding: 0 6px 0 18px;
     border-radius: 16px;
-    background: var(--bg-elev);
+    background: var(--bg-elev); --autofill-surface: var(--bg-elev);
     border: 1px solid var(--border);
     box-shadow: var(--shadow-pop);
     transform: translateY(-10px); opacity: 0; pointer-events: none;
@@ -2219,6 +2276,22 @@ body.reader-active .view {
 }
 /* Language filter is a menuSelect trigger now — only sizing lives here. */
 .lang-select { min-width: 170px; max-width: 260px; }
+
+/* ---- search: recent queries + status note ---------------------------- */
+/* Shown only on the empty state, above the "search everything" placeholder,
+   so the screen offers something to act on instead of a bare glyph. */
+.search-recent { margin: 0 0 28px; }
+/* Label and its Clear action sit together rather than spanning the full content
+   width — across a wide results column a right-aligned action reads as stranded
+   rather than paired. */
+.search-recent-head {
+  display: flex; align-items: center; justify-content: flex-start;
+  gap: 6px; margin-bottom: 12px;
+}
+.search-recent-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+/* Trailing note after the result summary — the count of sources that never
+   answered. Quieter than the summary chip: it qualifies, it doesn't report. */
+.search-status-note { color: var(--text-faint); font-size: 12px; }
 @media (max-width: 760px) {
   .lang-select { flex: 1 1 auto; max-width: none; }
 }
@@ -2784,7 +2857,7 @@ body.reader-active .view {
   padding: 0 15px;
   border: 1px solid var(--wlc-ghost-border);
   border-radius: 12px;
-  background: var(--wlc-ghost-bg);
+  background: var(--wlc-ghost-bg); --autofill-surface: var(--wlc-ghost-bg);
   color: var(--wlc-ghost-text);
   font-size: 15px; font-weight: 500;
   transition: border-color 0.16s ease, box-shadow 0.16s ease;
@@ -3082,7 +3155,7 @@ body.reader-active .view {
 select.input {
   appearance: none;
   -webkit-appearance: none;
-  background-color: var(--surface2);
+  background-color: var(--surface2); --autofill-surface: var(--surface2);
   color: var(--text);
   border: 1px solid var(--border);
   border-radius: 10px;
@@ -3320,7 +3393,7 @@ body.reader-active .toast {
 .field select, .field textarea, input.field, select.field, input.input, select.input {
   border-radius: 12px;
 }
-.search-form input { background: color-mix(in srgb, var(--accent) 6%, var(--surface1)); }
+.search-form input { background: color-mix(in srgb, var(--accent) 6%, var(--surface1)); --autofill-surface: color-mix(in srgb, var(--accent) 6%, var(--surface1)); }
 
 /* Switch: M3 proportions — outlined track when off, filled when on. */
 .switch { width: 52px; height: 32px; flex: 0 0 52px; }
@@ -3461,11 +3534,11 @@ body.reader-active .toast {
 .search-form input {
   height: 46px;
   border: none;
-  background: color-mix(in srgb, var(--accent) 7%, var(--surface1));
+  background: color-mix(in srgb, var(--accent) 7%, var(--surface1)); --autofill-surface: color-mix(in srgb, var(--accent) 7%, var(--surface1));
   font-size: 14px;
 }
 .search-form input:focus {
-  background: color-mix(in srgb, var(--accent) 12%, var(--surface1));
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface1)); --autofill-surface: color-mix(in srgb, var(--accent) 12%, var(--surface1));
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 45%, transparent);
 }
 
@@ -3713,7 +3786,7 @@ body.hide-card-titles .card .cover {
   height: 52px;
   border: none;
   border-radius: 16px;
-  background: color-mix(in srgb, var(--accent) 7%, var(--surface2));
+  background: color-mix(in srgb, var(--accent) 7%, var(--surface2)); --autofill-surface: color-mix(in srgb, var(--accent) 7%, var(--surface2));
   color: var(--text);
 }
 .wlc-input:focus {
@@ -3747,7 +3820,7 @@ body.hide-card-titles .card .cover {
 /* The welcome stage is always dark — pin its fields/pills to dark surfaces so
    the light theme doesn't leak pale tokens onto the dark card. */
 .wlc-input {
-  background: color-mix(in srgb, var(--accent) 8%, #1b1b21);
+  background: color-mix(in srgb, var(--accent) 8%, #1b1b21); --autofill-surface: color-mix(in srgb, var(--accent) 8%, #1b1b21);
   color: #f2f2f5;
 }
 .wlc-input::placeholder { color: #9a9aa3; opacity: 1; }
@@ -3849,7 +3922,7 @@ body.hide-card-titles .card .cover {
 }
 /* Re-point the pinned components at the theme tokens. */
 .wlc-input {
-  background: color-mix(in srgb, var(--accent) 8%, var(--wlc-field));
+  background: color-mix(in srgb, var(--accent) 8%, var(--wlc-field)); --autofill-surface: color-mix(in srgb, var(--accent) 8%, var(--wlc-field));
   color: var(--wlc-field-text);
 }
 .wlc-input::placeholder { color: var(--wlc-field-ph); }
@@ -3899,7 +3972,7 @@ input.input {
   padding: 0 16px;
   border: 1px solid var(--border);
   border-radius: 14px;
-  background: color-mix(in srgb, var(--accent) 6%, var(--surface1));
+  background: color-mix(in srgb, var(--accent) 6%, var(--surface1)); --autofill-surface: color-mix(in srgb, var(--accent) 6%, var(--surface1));
   color: var(--text);
   font: inherit;
   font-size: 14px;
@@ -3910,7 +3983,7 @@ input.input:hover { border-color: var(--border-strong); }
 input.input:focus {
   outline: none;
   border-color: transparent;
-  background: color-mix(in srgb, var(--accent) 10%, var(--surface1));
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface1)); --autofill-surface: color-mix(in srgb, var(--accent) 10%, var(--surface1));
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 55%, transparent);
 }
 

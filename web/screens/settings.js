@@ -417,9 +417,9 @@ function buildExpTranslation() {
   return section;
 }
 
-// Experimental → Colorization sub-page. The model is big (~980 MB), so it is
+// Experimental → Colorization sub-page. The model is 59 MB, so it is
 // downloaded EXPLICITLY here (with a progress bar) and the Colorize toggle stays
-// locked until it's cached — no surprise multi-hundred-MB download mid-read.
+// locked until it's cached — no surprise model download in the reader.
 function buildExpColorization() {
   const r = store.get().reader || {};
   const section = el('section', { class: 'settings-section' });
@@ -497,8 +497,8 @@ function buildExpColorization() {
     el('a', { href: 'https://github.com/qweasdd/manga-colorization-v2', target: '_blank', rel: 'noopener noreferrer' },
       'manga-colorization-v2'),
     ' by qweasdd (MIT). ONNX build from ',
-    el('a', { href: 'https://huggingface.co/Faridzar/manga-colorization-v2-onnx', target: '_blank', rel: 'noopener noreferrer' },
-      'Faridzar/manga-colorization-v2-onnx'),
+    el('a', { href: 'https://github.com/Nyora-Manga/manga-colorization-v2-onnx', target: '_blank', rel: 'noopener noreferrer' },
+      'Nyora-Manga/manga-colorization-v2-onnx'),
     '. Inference by ',
     el('a', { href: 'https://github.com/microsoft/onnxruntime', target: '_blank', rel: 'noopener noreferrer' },
       'ONNX Runtime'),

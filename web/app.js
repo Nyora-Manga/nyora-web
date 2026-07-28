@@ -543,6 +543,43 @@ if (shouldShowWelcome()) {
   if (shouldShowChangelog()) setTimeout(() => showChangelog(), 900);
 }
 
+// ── keep the user's data across days and weeks ──────────────────────────────
+// Everything this app owns — library, history, sync session, downloaded models,
+// offline chapters — is script-writable storage. Browsers evict that: Chrome
+// under pressure, and Safari's ITP wipes localStorage / IndexedDB / Cache API
+// after SEVEN DAYS without a visit. A persistence grant is the only thing that
+// exempts an origin from both, and until now it was only requested when a model
+// download started, so someone who never touched Experimental had nothing
+// protecting the library they had spent weeks building.
+//
+// Asked for only once there is something to lose. Firefox turns persist() into
+// a permission prompt, and a first-ever visitor with an empty library should
+// not be interrupted to protect nothing — a returning user with favourites,
+// history or a signed-in session should.
+function requestStoragePersistence() {
+  try {
+    if (!navigator.storage || !navigator.storage.persist) return;
+    Promise.resolve(navigator.storage.persisted ? navigator.storage.persisted() : false)
+      .then((already) => {
+        if (already || !hasDataWorthKeeping()) return;
+        return navigator.storage.persist();
+      })
+      .catch(() => { /* denied or unsupported — nothing else to try */ });
+  } catch { /* ignore */ }
+}
+
+function hasDataWorthKeeping() {
+  try {
+    if ((library.favourites().entries || []).length) return true;
+    if ((library.history().entries || []).length) return true;
+  } catch { /* library unreadable — fall through */ }
+  try { return !!localStorage.getItem('nyora.sync.session.v1'); } catch { return false; }
+}
+
+// After first paint: this is housekeeping, not something the UI waits on.
+if (typeof requestIdleCallback === 'function') requestIdleCallback(requestStoragePersistence, { timeout: 6000 });
+else setTimeout(requestStoragePersistence, 3000);
+
 // Fade out the boot splash once the shell + first screen have painted, so the
 // user never sees the empty black shell while modules were loading.
 function hideSplash() {
