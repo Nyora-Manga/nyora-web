@@ -25,6 +25,7 @@ import { library } from './library.js';
 import * as parserRuntime from './parser-runtime.js';
 import downloadManager from './downloads.js';
 import { BLOCKED_SOURCE_IDS } from './blocked-sources.js';
+import { CircuitBreaker, decorrelatedJitter, sleep } from './net.js';
 
 // ---- low-level helpers -------------------------------------------------
 
@@ -134,10 +135,30 @@ function apiTryOrder() {
   return bases.slice(start).concat(bases.slice(0, start));
 }
 
-// Statuses that mean "this node is unhealthy, try another" rather than a real
-// answer: gateway errors, a bare 500 (a node mid-restart/crash — e.g. the free HF
-// node rebuilding), and Cloudflare origin errors 520–524 (524 = origin timeout).
-const HELPER_FAILOVER_STATUS = new Set([500, 502, 503, 504, 520, 521, 522, 523, 524]);
+// Statuses that mean "ask a different node" rather than a real answer: gateway
+// errors, a bare 500 (a node mid-restart/crash — e.g. the free HF node
+// rebuilding), Cloudflare origin errors 520–524 (524 = origin timeout), and 403.
+//
+// 403 is here because of what the HF mirror actually does. It is supposed to
+// relay CF/IP-banned sources back to api.nyora.xyz; measured, it does not — for
+// a Cloudflare-gated source it returns Cloudflare's "Just a moment…" INTERSTITIAL
+// HTML, status 403, labelled `content-type: application/json`. parseBody then
+// fails on the HTML and the user gets a JSON syntax error instead of the clean
+// "source unavailable" the VM produces for the same request. No helper route
+// ever answers 403 legitimately, so the honest reading of one is "this node
+// could not fetch the source" — go and ask one that might.
+const HELPER_FAILOVER_STATUS = new Set([403, 500, 502, 503, 504, 520, 521, 522, 523, 524]);
+
+// The subset that says something about the NODE rather than the SOURCE.
+//
+// This distinction is load-bearing now that a circuit breaker is watching. A
+// Cloudflare-blocked source makes the VM answer 500 (with a structured {error})
+// and the HF node answer 403 — on every request, for as long as the user browses
+// that source. Counting those as node failures would open the breaker on a
+// perfectly healthy primary and drop it out of the rotation, because the user
+// looked at a blocked manga. Only transport failures, timeouts and true gateway
+// statuses are evidence about a node.
+const HELPER_NODE_FAULT_STATUS = new Set([502, 503, 504, 520, 521, 522, 523, 524]);
 // Per-attempt cap so a hung node (accepts the connection but never responds) fails
 // over instead of hanging the UI. Generous — legit slow source fetches finish well
 // under this, and CF caps its own origin at ~100s anyway.
@@ -147,32 +168,99 @@ const HELPER_ATTEMPT_TIMEOUT_MS = 45000;
 // on a network error, a per-attempt timeout, or an unhealthy status (see above) —
 // a sleeping/overloaded/restarting node transparently defers to a healthy one. Real
 // 4xx and parsed {error} pass through. A caller's AbortSignal is honoured, not eaten.
+// Rounds of the node list to make. With several nodes configured, one pass is
+// already a retry — the next node gets the request. With ONE node (the usual
+// deployment) a single pass is a single attempt, and `i < last` is never true,
+// so the whole failover block was inert: one transient 502 or dropped
+// connection failed the request outright. Sweeping the list more than once,
+// with a jittered wait between sweeps, gives the single-node case real retries
+// and the multi-node case a second chance after everything looked down.
+const HELPER_SWEEPS = 3;
+const HELPER_RETRY_BASE_MS = 300;
+const HELPER_RETRY_CAP_MS = 4_000;
+
+// A node that is down answers instantly, and re-learning that on every request
+// costs the user time it could spend on a healthy node. Opens after four
+// consecutive failures, then lets a single probe decide.
+const helperBreaker = new CircuitBreaker({ threshold: 4, openMs: 15_000, maxOpenMs: 2 * 60_000 });
+
+async function helperAttempt(base, path, init, outer) {
+  const ctrl = new AbortController();
+  let timedOut = false;
+  const timer = setTimeout(() => { timedOut = true; ctrl.abort(); }, HELPER_ATTEMPT_TIMEOUT_MS);
+  const relay = () => ctrl.abort();
+  if (outer) outer.addEventListener('abort', relay, { once: true });
+  try {
+    const res = await fetch(base + helperPath(path), { ...init, signal: ctrl.signal });
+    if (HELPER_FAILOVER_STATUS.has(res.status)) {
+      const nodeFault = HELPER_NODE_FAULT_STATUS.has(res.status);
+      // A source-level failure still proves the node is up and answering.
+      if (nodeFault) helperBreaker.fail(base); else helperBreaker.succeed(base);
+      const err = new Error('HTTP ' + res.status);
+      err.helperStatus = res.status;
+      err.nodeFault = nodeFault;
+      err.response = res;   // kept: if every node says this, it IS the answer
+      throw err;
+    }
+    helperBreaker.succeed(base);
+    return res;
+  } catch (err) {
+    if (outer && outer.aborted) throw err;         // caller cancelled — not the node's fault
+    if (err.helperStatus === undefined) helperBreaker.fail(base);
+    throw timedOut ? new Error('helper timeout') : err;
+  } finally {
+    clearTimeout(timer);
+    if (outer) outer.removeEventListener('abort', relay);
+  }
+}
+
 async function helperFetch(path, init) {
   const order = apiTryOrder();
-  const last = order.length - 1;
   const outer = init && init.signal;
   let lastErr;
-  for (let i = 0; i < order.length; i++) {
-    if (outer && outer.aborted) throw outer.reason || new Error('aborted');
-    const ctrl = new AbortController();
-    let timedOut = false;
-    const timer = setTimeout(() => { timedOut = true; ctrl.abort(); }, HELPER_ATTEMPT_TIMEOUT_MS);
-    const relay = () => ctrl.abort();
-    if (outer) outer.addEventListener('abort', relay, { once: true });
-    try {
-      const res = await fetch(order[i] + helperPath(path), { ...init, signal: ctrl.signal });
-      if (i < last && HELPER_FAILOVER_STATUS.has(res.status)) {
-        lastErr = new Error('HTTP ' + res.status);
-        continue;
+  let wait = HELPER_RETRY_BASE_MS;
+
+  for (let sweep = 0; sweep < HELPER_SWEEPS; sweep++) {
+    let triedAnyNode = false;
+    let sawNodeFault = false;
+    let sourceLevel = null;
+    for (const base of order) {
+      if (outer && outer.aborted) throw outer.reason || new Error('aborted');
+      // On the final sweep ignore the breaker: every node being open must not
+      // turn into "no request was even attempted".
+      if (sweep < HELPER_SWEEPS - 1 && !helperBreaker.allows(base)) continue;
+      triedAnyNode = true;
+      try {
+        return await helperAttempt(base, path, init, outer);
+      } catch (err) {
+        if (outer && outer.aborted) throw err;
+        lastErr = err;
+        if (err.helperStatus === undefined || err.nodeFault) sawNodeFault = true;
+        // Keep a source-level answer only if it is worth PARSING. The 403 case
+        // is Cloudflare's HTML mislabelled as JSON — handing that to the caller
+        // would surface a JSON syntax error, which says nothing to anyone.
+        else if (err.helperStatus !== 403 && !sourceLevel) sourceLevel = err.response;
       }
-      return res;
-    } catch (err) {
-      if (outer && outer.aborted) throw err; // caller cancelled → propagate, don't retry
-      lastErr = timedOut ? new Error('helper timeout') : err; // our timeout / network error → next node
-    } finally {
-      clearTimeout(timer);
-      if (outer) outer.removeEventListener('abort', relay);
     }
+    // Every node reachable, every node saying the SOURCE failed. That is not a
+    // transient condition to sweep again for — it is the answer. Hand back a
+    // real response so the caller surfaces the node's own error message, or
+    // stop now with the status rather than making nine pointless calls first.
+    if (triedAnyNode && !sawNodeFault) {
+      if (sourceLevel) return sourceLevel;
+      break;
+    }
+    if (sweep === HELPER_SWEEPS - 1) break;
+    // Every breaker open means the cluster is already known to be down. Waiting
+    // does not make that less true — it just makes the user watch a spinner
+    // before the same failure. Fall straight through to the final sweep, which
+    // dials once regardless, so a known-down cluster fails fast while a
+    // transient failure still gets its backoff.
+    if (!triedAnyNode) continue;
+    // Decorrelated jitter: 133 clients that failed on the same blip must not
+    // come back in step and re-create it.
+    wait = decorrelatedJitter(HELPER_RETRY_BASE_MS, HELPER_RETRY_CAP_MS, wait);
+    await sleep(wait, outer);
   }
   throw lastErr || new Error('all helper nodes unreachable');
 }

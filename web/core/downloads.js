@@ -29,6 +29,10 @@
 // instead DOUBLE-WRAPPED that loopback URL (→ an unreachable localhost fetch),
 // which is why downloads errored. Lazy+cached import to avoid the api.js <->
 // downloads.js import cycle (api.js imports this module).
+// net.js is leaf-level (no imports of its own), so this cannot re-enter the
+// api.js <-> downloads.js cycle the lazy import below exists to avoid.
+import { AdaptiveLimiter, decorrelatedJitter } from './net.js';
+
 let _apiMod = null;
 async function apiImageUrl(url, headers) {
   if (!_apiMod) _apiMod = await import('./api.js');
@@ -261,6 +265,7 @@ async function fetchImage(page, signal) {
   const src = await apiImageUrl(page && page.url, page && page.headers);
   if (!src) throw new Error('no url');
   let lastErr = null;
+  let retryWait = 300;
   for (let attempt = 0; attempt <= settings.retries; attempt++) {
     if (signal.aborted) throw abortError();
     try {
@@ -272,7 +277,13 @@ async function fetchImage(page, signal) {
     } catch (e) {
       if (isAbort(e)) throw e;
       lastErr = e;
-      if (attempt < settings.retries) await delay(300 * (attempt + 1), signal);
+      // Decorrelated jitter, not attempt*300: a chapter is dozens of images
+      // hitting one CDN at once, so a fixed schedule retries them all in step
+      // and re-creates whatever burst caused the failure.
+      if (attempt < settings.retries) {
+        retryWait = decorrelatedJitter(300, 5_000, retryWait);
+        await delay(retryWait, signal);
+      }
     }
   }
   throw lastErr || new Error('failed');
@@ -283,7 +294,18 @@ async function fetchImage(page, signal) {
 async function fetchPages(pages, job, signal) {
   const results = new Array(pages.length).fill(null);
   let cursor = 0;
-  const poolSize = Math.min(clampInt(settings.imageConcurrency, 1, 8, 4), pages.length || 1);
+  // The configured number is a CEILING now, not the operating point. A fixed
+  // pool is wrong in both directions — it leaves a fast link idle and it piles
+  // a slow one deeper into a queue that makes every image take longer. The
+  // limiter starts conservatively and lets measured latency decide, so the
+  // same setting behaves on tethered 3G and on fibre.
+  const ceiling = clampInt(settings.imageConcurrency, 1, 8, 4);
+  const limiter = new AdaptiveLimiter({
+    min: 1,
+    max: Math.min(ceiling, pages.length || 1),
+    start: Math.min(2, ceiling),
+  });
+  const poolSize = Math.min(ceiling, pages.length || 1);
 
   async function worker() {
     for (;;) {
@@ -291,7 +313,7 @@ async function fetchPages(pages, job, signal) {
       if (i >= pages.length) return;
       if (signal.aborted) throw abortError();
       try {
-        results[i] = await fetchImage(pages[i], signal);
+        results[i] = await limiter.run(() => fetchImage(pages[i], signal));
         job.completedPages++;
       } catch (e) {
         if (isAbort(e)) throw e;

@@ -17,6 +17,43 @@ export const SYNC_CONFIG = {
 const SESSION_KEY = 'nyora.sync.session.v1';
 const INITIAL_SYNC = '1970-01-01T00:00:00Z';
 
+// The pull cutoff is a SERVER-side filter (`updated_at >= since`) but it used to
+// be stamped from the browser's clock, which is not the same clock. A device
+// running even a few minutes fast would record a cutoff in the server's future,
+// and every row written in that window was skipped — permanently, because the
+// cutoff only ever moves forward. Two defences:
+//
+//   • every response carries a `Date` header, so the offset between the two
+//     clocks is measurable; timestamps we store are stamped in SERVER time.
+//   • the stored cutoff is then rewound by PULL_OVERLAP_MS, which also covers
+//     the race where another device writes a row between our select and our
+//     stamp. Re-pulling a few minutes of rows is free — the merge is idempotent.
+const PULL_OVERLAP_MS = 5 * 60_000;
+// Delta pushes upload only what changed, so a stale or lost server-side row
+// would never be re-sent. A full push at least this often repairs that.
+const FULL_PUSH_EVERY_MS = 24 * 60 * 60_000;
+// The mirror of it, and the reason an incremental pull can never strand a
+// device: the cutoff is only ever advanced, so ANY way it ends up too far
+// forward — a server or proxy reporting a wrong `Date`, a clock that jumped
+// mid-sync, a bug — would silently stop this device seeing new rows, for good.
+// Ignoring it once a day and asking for everything costs one full pull and
+// makes that unrecoverable state self-healing.
+const FULL_PULL_EVERY_MS = 24 * 60 * 60_000;
+
+let serverClockOffsetMs = 0;
+function noteServerClock(res) {
+  try {
+    const stamp = Date.parse(res.headers.get('date') || '');
+    if (Number.isFinite(stamp)) serverClockOffsetMs = stamp - Date.now();
+  } catch { /* header unreadable — keep the last offset */ }
+}
+// A local instant expressed on the server's clock. Which clock a cutoff belongs
+// to depends on whose rows it filters: the PULL cutoff is compared against
+// server-stamped `updated_at`, so it is translated; the PUSH cutoff is compared
+// against rows this device stamped from its own clock, so it must NOT be.
+function toServerMs(localMs) { return localMs + serverClockOffsetMs; }
+function cutoffIso(atMs) { return new Date(Math.max(0, atMs - PULL_OVERLAP_MS)).toISOString(); }
+
 function loadSession() {
   try {
     return JSON.parse(localStorage.getItem(SESSION_KEY) || '{}') || {};
@@ -25,6 +62,8 @@ function loadSession() {
   }
 }
 
+// NOTE: this is an explicit allow-list, not a spread — a field that is not
+// named here does not survive a save. Add new session state to it.
 function saveSession(session) {
   localStorage.setItem(SESSION_KEY, JSON.stringify({
     access_token: session.access_token || '',
@@ -32,6 +71,9 @@ function saveSession(session) {
     user_id: session.user_id || parseJwtSub(session.access_token || ''),
     email: session.email || '',
     last_sync_timestamp: session.last_sync_timestamp || INITIAL_SYNC,
+    last_push_timestamp: session.last_push_timestamp || '',
+    last_full_push_at: session.last_full_push_at || '',
+    last_full_pull_at: session.last_full_pull_at || '',
   }));
 }
 
@@ -137,20 +179,37 @@ export async function signInAndFetch(email, password) {
 
 export async function syncNow() {
   const session = await ensureSession();
-  const cutoff = session.last_sync_timestamp || INITIAL_SYNC;
+  const fullPull = isFullPullDue(session);
+  const cutoff = fullPull ? INITIAL_SYNC : (session.last_sync_timestamp || INITIAL_SYNC);
   await pushAll(session);
+  // Mark the instant the pull begins, but translate it AFTERWARDS: the offset
+  // is only known once a request has come back, and a sync whose push had
+  // nothing to send has made no requests yet at this point.
+  const pullStartedAt = Date.now();
   const merged = await pullAll(session, cutoff);
-  session.last_sync_timestamp = new Date().toISOString();
+  session.last_sync_timestamp = cutoffIso(toServerMs(pullStartedAt));
+  if (fullPull) session.last_full_pull_at = new Date(pullStartedAt).toISOString();
   saveSession(session);
   return merged;
 }
 
 export async function restoreFromCloud() {
   const session = await ensureSession();
+  const pullStartedAt = Date.now();
   const merged = await pullAll(session, INITIAL_SYNC);
-  session.last_sync_timestamp = new Date().toISOString();
+  session.last_sync_timestamp = cutoffIso(toServerMs(pullStartedAt));
+  session.last_full_pull_at = new Date(pullStartedAt).toISOString();
   saveSession(session);
   return merged;
+}
+
+function isFullPullDue(session) {
+  const last = Date.parse(session.last_full_pull_at || '');
+  if (!Number.isFinite(last)) return true;          // never done one from here
+  const age = Date.now() - last;
+  // A negative age means the local clock moved backwards since the last full
+  // pull; treat that as due rather than waiting out a bogus interval.
+  return age < 0 || age >= FULL_PULL_EVERY_MS;
 }
 
 async function ensureSession() {
@@ -173,15 +232,20 @@ async function authToken(fields) {
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: form.toString(),
   });
+  noteServerClock(res);
   const data = await parseJson(res);
-  if (!res.ok || !data.access_token) throw new Error(authError(data, res.status));
+  if (!res.ok || !data.access_token) {
+    const error = new Error(authError(data, res.status));
+    error.statusCode = res.status;   // lets refreshSession tell "no" from "couldn't ask"
+    throw error;
+  }
   return data;
 }
 
 // Refresh the access token in-place (mutates + persists the passed session so
 // later edge() calls in the same push/pull batch reuse the fresh token).
 async function refreshSession(session) {
-  if (!session.refresh_token) return null;
+  if (!session.refresh_token) return { session: null, rejected: true };
   try {
     const token = await authToken({
       grant_type: 'refresh_token',
@@ -191,10 +255,23 @@ async function refreshSession(session) {
     session.refresh_token = token.refresh_token || session.refresh_token;
     session.user_id = token.user_id || parseJwtSub(session.access_token) || session.user_id;
     saveSession(session);
-    return session;
-  } catch {
-    return null;
+    return { session, rejected: false };
+  } catch (error) {
+    // Only a definitive "this refresh token is no good" may cost the user their
+    // session. Being offline, or catching the auth server mid-restart, must
+    // not: an access token expires in about an hour, so anyone returning after
+    // a day always arrives needing a refresh, and treating a failed request as
+    // a rejected credential signed people out for nothing more than bad Wi-Fi.
+    return { session: null, rejected: isAuthRejection(error) };
   }
+}
+
+// authToken() throws with the HTTP status attached (see below). 400/401/403 are
+// the server judging the credential; anything else — a network failure, a 5xx,
+// a timeout — leaves the question unanswered, so we keep what we have.
+function isAuthRejection(error) {
+  const code = error && error.statusCode;
+  return code === 400 || code === 401 || code === 403;
 }
 
 // Turn FastAPI / OAuth2 error payloads into a readable message.
@@ -216,11 +293,18 @@ async function edge(session, body, retried) {
     },
     body: JSON.stringify(body || {}),
   });
+  noteServerClock(res);
   if (res.status === 401 && !retried) {
-    const refreshed = await refreshSession(session);
+    const { session: refreshed, rejected } = await refreshSession(session);
     if (refreshed) return edge(refreshed, body, true);
-    clearSession();
-    throw new Error('Session expired. Please sign in again.');
+    // Sign the user out only when the server actually refused the refresh
+    // token. A transient failure keeps the session so the next sync — or the
+    // next launch — can try again instead of demanding a fresh sign-in.
+    if (rejected) {
+      clearSession();
+      throw new Error('Session expired. Please sign in again.');
+    }
+    throw new Error('Could not reach the sync service — still signed in, will retry.');
   }
   const data = await parseJson(res);
   if (!res.ok || data.error) {
@@ -250,15 +334,44 @@ async function pushAll(session) {
   const now = new Date().toISOString();
   const snapshot = library.exportData();
   const rows = toRemoteRows(snapshot, uid, now);
-  await upsert(session, 'nyora_manga', rows.manga);
-  await upsert(session, 'nyora_category', rows.categories);
-  await upsert(session, 'nyora_favourite', rows.favourites);
-  await upsert(session, 'nyora_history', rows.history);
-  await upsert(session, 'nyora_bookmark', rows.bookmarks);
-  await upsert(session, 'nyora_manga_prefs', rows.prefs);
-  await upsert(session, 'nyora_manga_category', rows.mangaCategories);
-  await upsert(session, 'nyora_update', rows.updates);
+
+  // Only send what changed. This used to upload the ENTIRE library on every
+  // sync — and auto-sync fires on a 60s timer, on tab focus, and on every
+  // chapter opened, so a few hundred favourites meant re-uploading the whole
+  // collection every minute of a reading session. Rows already carry the
+  // timestamp of the thing they describe, so the previous push's cutoff is all
+  // the filter needs. A periodic full push repairs anything lost server-side.
+  // (prefs and manga_category are stamped with `now` because the local model
+  // keeps no change time for them, so those two always go — they are small
+  // next to manga rows, which carry titles, covers and descriptions.)
+  const pushedAt = Date.now();   // local clock: these rows were stamped by it
+  const full = isFullPushDue(session);
+  const sinceMs = full ? 0 : ms(session.last_push_timestamp || INITIAL_SYNC);
+  const changed = (list) => (sinceMs ? (list || []).filter((r) => ms(r.updated_at) >= sinceMs) : (list || []));
+
+  await upsert(session, 'nyora_manga', changed(rows.manga));
+  await upsert(session, 'nyora_category', changed(rows.categories));
+  await upsert(session, 'nyora_favourite', changed(rows.favourites));
+  await upsert(session, 'nyora_history', changed(rows.history));
+  await upsert(session, 'nyora_bookmark', changed(rows.bookmarks));
+  await upsert(session, 'nyora_manga_prefs', changed(rows.prefs));
+  await upsert(session, 'nyora_manga_category', changed(rows.mangaCategories));
+  await upsert(session, 'nyora_update', changed(rows.updates));
   await upsert(session, 'nyora_source_prefs', sourcePrefRows(uid));
+
+  // Advanced only now, with every table through. A push that threw partway
+  // leaves the old cutoff in place so the next attempt resends the lot. The
+  // same overlap rewind applies here, so a local edit made while the push was
+  // in flight is included in the next one rather than waiting to change again.
+  session.last_push_timestamp = cutoffIso(pushedAt);
+  if (full) session.last_full_push_at = new Date(pushedAt).toISOString();
+}
+
+function isFullPushDue(session) {
+  if (!session.last_push_timestamp) return true;      // never pushed from here
+  const last = Date.parse(session.last_full_push_at || '');
+  if (!Number.isFinite(last)) return true;
+  return (Date.now() - last) >= FULL_PUSH_EVERY_MS;   // both ends are local time
 }
 
 async function pullAll(session, since) {

@@ -24,10 +24,17 @@ globalThis.NYORA_HELPER_URL = 'https://api.nyora.xyz';
 // list api.nyora.xyz more than once to weight the Space lower. Single entry = no-op.
 globalThis.NYORA_HELPER_URLS = [
   // api.nyora.xyz (WARP-backed VM cluster) listed twice to weight it ~2/3 of the
-  // rotation vs the free HF node below (~1/3). The HF node serves normal sources
-  // locally and transparently relays CF/IP-banned sources back to api.nyora.xyz,
-  // so it never returns a broken CF result — safe to round-robin. Images always
-  // stay on NYORA_HELPER_URL (the VM cluster) regardless.
+  // rotation vs the free HF node below (~1/3). Images always stay on
+  // NYORA_HELPER_URL (the VM cluster) regardless.
+  //
+  // The HF node is MEANT to relay CF/IP-banned sources back to api.nyora.xyz so
+  // it never returns a broken CF result. Measured 2026-07-27, it does not: for a
+  // Cloudflare-gated source (parser:MANGAKAKALOTTV) it returns Cloudflare's
+  // "Just a moment…" interstitial HTML with status 403 and `content-type:
+  // application/json`, where the VM returns a structured {error} 500. Until the
+  // Space is fixed, api.js compensates — 403 is a failover status, so the client
+  // moves to a node that gives a real answer. Round-robin stays safe because of
+  // that client-side handling, NOT because the relay works.
   'https://api.nyora.xyz',
   'https://api.nyora.xyz',
   'https://mdhasanraza-nyora-one.hf.space/n',
