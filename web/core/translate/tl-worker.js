@@ -36,7 +36,7 @@
 const ORT_URL = '/vendor/ort/ort.min.mjs';
 const ORT_WASM_PATH = '/vendor/ort/';
 
-const DETECTOR_URL = 'https://huggingface.co/Kiuyha/Manga-Bubble-YOLO/resolve/fb646500455e8a8a3a807fd27b855c8e4fc63766/onnx/yolo26n.onnx';
+const DETECTOR_URL = 'https://raw.githubusercontent.com/Nyora-Manga/nyora-translate-models/cf33c2959f02f5a48ad2bc98bd80b0b50b8632ec/detector/yolo26n.onnx';
 const DETECTOR_SIZE = 1280;      // yolo26n was trained at 1280×1280
 // Bubbles score high (0.8+), but free text — credit pages, shouts, signs —
 // often lands at 0.2–0.5. Keep the bar low and let IoU-dedupe + the
@@ -45,14 +45,37 @@ const DETECTOR_THRESHOLD = 0.2;
 
 // -- manga-ocr (ja). uint8 (QDQ) variants — the "quantized" (QOperator)
 //    exports use ConvInteger, which onnxruntime-web's wasm EP has no kernel for.
-const MANGA_OCR_BASE = 'https://huggingface.co/onnx-community/manga-ocr-base-ONNX/resolve/f9023406bb2f6b17df67bc4a327c56ecd20611f0/onnx/';
+const MANGA_OCR_BASE = 'https://raw.githubusercontent.com/Nyora-Manga/nyora-translate-models/cf33c2959f02f5a48ad2bc98bd80b0b50b8632ec/manga-ocr/';
 const MANGA_OCR_ENCODER_URL = MANGA_OCR_BASE + 'encoder_model_uint8.onnx';
 const MANGA_OCR_DECODER_URL = MANGA_OCR_BASE + 'decoder_model_uint8.onnx';
-const MANGA_OCR_VOCAB_URL = 'https://huggingface.co/kha-white/manga-ocr-base/resolve/aa6573bd10b0d446cbf622e29c3e084914df9741/vocab.txt';
+const MANGA_OCR_VOCAB_URL = 'https://raw.githubusercontent.com/Nyora-Manga/nyora-translate-models/cf33c2959f02f5a48ad2bc98bd80b0b50b8632ec/manga-ocr/vocab.txt';
 const MANGA_OCR_SIZE = 224;      // ViTImageProcessor: 224×224, (x/255 − .5)/.5
 const MANGA_OCR_START = 2n;      // [CLS] (decoder_start_token_id)
 const MANGA_OCR_EOS = 3n;        // [SEP] (eos_token_id)
 const MANGA_OCR_MAX_TOKENS = 64; // bubbles are short; generation cap
+// Minimum mean log-probability for a read to be shown at all.
+//
+// An autoregressive decoder handed a crop it cannot read does not fail — it
+// falls back on its language-model prior and returns fluent, confident-looking
+// Japanese that has nothing to do with the image. That happens on textless
+// ornament (a bead necklace, a choker of rings), on dense magazine back-matter
+// (a postal address block), on stylised advertising type, and on boxes where
+// the detector merged several bubbles into one unreadable strip. All four put
+// nonsense on the page.
+//
+// Measured over 344 blocks from 56 pages across 22 titles, the decoder's own
+// confidence separates these cleanly, and nothing else does — box height,
+// width, aspect, area and character density all overlap completely between
+// good and bad:
+//
+//   real text, 14 hand-checked lines   -0.000 … -0.104   (incl. 33x52 「フッ」)
+//   confirmed garbage, 5 cases         -0.452 … -1.163
+//
+// -0.40 sits in the gap with ~4x margin on the real-text side. It also catches
+// eight further blocks that inspection confirmed were garbage too (staff
+// credits, garbled Latin, mangled back-matter), and leaves partially-correct
+// reads such as 「その先はいよいよ超王都・部鄲」 (-0.358) alone.
+const MANGA_OCR_MIN_CONF = -0.40;
 
 // -- PP-OCR line pipeline (zh/en/ko): a DB text-line DETECTOR runs on each
 //    bubble crop (proper line boxes — far better than any projection split),
@@ -60,16 +83,16 @@ const MANGA_OCR_MAX_TOKENS = 64; // bubbles are short; generation cap
 //    (x/255−.5)/.5, output [1,W/8,C] softmaxed; table = ['blank']+dict+[' '].
 //    zh/en use PP-OCRv6 small rec (Printed-EN 93.3 / CN 90.5 — the model
 //    comic-translate ships); ko keeps korean_PP-OCRv5 (v6's dict has no Hangul).
-const PADDLE_DET_URL = 'https://huggingface.co/PaddlePaddle/PP-OCRv5_mobile_det_onnx/resolve/e6f4fa85f00e168c862bc462aebca69eef9b3d3d/inference.onnx';
+const PADDLE_DET_URL = 'https://raw.githubusercontent.com/Nyora-Manga/nyora-translate-models/cf33c2959f02f5a48ad2bc98bd80b0b50b8632ec/paddle/PP-OCRv5_mobile_det.onnx';
 const PADDLE = {
   zh: {
-    model: 'https://huggingface.co/ogkalu/ppocr-v6-onnx/resolve/8caf024d9ec9df361c3b89adc812a68ae803ea1b/PP-OCRv6_small_rec.onnx',
-    dict: 'https://huggingface.co/ogkalu/ppocr-v6-onnx/resolve/8caf024d9ec9df361c3b89adc812a68ae803ea1b/PP-OCRv6_small_rec.txt',
+    model: 'https://raw.githubusercontent.com/Nyora-Manga/nyora-translate-models/cf33c2959f02f5a48ad2bc98bd80b0b50b8632ec/paddle/PP-OCRv6_small_rec.onnx',
+    dict: 'https://raw.githubusercontent.com/Nyora-Manga/nyora-translate-models/cf33c2959f02f5a48ad2bc98bd80b0b50b8632ec/paddle/PP-OCRv6_small_rec.txt',
     label: 'Chinese/English OCR model', size: 21_200_000, joiner: '',
   },
   ko: {
-    model: 'https://huggingface.co/PaddlePaddle/korean_PP-OCRv5_mobile_rec_onnx/resolve/5c6f574b8e2230adf4287b33e736d71b9fabd28e/inference.onnx',
-    dict: 'https://raw.githubusercontent.com/PaddlePaddle/PaddleOCR/0a8a6354f10388ecd601f9a86639dd3c44d95057/ppocr/utils/dict/ppocrv5_korean_dict.txt',
+    model: 'https://raw.githubusercontent.com/Nyora-Manga/nyora-translate-models/cf33c2959f02f5a48ad2bc98bd80b0b50b8632ec/paddle/korean_PP-OCRv5_mobile_rec.onnx',
+    dict: 'https://raw.githubusercontent.com/Nyora-Manga/nyora-translate-models/cf33c2959f02f5a48ad2bc98bd80b0b50b8632ec/paddle/ppocrv5_korean_dict.txt',
     label: 'Korean OCR model', size: 13_400_000, joiner: ' ',
   },
 };
@@ -113,6 +136,24 @@ function ensureInit() {
   return initPromise;
 }
 
+// WebGPU is opt-in per model, and NOT for the uint8/QDQ-quantised ones.
+//
+// The manga-ocr encoder is a uint8 QDQ export. Run through the WebGPU EP it
+// loads without error, runs without error, and returns hidden states that are
+// simply WRONG — measured on a real page, min/max −5.373/5.000 against wasm's
+// −10.754/4.962 for byte-identical input and byte-identical weights. The
+// decoder then reads those hidden states, finds nothing legible in them, and
+// falls back on its language-model prior: fluent, grammatical Japanese with no
+// relation to the image ("はい。それは……はいはいはい" for a bubble that says
+// 屋上の手伝いのことだけどよぉ…). On wasm the same page decodes perfectly.
+//
+// Nothing surfaces this: no exception, no warning, no missing-kernel message.
+// The only signal is that the output is confidently wrong, which is why it
+// survived until a character-error-rate harness measured it.
+//
+// It was reaching WebGPU at all because `navigator.gpu` is undefined on the
+// main thread but DEFINED inside a Worker, so a device that looks GPU-less to
+// the page still takes this path here.
 async function createSession(buf, preferGpu) {
   if (preferGpu && typeof navigator !== 'undefined' && navigator.gpu) {
     try {
@@ -148,7 +189,9 @@ function ensureEngine(lang) {
 }
 
 async function loadMangaOcr() {
-  const encoder = await createSession(await fetchWithProgress(MANGA_OCR_ENCODER_URL, 'Japanese OCR model (1/2)', 87_000_000), true);
+  // preferGpu MUST stay false here — see createSession. This is the uint8 export
+  // the WebGPU EP silently miscomputes.
+  const encoder = await createSession(await fetchWithProgress(MANGA_OCR_ENCODER_URL, 'Japanese OCR model (1/2)', 87_000_000), false);
   const decoder = await createSession(await fetchWithProgress(MANGA_OCR_DECODER_URL, 'Japanese OCR model (2/2)', 30_000_000), false);
   const vres = await fetch(MANGA_OCR_VOCAB_URL);
   if (!vres.ok) throw new Error('vocab download failed');
@@ -175,47 +218,25 @@ async function loadPaddle(key) {
   return { kind: 'paddle', rec, lineDet, table };
 }
 
-// Expected SHA-256 for every model artefact, from Hugging Face's LFS oid (which
-// IS the content hash), keyed by the pinned URL. The URLs above are pinned to
-// COMMIT SHAs rather than /main/ so the bytes can't be swapped under us, and
-// verifyDigest() below re-checks them anyway before any of it reaches the ONNX
-// parser — a poisoned model is attacker-controlled input to a native wasm
-// protobuf reader, and it would otherwise be cached persistently.
-// Files with no entry (the plain-text dicts) are small non-LFS blobs already
-// made immutable by the commit pin.
-const MODEL_SHA256 = {
-  'yolo26n.onnx': 'b45c2e12cf0c3c1d2abfbbb9123c9f96f040f2ac36a0842382ecd9d859c851c7',
-  'encoder_model_uint8.onnx': 'a73e7a9959f3412f4d0ab60c8cd0f71c29e7e29a2e52a1e184ad6f2be3b892e3',
-  'decoder_model_uint8.onnx': 'cc7a42534759864c7b6937aaacc4cc91b37c9207eeae05ee359a04e6d4d222a5',
-  'PP-OCRv5_mobile_det_onnx/inference.onnx': 'a431985659dc921974177a95adcfbb90fd9e51989a5e04d70d0b75f597b6e61d',
-  'PP-OCRv6_small_rec.onnx': '5435fd747c9e0efe15a96d0b378d5bd157e9492ed8fd80edf08f30d02fa24634',
-  'korean_PP-OCRv5_mobile_rec_onnx/inference.onnx': '92f0b7785e64fc9090106a241cf4c1eb97472824558272751b88a2a4476d3a08',
-};
-
-// Two files are both named inference.onnx, so key on enough of the path.
-function expectedDigest(url) {
-  for (const [k, v] of Object.entries(MODEL_SHA256)) if (url.includes(k)) return v;
-  return null;
-}
-
-async function verifyDigest(buf, url, label) {
-  const want = expectedDigest(url);
-  if (!want) return;
-  const got = [...new Uint8Array(await crypto.subtle.digest('SHA-256', buf))]
-    .map((b) => b.toString(16).padStart(2, '0')).join('');
-  if (got !== want) throw new Error(`${label} failed integrity check — refusing to load it`);
-}
+// No per-file digest check. The models now come from Nyora's own mirror
+// (Nyora-Manga/nyora-translate-models) over HTTPS, pinned to a commit — and a
+// raw.githubusercontent URL carrying a commit SHA is immutable by construction,
+// so the bytes at that URL cannot be swapped for different ones. Re-hashing
+// ~160 MB on every reader open bought nothing that the pin does not already
+// give, and cost seconds of startup on the machines least able to spare them.
+//
+// What this gives up, stated plainly: a damaged cache entry (a partial write, a
+// storage fault) is no longer detected here, and reaches the ONNX parser. That
+// surfaces as a load failure from onnxruntime rather than a clean message. The
+// mirror's own SHA256SUMS records the upstream digests if a copy ever needs
+// checking by hand.
 
 async function fetchWithProgress(url, label, sizeHint) {
   const cache = await caches.open(MODEL_CACHE).catch(() => null);
   if (cache) {
     const hit = await cache.match(url).catch(() => null);
     if (hit) {
-      // Re-verify cached bytes too: nyora-tl-models is exempt from the service
-      // worker's version cleanup, so a bad copy would otherwise be sticky.
-      const cached = await hit.arrayBuffer();
-      try { await verifyDigest(cached, url, label); return cached; }
-      catch (e) { await cache.delete(url).catch(() => {}); throw e; }
+      return await hit.arrayBuffer();
     }
   }
   const res = await fetch(url);
@@ -233,7 +254,6 @@ async function fetchWithProgress(url, label, sizeHint) {
   }
   const blob = new Blob(chunks);
   const buf = await blob.arrayBuffer();
-  await verifyDigest(buf, url, label); // BEFORE caching, so bad bytes never persist
   if (cache) await cache.put(url, new Response(blob)).catch(() => { /* best-effort */ });
   return buf;
 }
@@ -318,15 +338,38 @@ function dedupe(boxes) {
     });
     if (!dup) kept.push(b);
   }
-  // 2. Nested pairs (the model marks both the bubble and the text inside it):
-  //    keep the container — the OCR models read whole-bubble/multi-line crops
-  //    and the overlay should cover the whole bubble.
-  kept.sort((a, b) => b.w * b.h - a.w * a.h);
-  const out = [];
-  for (const b of kept) {
-    const inside = out.some((k) => overlapArea(k, b) / (b.w * b.h) > 0.75);
-    if (!inside) out.push(b);
+  // 2. Nested boxes. The model often marks BOTH a bubble and the text inside
+  //    it; there the container is the one to keep, because the OCR reads whole
+  //    multi-line crops and the overlay should cover the whole bubble.
+  //
+  //    But a box can also be an OVER-MERGE spanning several separate bubbles —
+  //    measured case: a 447x123 strip across four distinct bubbles on one page.
+  //    Keeping that container discarded four correctly-detected bubbles, and
+  //    the merged crop then read as garbage ("まあまあまりのお友と…〜〜〜〜"),
+  //    so after the confidence gate dropped it those lines were lost entirely.
+  //
+  //    The two cases are told apart by how many children the container holds:
+  //    a bubble marked twice has ONE child; an over-merge has several, and they
+  //    do not overlap each other. Prefer the children in that case.
+  kept.sort((a, b) => b.w * b.h - a.w * a.h);   // largest first
+  const dropped = new Set();
+  for (let i = 0; i < kept.length; i++) {
+    if (dropped.has(i)) continue;
+    const kids = [];
+    for (let j = i + 1; j < kept.length; j++) {
+      if (dropped.has(j)) continue;
+      const s = kept[j];
+      if (overlapArea(kept[i], s) / (s.w * s.h) > 0.75) kids.push(j);
+    }
+    if (!kids.length) continue;
+    const separate = kids.some((a, ai) => kids.slice(ai + 1).some((b) => {
+      const A = kept[a], B = kept[b];
+      return overlapArea(A, B) / Math.min(A.w * A.h, B.w * B.h) < 0.2;
+    }));
+    if (kids.length >= 2 && separate) dropped.add(i);          // over-merge → keep the bubbles
+    else for (const j of kids) dropped.add(j);                 // bubble + its text → keep the bubble
   }
+  const out = kept.filter((_, i) => !dropped.has(i));
   // Reading order: top-to-bottom, then right-to-left (manga).
   out.sort((a, b) => (a.y + a.h / 2) - (b.y + b.h / 2) || (b.x + b.w / 2) - (a.x + a.w / 2));
   return out;
@@ -341,10 +384,21 @@ function dedupe(boxes) {
 // Measured on manga-ocr's own 12-image test set: exact matches 5/12 → 8/12 and
 // mean CER 12.37% → 6.39%. JA path only — never apply to the latin zh/en/ko
 // output, where full-width letters would be wrong.
+// The OCR text's job is to be TRANSLATED, so normalise toward what a machine
+// translator reads well rather than toward Japanese typesetting.
+//
+// This used to expand `…` into `...` and then map every ASCII character to its
+// full-width twin, so a trailing ellipsis reached the translator as `．．．`
+// (three U+FF0E). Google Translate does not treat that as punctuation — it
+// passed it through verbatim and returned "Yes. it is. ．． ．． ．． Yes, yes",
+// so the ellipsis became noise in the middle of the English. Runs of dots,
+// full-width dots and katakana middle dots all collapse to a single `…`, which
+// is both what the page shows and what translates cleanly.
 function mangaOcrPostprocess(t) {
   t = t.replace(/\s+/g, '');
-  t = t.replace(/…/g, '...');
-  t = t.replace(/[・.]{2,}/g, (m) => '.'.repeat(m.length));
+  t = t.replace(/[.．。・･…]{2,}/g, '…');
+  // Full-width for the rest: these sit in Japanese text (、。！？) where the
+  // half-width forms look wrong in the "peek original" overlay.
   return t.replace(/[!-~]/g, (c) => String.fromCharCode(c.charCodeAt(0) + 0xFEE0));
 }
 
@@ -371,8 +425,10 @@ function mangaOcrPreprocess(crop) {
 // batched ones. Finished rows are padded with [PAD] and masked out.
 const MANGA_OCR_BATCH = 8; // bounds logits memory: 8 × len × 6144 floats/step
 
+// Returns one { text, conf } per crop. `conf` is the mean log-probability the
+// decoder assigned to the tokens it chose — see the decode loop.
 async function mangaOcrBatch(eng, crops, onOneDone) {
-  const texts = new Array(crops.length).fill('');
+  const texts = new Array(crops.length).fill(null).map(() => ({ text: '', conf: -Infinity }));
   for (let base = 0; base < crops.length; base += MANGA_OCR_BATCH) {
     const chunk = crops.slice(base, base + MANGA_OCR_BATCH);
     const n = chunk.length;
@@ -400,6 +456,8 @@ async function mangaOcrBatch(eng, crops, onOneDone) {
 
       const seqs = Array.from({ length: n }, () => [MANGA_OCR_START]);
       const finished = new Array(n).fill(false);
+      const logProb = new Float64Array(n);   // running sum of chosen-token log p
+      const tokens = new Int32Array(n);      // how many tokens that sum covers
       for (let step = 0; step < MANGA_OCR_MAX_TOKENS && finished.includes(false); step++) {
         const len = seqs[0].length;
         const ids = new BigInt64Array(n * len);
@@ -421,6 +479,17 @@ async function mangaOcrBatch(eng, crops, onOneDone) {
           for (let v = 0; v < V; v++) {
             if (d[off + v] > bestV) { bestV = d[off + v]; best = v; }
           }
+          // How sure was it? log softmax of the token it picked, in one extra
+          // pass (log-sum-exp shifted by the max, so it cannot overflow). A crop
+          // with no characters in it gives the decoder nothing to lock onto, so
+          // the distribution should be flatter here than on real text — this is
+          // the signal, recorded per block, for telling read text from invented
+          // text. Two passes over 6144 floats per token is noise next to the
+          // decoder run that produced them.
+          let sumExp = 0;
+          for (let v = 0; v < V; v++) sumExp += Math.exp(d[off + v] - bestV);
+          logProb[i] += -Math.log(sumExp);   // = bestV - logsumexp
+          tokens[i]++;
           const tok = BigInt(best);
           if (tok === MANGA_OCR_EOS) {
             finished[i] = true;
@@ -443,7 +512,10 @@ async function mangaOcrBatch(eng, crops, onOneDone) {
           if (!t || t.startsWith('[') || t.startsWith('<unused')) continue;
           text += t.startsWith('##') ? t.slice(2) : t;
         }
-        texts[base + i] = mangaOcrPostprocess(text);
+        // Mean log-probability per generated token: length-independent, so a
+        // two-character read and a twenty-character read are comparable.
+        const conf = tokens[i] ? logProb[i] / tokens[i] : -Infinity;
+        texts[base + i] = { text: mangaOcrPostprocess(text), conf };
       }
     } catch { /* one bad chunk must not sink the page — keep the rest */
       while (fired < n) fire();
@@ -716,6 +788,33 @@ async function handlePage(id, bitmap, lang) {
     return crop;
   };
   const junk = /^[\s.。‥…・･·。、,*×+~〜ー—\-!?！？'"“”]*$/; // SFX dots, dashes, ellipses
+
+  // Scanlation-site watermarks. Raw pages are stamped with the rip site's
+  // branding — "DL-Raw.Se", "RawLazy.Si", "OKT", "pip Here" — and the detector
+  // finds them exactly like speech, so they get translated and painted over the
+  // art. They give themselves away by SCRIPT: dialogue on a Japanese, Korean or
+  // Chinese page is kana/hangul/hanzi, so a block that is mostly Latin letters
+  // is branding, not speech.
+  //
+  // Measured: catches 6 of 6 pure-Latin watermarks on the Korean corpus, with
+  // ZERO of 333 Japanese blocks above the threshold — the two populations do
+  // not overlap at all. (A mixed-script watermark like "OKTOON 국내에서…" sits
+  // at 0.33 and still gets through; this rule is deliberately the safe half.)
+  const isWatermark = (t) => {
+    const letters = String(t).replace(/[\s\d.,!?…、。！？·:;\-'"()[\]{}$\\/~%&*+=]/gu, '');
+    if (letters.length < 2) return false;
+    const latin = (letters.match(/[A-Za-z]/g) || []).length;
+    return latin / letters.length >= 0.6;
+  };
+
+  // Characters that never occur in lettered dialogue. When the recogniser emits
+  // one it has read artwork as text — 「$\{ 그선약」 came from a Korean page with
+  // no writing in that region at all. Deliberately narrow: ASCII symbols only,
+  // so the full-width 〜 and ・ that DO appear in Japanese are untouched.
+  // Measured: catches the one garbage block on the Korean corpus and fires on
+  // 0 of 333 Japanese blocks and 0 of 120 held-out blocks.
+  const ALIEN = /[$\\{}|@#^_`~<>=]/;
+  const isGarbled = (t) => ALIEN.test(String(t));
   const blocks = [];
   let done = 0;
   const tick = () => { done++; post({ type: 'page-progress', id, done, total: rects.length, boxes: rects }); };
@@ -726,8 +825,19 @@ async function handlePage(id, bitmap, lang) {
       texts = await mangaOcrBatch(eng, rects.map(cropOf), tick);
     } catch { /* fall through with whatever decoded */ }
     rects.forEach((r, i) => {
-      const text = texts[i];
-      if (text && !junk.test(text)) blocks.push({ ...r, text });
+      const { text, conf } = texts[i] || {};
+      if (!text || junk.test(text) || isWatermark(text) || isGarbled(text)) return;
+      // Silence beats confident nonsense: an unreadable region is better left
+      // showing the original art than covered with an invented line.
+      //
+      // JAPANESE ONLY, on purpose. This branch is the manga-ocr engine; zh/en/ko
+      // go through PP-OCR below, which is a CTC recogniser with no comparable
+      // per-read score, and the -0.40 figure was calibrated against manga-ocr's
+      // log-probabilities on a Japanese corpus — it would mean nothing there.
+      // Those languages are getting their own pipeline; when they do, they need
+      // their own quality gate and their own calibration, not this number.
+      if (conf < MANGA_OCR_MIN_CONF) return;
+      blocks.push({ ...r, text, conf });
     });
   } else {
     const joiner = (PADDLE[lang] && PADDLE[lang].joiner) || ' ';
@@ -737,7 +847,7 @@ async function handlePage(id, bitmap, lang) {
         text = await paddleOcrCrop(eng, cropOf(r), joiner);
       } catch { /* one bad crop must not sink the page */ }
       tick();
-      if (text && !junk.test(text)) blocks.push({ ...r, text });
+      if (text && !junk.test(text) && !isWatermark(text) && !isGarbled(text)) blocks.push({ ...r, text });
     }
   }
   post({ type: 'page-result', id, blocks });
