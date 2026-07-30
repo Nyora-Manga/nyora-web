@@ -426,6 +426,80 @@ async function fetchCatalog() {
   return _catalogCache;
 }
 
+// ---- source-id normalisation -------------------------------------------
+//
+// A stored source id can arrive in several shapes, because it may have been
+// written by any Nyora client and then synced here:
+//
+//   "parser:ATSUMOE"           the hosted helper's own id (what we must send)
+//   "DD_ATSUMOE"               the Android/desktop data-driven catalogue id
+//   "DD_asurascans"            ...and the catalogue does not agree on case
+//   "JS_MANGAFIRE_EN"          the old script-engine id
+//   '{"name":"DD_ATSUMOE"}'    a serialised MangaSourceRef that was stored raw
+//   "...MangaSourceRef.Parser" a Kotlin class name that leaked into a sync row
+//
+// The helper only serves `parser:` ids and compares them EXACTLY, so a bare or
+// wrongly-cased name 404s as "Unknown source". Everything is funnelled through
+// here and matched case-insensitively against the catalogue.
+
+/** Reduce any stored source id down to its bare name (no engine prefix). */
+export function bareSourceName(raw) {
+  let value = raw;
+  // A MangaSourceRef object, or the JSON text of one.
+  if (value && typeof value === 'object') value = value.name || value.id || '';
+  value = String(value == null ? '' : value).trim();
+  if (value.startsWith('{')) {
+    try {
+      const parsed = JSON.parse(value);
+      value = String((parsed && (parsed.name || parsed.id)) || '').trim();
+    } catch {
+      /* not JSON after all — fall through and use it as-is */
+    }
+  }
+  if (value.includes('.MangaSourceRef.')) value = value.split('.MangaSourceRef.').pop();
+  if (!value || value === 'UNKNOWN') return '';
+  if (value === 'LOCAL' || value === 'Local') return 'LOCAL';
+  if (value.startsWith('DD_') || value.startsWith('JS_')) return value.slice(3);
+  if (value.startsWith('parser:') || value.startsWith('script:')) {
+    return value.slice(value.indexOf(':') + 1);
+  }
+  return value;
+}
+
+let _sourceIndex = null;
+
+/** Bare name -> the catalogue's exact id, matched case-insensitively. */
+async function sourceIndex() {
+  if (_sourceIndex) return _sourceIndex;
+  const index = new Map();
+  try {
+    for (const entry of await fetchCatalog()) {
+      const id = entry && entry.id;
+      if (!id) continue;
+      index.set(String(id).split(':').pop().toLowerCase(), id);
+    }
+  } catch {
+    /* offline: fall back to the prefixed guess below */
+  }
+  _sourceIndex = index;
+  return index;
+}
+
+/**
+ * Resolve any stored source id to the id the helper will accept.
+ * Unresolvable names still get a `parser:` guess rather than being dropped — a
+ * 404 naming the source is more useful than a silent no-op.
+ */
+export async function helperSourceId(raw) {
+  const bare = bareSourceName(raw);
+  if (!bare || bare === 'LOCAL') return bare;
+  const hit = (await sourceIndex()).get(bare.toLowerCase());
+  // No catalogue match: send the prefixed guess anyway. A 404 naming the source
+  // is more useful than a silent no-op, and aliasing to a *similar* source would
+  // silently open the wrong site.
+  return hit || `parser:${bare}`;
+}
+
 // ---- the api surface ---------------------------------------------------
 
 export const api = {
@@ -450,6 +524,7 @@ export const api = {
   refreshSources() {
     _catalogCache = null;
     _nsfwIds = null;
+    _sourceIndex = null;
     return Promise.resolve({ ok: true });
   },
   /** Sync: is this source flagged adult? Best-effort — populated once the catalog
@@ -498,25 +573,26 @@ export const api = {
   },
 
   // -- Browse -----------------------------------------------------------
-  popular(sid, page = 1) {
-    return get('/sources/popular' + qs({ id: sid, page }));
+  async popular(sid, page = 1) {
+    return get('/sources/popular' + qs({ id: await helperSourceId(sid), page }));
   },
-  latest(sid, page = 1) {
-    return get('/sources/latest' + qs({ id: sid, page }));
+  async latest(sid, page = 1) {
+    return get('/sources/latest' + qs({ id: await helperSourceId(sid), page }));
   },
   // `filters` (optional) = array of filter objects, sent URL-encoded as `f`.
-  search(sid, q, page = 1, filters) {
+  async search(sid, q, page = 1, filters) {
     const f = filters && filters.length ? JSON.stringify(filters) : undefined;
-    return get('/sources/search' + qs({ id: sid, q, page, f }));
+    return get('/sources/search' + qs({ id: await helperSourceId(sid), q, page, f }));
   },
 
   // -- Manga ------------------------------------------------------------
   // Served by the hosted helper as /sources/details and /sources/pages.
-  details(sid, url) {
-    return get('/sources/details' + qs({ id: sid, url }));
+  async details(sid, url) {
+    return get('/sources/details' + qs({ id: await helperSourceId(sid), url }));
   },
-  pages(sid, chapterUrl, refresh) {
-    return get('/sources/pages' + qs({ id: sid, url: chapterUrl, refresh: refresh ? 1 : undefined }));
+  async pages(sid, chapterUrl, refresh) {
+    return get('/sources/pages'
+      + qs({ id: await helperSourceId(sid), url: chapterUrl, refresh: refresh ? 1 : undefined }));
   },
 
   // -- Image proxy ------------------------------------------------------

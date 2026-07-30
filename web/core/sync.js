@@ -7,6 +7,7 @@
 // data moves through POST /functions/v1/nyora-sync with a Bearer access token
 // (no apikey/anon header). Google sign-in has been removed.
 
+import { bareSourceName } from './api.js';
 import library from './library.js';
 import { sourcePrefRows, applySourcePrefRows } from './parser-runtime.js';
 
@@ -512,13 +513,14 @@ function toRemoteRows(data, uid, nowIso) {
 }
 
 function cleanSourceId(sid) {
-  let value = String(sid || '').trim();
-  if (value.includes('.MangaSourceRef.')) value = value.split('.MangaSourceRef.').pop();
-  if (value === 'UNKNOWN' || !value) return 'UNKNOWN';
-  if (value === 'LOCAL' || value === 'Local') return 'LOCAL';
-  if (value.startsWith('JS_')) return `parser:${value.slice(3)}`;
-  if (value.startsWith('parser:') || value.startsWith('script:')) return `parser:${value.slice(value.indexOf(':') + 1)}`;
-  return value;
+  // `bareSourceName` also unwraps the shapes that used to be stored verbatim and
+  // then failed to open: a serialised MangaSourceRef, and the `DD_` ids the
+  // data-driven clients sync. Exact casing is settled later against the
+  // catalogue (see `helperSourceId`), since the helper compares ids exactly.
+  const bare = bareSourceName(sid);
+  if (!bare) return 'UNKNOWN';
+  if (bare === 'LOCAL') return 'LOCAL';
+  return `parser:${bare}`;
 }
 
 function fromRemoteRows(rows, baseData) {
@@ -725,11 +727,10 @@ function sourceRefName(raw) {
 }
 
 function openableSourceId(manga) {
-  let name = sourceIdFromManga(manga);
-  if (name.includes('.MangaSourceRef.')) name = name.split('.MangaSourceRef.').pop();
-  if (name.startsWith('JS_')) return `parser:${name.slice(3)}`;
-  if (name.startsWith('parser:') || name.startsWith('script:')) return `parser:${name.slice(name.indexOf(':') + 1)}`;
-  return name;
+  const bare = bareSourceName(sourceIdFromManga(manga));
+  if (!bare) return '';
+  if (bare === 'LOCAL') return 'LOCAL';
+  return `parser:${bare}`;
 }
 
 function parseArray(raw) {
