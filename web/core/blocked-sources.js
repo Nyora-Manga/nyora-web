@@ -1,14 +1,17 @@
 // Auto-generated 2026-07-09 by a live health-check of every helper source.
-// MANGAFIRE_* added 2026-07-30: every /api endpoint 403s a Cloudflare managed
-// challenge from the helper — direct AND through WARP — and it only looked alive
-// because /sources/popular was serving a stale disk cache.
 // These sources consistently returned NO browsable content (dead upstreams,
 // broken parsers, cert/handshake failures, or a browser-only Cloudflare
 // challenge) on both /sources/popular and /sources/latest. They are hidden
 // from the catalog so users only see working sources. Regenerate by
 // re-running the health-check and replacing this list.
 //
-// 577 disabled of 960 (383 working remain).
+// MANGAFIRE_* is deliberately NOT in this list, even though mangafire.to serves
+// a Cloudflare managed challenge to the helper (403 on every /api path, direct
+// and through WARP). It stays catalogued so the source remains selectable; the
+// native apps reach it with a real browser context that can clear the challenge.
+// Do not re-block it from an automated sweep without checking that first.
+//
+// 570 disabled of 960 (390 working remain).
 export const BLOCKED_SOURCE_IDS = new Set([
   "parser:ADONISFANSUB",
   "parser:ADULT_WEBTOON",
@@ -228,13 +231,6 @@ export const BLOCKED_SOURCE_IDS = new Set([
   "parser:MANGADOP",
   "parser:MANGAEFENDISI",
   "parser:MANGAFASTNET",
-  "parser:MANGAFIRE_EN",
-  "parser:MANGAFIRE_ES",
-  "parser:MANGAFIRE_ESLA",
-  "parser:MANGAFIRE_FR",
-  "parser:MANGAFIRE_JA",
-  "parser:MANGAFIRE_PT",
-  "parser:MANGAFIRE_PTBR",
   "parser:MANGAFLAME",
   "parser:MANGAFOREST",
   "parser:MANGAFORFREE",
