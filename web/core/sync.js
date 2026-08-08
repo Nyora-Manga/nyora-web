@@ -104,6 +104,40 @@ export function status() {
   };
 }
 
+// Authenticated fetch against the sync server for non-sync endpoints (the
+// social layer). Attaches the bearer token and transparently refreshes+retries
+// once on a 401, with the same "only a definitive rejection signs you out"
+// policy as edge().
+export async function authedFetch(path, options = {}) {
+  const session = loadSession();
+  if (!session.access_token) {
+    const err = new Error('Sign in first.');
+    err.needsAuth = true;
+    throw err;
+  }
+  const run = (token) => fetch(`${SYNC_CONFIG.syncUrl}${path}`, {
+    ...options,
+    headers: { ...(options.headers || {}), Authorization: `Bearer ${token}` },
+  });
+  let res = await run(session.access_token);
+  noteServerClock(res);
+  if (res.status === 401) {
+    const { session: refreshed, rejected } = await refreshSession(session);
+    if (!refreshed) {
+      if (rejected) {
+        clearSession();
+        const err = new Error('Session expired. Please sign in again.');
+        err.needsAuth = true;
+        throw err;
+      }
+      throw new Error('Could not reach the server — still signed in, will retry.');
+    }
+    res = await run(refreshed.access_token);
+    noteServerClock(res);
+  }
+  return res;
+}
+
 export function hasLocalData() {
   const data = library.exportData();
   return !!(

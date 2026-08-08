@@ -9,6 +9,7 @@ import { router, store } from '../core/store.js';
 import library from '../core/library.js';
 import { downloads } from '../core/downloads.js';
 import tracking from '../core/tracking.js';
+import social from '../core/social.js';
 
 export const meta = { title: 'Details', nav: false, icon: 'info', order: 99 };
 
@@ -376,13 +377,179 @@ function buildDetails(view, sid, url, manga, chapters, params) {
 
   renderRows();
 
+  // ── presence: "N reading this now" ──────────────────────────────────────
+  // Ephemeral + anonymous by design; the pill only appears once the count is
+  // known (>= 1 includes the current visitor, so it always has a value).
+  const presencePill = el('span', { class: 'd2-live-pill', hidden: true });
+  const offCounts = social.onCounts((c) => {
+    const n = c && Number(c.manga_count) || 0;
+    presencePill.hidden = n < 2; // only show when someone ELSE is here too
+    presencePill.replaceChildren(el('span', { class: 'd2-live-dot' }), `${n} reading now`);
+  });
+  social.setPresenceManga(mangaId);
+  view.__presenceTeardown = () => {
+    try { offCounts(); } catch { /* ignore */ }
+    try { social.setPresenceManga(null); } catch { /* ignore */ }
+  };
+
   const root = el('div', { class: 'd2' },
     iconBtn('back', () => router.back(), 'Back'),
     info,
     chapters2,
+    buildComments(mangaId),
   );
+  const tl = $('.d2-toolbar-l', root);
+  if (tl) tl.appendChild(presencePill);
   $('.icon-btn', root).classList.add('d2-back');
   return root;
+}
+
+// ── comments ─────────────────────────────────────────────────────────────────
+// Anonymous visitors can read; posting requires a signed-in sync account.
+// The first post prompts for a public username (immutable server-side rules
+// live in the sync server; this only mirrors them).
+function buildComments(mangaId) {
+  const listHost = el('div', { class: 'd2-comment-list' }, spinner());
+  const countEl = el('span', { class: 'd2-count' });
+  const composer = buildComposer();
+  const section = el('section', { class: 'd2-comments' },
+    el('div', { class: 'd2-toolbar' },
+      el('div', { class: 'd2-toolbar-l' }, el('h2', null, 'Comments'), countEl),
+    ),
+    composer,
+    listHost,
+  );
+
+  let items = [];
+  let hasMore = false;
+
+  function rowFor(c) {
+    const canDelete = c.mine || c.viewer_is_admin;
+    const actions = el('div', { class: 'd2-comment-actions' });
+    if (canDelete) {
+      actions.appendChild(iconBtn('trash', async () => {
+        try { await social.deleteComment(c.id); items = items.filter((x) => x.id !== c.id); paint(); }
+        catch (e) { toast(e && e.message ? e.message : 'Could not delete comment'); }
+      }, 'Delete'));
+    } else if (social.isSignedIn()) {
+      actions.appendChild(iconBtn('flag', async () => {
+        try { await social.reportComment(c.id); toast('Reported. Thanks for keeping Nyora clean.'); }
+        catch (e) { toast(e && e.message ? e.message : 'Could not report comment'); }
+      }, 'Report'));
+    }
+    return el('div', { class: 'd2-comment' },
+      el('div', { class: 'd2-comment-head' },
+        el('span', { class: 'd2-comment-user' }, c.username || 'anonymous'),
+        el('span', { class: 'd2-comment-time' }, social.timeAgo(c.created_at)),
+        actions,
+      ),
+      el('div', { class: 'd2-comment-body' }, c.body || ''),
+    );
+  }
+
+  function paint() {
+    countEl.textContent = items.length ? String(items.length) : '';
+    if (!items.length) { listHost.replaceChildren(emptyState('No comments yet. Be the first.')); return; }
+    const nodes = items.map(rowFor);
+    if (hasMore) {
+      nodes.push(el('div', { class: 'center' }, btn('Load older comments', {
+        variant: 'ghost',
+        onClick: async (e) => {
+          e.currentTarget.disabled = true;
+          try {
+            const oldest = items[items.length - 1];
+            const page = await social.listComments(mangaId, { before: oldest && oldest.created_at });
+            items = items.concat(page.comments || []);
+            hasMore = !!page.has_more;
+            paint();
+          } catch (err) { toast(err && err.message ? err.message : 'Could not load more'); e.currentTarget.disabled = false; }
+        },
+      })));
+    }
+    listHost.replaceChildren(...nodes);
+  }
+
+  function buildComposer() {
+    if (!social.isSignedIn()) {
+      return el('div', { class: 'd2-comment-signin' },
+        el('span', null, 'Sign in to join the discussion.'),
+        btn('Sign in', { variant: 'ghost', icon: 'user', onClick: () => router.navigate('settings') }),
+      );
+    }
+    const input = el('textarea', { class: 'd2-comment-input', rows: 2, maxlength: 2000, placeholder: 'Add a comment…' });
+    const post = btn('Post', {
+      primary: true,
+      onClick: async () => {
+        const body = (input.value || '').trim();
+        if (!body) return;
+        post.disabled = true;
+        try {
+          await ensureUsername();
+          const created = await social.postComment(mangaId, body);
+          input.value = '';
+          items = [created].concat(items);
+          paint();
+        } catch (e) {
+          if (e && e.cancelled) { /* user backed out of username prompt */ }
+          else toast(e && e.message ? e.message : 'Could not post comment');
+        } finally { post.disabled = false; }
+      },
+    });
+    return el('div', { class: 'd2-composer' }, input, post);
+  }
+
+  // First post ever: pick the public handle shown next to comments.
+  async function ensureUsername() {
+    const current = await social.getUsername().catch(() => '');
+    if (current) return;
+    await new Promise((resolve, reject) => {
+      let settled = false;
+      const settle = (fn, v) => { if (!settled) { settled = true; fn(v); } };
+      const input = el('input', {
+        class: 'input', type: 'text', maxlength: 24,
+        placeholder: '3–24 chars: letters, numbers, _',
+      });
+      const err = el('div', { class: 'form-error', hidden: true });
+      const close = modal({
+        title: 'Choose a username',
+        body: el('div', { class: 'stack' },
+          el('p', { class: 'muted' }, 'This name is shown publicly next to your comments. It cannot be changed later.'),
+          input, err,
+        ),
+        actions: [
+          { label: 'Cancel', variant: 'ghost', onClick: () => settle(reject, { cancelled: true }) },
+          { label: 'Save', primary: true, onClick: () => {
+            const name = (input.value || '').trim();
+            if (!/^[A-Za-z0-9_]{3,24}$/.test(name)) {
+              err.hidden = false;
+              err.textContent = 'Use 3–24 letters, numbers or underscores.';
+              return false; // keep the dialog open
+            }
+            social.setUsername(name)
+              .then(() => settle(resolve))
+              .catch((e) => settle(reject, e));
+          } },
+        ],
+      });
+      // Escape / backdrop-click dismissals close without hitting our buttons;
+      // watch for the dialog leaving the DOM so the post promise never hangs.
+      const root = document.getElementById('modalRoot');
+      if (root) {
+        const mo = new MutationObserver(() => {
+          if (!root.querySelector('.modal-backdrop')) { mo.disconnect(); settle(reject, { cancelled: true }); }
+        });
+        mo.observe(root, { childList: true });
+      }
+      void close;
+      setTimeout(() => input.focus(), 60);
+    });
+  }
+
+  social.listComments(mangaId)
+    .then((page) => { items = page.comments || []; hasMore = !!page.has_more; paint(); })
+    .catch(() => { listHost.replaceChildren(emptyState('Comments are unavailable right now.')); });
+
+  return section;
 }
 
 function buildCTA(sid, url, mangaId, chapters, ascByNumber, isRead) {

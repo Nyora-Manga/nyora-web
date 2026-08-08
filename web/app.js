@@ -145,6 +145,14 @@ function dispatch(route) {
     view.__downloadsTeardown = null;
   }
 
+  // Leaving the details screen: drop the live-reader count subscription and
+  // point presence pings away from the manga we were viewing, so we stop being
+  // counted as an active reader of it once we navigate elsewhere.
+  if (name !== 'details' && view.__presenceTeardown) {
+    try { view.__presenceTeardown(); } catch { /* ignore */ }
+    view.__presenceTeardown = null;
+  }
+
   // The search bar AND the whole topbar are hidden on the manga detail page and
   // the reader (both have their own chrome/back button); shown everywhere else.
   // Toggled every navigation, so they always self-correct.
