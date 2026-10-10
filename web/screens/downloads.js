@@ -8,6 +8,7 @@
 import { downloads } from '../core/downloads.js';
 import { unzipImages } from '../core/zip.js';
 import { router } from '../core/store.js';
+import { createLocalReader } from '../core/local-reader.js';
 import {
   el, $, spinner, emptyState, errorBox, sectionHeader, icon, btn, iconBtn,
   toast, confirmDialog, chip,
@@ -23,11 +24,9 @@ export const meta = {
 const ACTIVE = new Set(['QUEUED', 'RUNNING']);
 
 let _unsub = null;
-let _readerUrls = [];
 
 export function render(view, _params) {
   if (_unsub) { _unsub(); _unsub = null; }
-  revokeReaderUrls();
   view.replaceChildren();
 
   // Download SETTINGS now live in Settings → Downloads; the gear jumps there.
@@ -49,7 +48,6 @@ export function render(view, _params) {
   // Deterministic cleanup when navigating away (app.js dispatch calls this).
   view.__downloadsTeardown = () => {
     if (_unsub) { _unsub(); _unsub = null; }
-    revokeReaderUrls();
   };
 }
 
@@ -195,16 +193,17 @@ function downloadRow(view, job) {
 // ── Offline reader ──────────────────────────────────────────────────────────
 
 async function openOfflineReader(view, job) {
-  revokeReaderUrls();
-  view.replaceChildren(el('div', { class: 'center', style: { padding: '48px 0' } }, spinner()));
+  const loading = el('div', { class: 'center', style: { padding: '48px 0' } }, spinner());
+  view.replaceChildren(loading);
 
   let pages;
   try {
     const blob = await downloads.getBlob(job.id);
     if (!blob) throw new Error('Offline file not found');
     const entries = await unzipImages(blob);
-    pages = entries.map((e) => trackUrl(URL.createObjectURL(new Blob([e.bytes]))));
+    pages = entries.map((e) => new Blob([e.bytes]));
   } catch (err) {
+    if (!loading.isConnected) return;
     view.replaceChildren(
       sectionHeader(job.chapterTitle || 'Chapter', iconBtn('back', () => render(view), 'Back')),
       errorBox(`Couldn't open this download: ${err.message || err}`),
@@ -212,25 +211,16 @@ async function openOfflineReader(view, job) {
     return;
   }
 
-  const back = iconBtn('back', () => render(view), 'Back to downloads');
-  const header = sectionHeader(job.chapterTitle || 'Chapter', chip(`${pages.length} pages`), back);
-  view.replaceChildren(header);
-
-  if (!pages.length) { view.appendChild(emptyState('This download has no readable pages.')); return; }
-
-  const reader = el('div', { class: 'reader webtoon', style: { paddingBottom: '48px' } });
-  for (let i = 0; i < pages.length; i++) {
-    const img = el('img', { class: 'reader-page', loading: 'lazy', decoding: 'async', alt: `Page ${i + 1}`, src: pages[i] });
-    img.addEventListener('error', () => { img.style.display = 'none'; });
-    reader.appendChild(img);
+  if (!loading.isConnected) return;
+  if (!pages.length) {
+    view.replaceChildren(sectionHeader(job.chapterTitle || 'Chapter',
+      iconBtn('back', () => render(view), 'Back to downloads')), emptyState('This download has no readable pages.'));
+    return;
   }
-  view.appendChild(reader);
-}
-
-function trackUrl(url) { _readerUrls.push(url); return url; }
-function revokeReaderUrls() {
-  for (const u of _readerUrls) { try { URL.revokeObjectURL(u); } catch { /* ignore */ } }
-  _readerUrls = [];
+  router.navigate('reader', createLocalReader({
+    title: job.mangaTitle || job.chapterTitle || 'Download',
+    chapterTitle: job.chapterTitle || 'Chapter', pages, back: 'downloads',
+  }));
 }
 
 // ── small helpers ───────────────────────────────────────────────────────────

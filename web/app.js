@@ -7,6 +7,7 @@
 import { store, router } from './core/store.js';
 import { el, icon, $, toast, btn, errorBox } from './core/ui.js';
 import library from './core/library.js';
+import { api } from './core/api.js';
 import { revealView } from './core/motion.js';
 
 import { meta as discoverMeta, render as discoverRender } from './screens/discover.js';
@@ -29,7 +30,7 @@ import { shouldShowChangelog, showChangelog, markChangelogSeen } from './core/ch
 import { runMigrations } from './core/migrations.js';
 import { initAutoSync } from './core/auto-sync.js';
 
-const DISCORD_URL = 'https://discord.gg/f9DWbBn76';
+const DISCORD_URL = 'https://discord.gg/3ZBHA8RtbR';
 
 const routes = {
   discover: discoverRender,
@@ -136,8 +137,7 @@ function dispatch(route) {
     }
   }
 
-  // Leaving the downloads screen: drop its manager subscription and revoke any
-  // offline-reader object URLs, so neither leaks when the user navigates away
+  // Leaving the downloads screen: drop its manager subscription
   // (the in-screen self-clean only fires on a manager event, which may never
   // come for an idle queue).
   if (name !== 'downloads' && view.__downloadsTeardown) {
@@ -595,7 +595,8 @@ requestAnimationFrame(() => requestAnimationFrame(hideSplash));
 // One-time local data repairs. Deliberately after first paint and idle-deferred
 // so they never delay the UI; they re-render the current screen only if they
 // actually changed something.
-function startMigrations() {
+async function startMigrations() {
+  try { await api.prepareSourceMigration(); } catch { /* retry on catalogue load or sync */ }
   runMigrations().catch(() => { /* best-effort by design */ });
 }
 window.addEventListener('nyora:migrated', () => {

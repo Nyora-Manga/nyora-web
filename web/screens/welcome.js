@@ -180,7 +180,7 @@ export function showWelcome(onDone) {
       el('li', null, 'No ads, ever')),
     el('a', {
       class: 'wlc-community',
-      href: 'https://discord.gg/f9DWbBn76',
+      href: 'https://discord.gg/3ZBHA8RtbR',
       target: '_blank',
       rel: 'noopener',
     },
@@ -297,7 +297,9 @@ function populatePreferencesCard(card, opts = {}) {
       // Never leave an empty shelf (e.g. a language with only adult sources while
       // 18+ is off) — fall back to everything matching the 18+ rule.
       if (!ids.length) ids = entries.filter((e) => show18 || !e.isNsfw).map((e) => e.id);
-      await api.setInstalledSources(ids);
+      const deferredNsfwIds = show18 ? [] : entries.filter((e) =>
+        e.isNsfw && (selected.size === 0 || selected.has(langCode(e)))).map((e) => e.id);
+      await api.setInstalledSources(ids, { deferredNsfwIds });
       // Signed-in / new account → push the freshly-seeded prefs + library up.
       if (migrate) { try { await sync.syncNow(); } catch { /* best-effort */ } }
     } catch { /* proceed regardless — defaults remain */ }

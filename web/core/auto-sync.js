@@ -130,6 +130,7 @@ export function initAutoSync() {
   started = true;
 
   library.onChange(onLibraryChange);
+  window.addEventListener('nyora:source-preferences-changed', () => onLibraryChange({ type: 'sources' }));
 
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') {

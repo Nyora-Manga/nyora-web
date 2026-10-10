@@ -1,30 +1,13 @@
-// core/api.js — REST client for the Nyora web SPA.
-//
-// The shared, read-only catalog (catalog/popular/latest/search/details/pages
-// + the /image proxy) is served by the hosted parser helper at
-// NYORA_HELPER_URL (https://api.nyora.xyz). Those calls hit the helper
-// FIRST and fall back to the in-browser web parsers (core/parser-runtime.js)
-// only when the helper is unreachable. Every method returns parsed JSON and
-// THROWS Error(data.error || status) on failure.
-//
-// Endpoint verbs/params verified against:
-//   nyora-mac/shared/src/jvmMain/kotlin/com/nyora/shared/proxy/NyoraRestServer.kt
-//
-// Mutations use QUERY-STRING params (not JSON body) EXCEPT /backup/import
-// (raw JSON body) and /sync/signin (JSON {email,password} body).
-//
-// PERSONAL state (favourites/history/bookmarks/categories/prefs/updates/stats/
-// backup) is now PER-CLIENT: it lives in the browser via core/library.js
-// (localStorage), so each visitor is isolated. Those methods delegate to
-// `library` and wrap the plain return value in Promise.resolve(...) so existing
-// `await api.foo()` call-sites keep working. The SHARED, read-only catalog
-// (sources/browse/details/pages/image/search/local/downloads/network/
-// suggestions/alternatives/anilist/sync) stays server-backed and unchanged.
+// REST client for the data-driven Nyora helper. Public content is read-only;
+// personal library and source preferences belong to this browser. Parser failures
+// surface to the caller; the browser does not execute source parsers.
 
 import { library } from './library.js';
 import * as parserRuntime from './parser-runtime.js';
 import downloadManager from './downloads.js';
-import { BLOCKED_SOURCE_IDS } from './blocked-sources.js';
+import { requireSourceId, sourceId } from './source-identity.js';
+import * as sourcePreferences from './source-preferences.js';
+import { migrateWebSources, sourceMigrationPending } from './source-migration.js';
 import { CircuitBreaker, decorrelatedJitter, sleep } from './net.js';
 
 // ---- low-level helpers -------------------------------------------------
@@ -39,16 +22,6 @@ function parserRoute(path) {
     route === '/suggestions' ||
     route.startsWith('/downloads') ||
     route === '/settings/network';
-}
-
-async function parserGet(path) {
-  if (!parserRoute(path)) return null;
-  try {
-    return await parserRuntime.handle(path, 'GET');
-  } catch (e) {
-    if (String(e && e.message || '').toLowerCase().includes('not implemented')) return null;
-    throw e;
-  }
 }
 
 async function parserPost(path, body) {
@@ -294,7 +267,8 @@ function helperPath(path) {
 // GET routes served by the hosted helper (the shared, read-only catalog).
 function helperGetRoute(path) {
   const route = String(path || '').split('?')[0];
-  return route === '/sources/catalog' ||
+  return route === '/sources/filters' ||
+    route === '/sources/catalog' ||
     route === '/sources/popular' ||
     route === '/sources/latest' ||
     route === '/sources/search' ||
@@ -305,17 +279,8 @@ function helperGetRoute(path) {
 }
 
 async function helperGet(path) {
-  const res = await helperFetch(path, { headers: { Accept: 'application/json' } });
-  const data = await parseBody(res);
-  return ensureOk(res, data);
-}
-
-async function helperPost(path, body) {
-  const init = { method: 'POST', headers: { Accept: 'application/json' } };
-  if (body !== undefined && body !== null) {
-    init.headers['Content-Type'] = 'application/json';
-    init.body = typeof body === 'string' ? body : JSON.stringify(body);
-  }
+  const init = { headers: { Accept: 'application/json' } };
+  if (String(path).split('?')[0] === '/sources/catalog') init.cache = 'no-store';
   const res = await helperFetch(path, init);
   const data = await parseBody(res);
   return ensureOk(res, data);
@@ -335,11 +300,7 @@ export async function get(path) {
 }
 
 export async function post(path, body) {
-  const route = String(path || '').split('?')[0];
-  // Source install: the local source prefs stay authoritative for the Explore
-  // UI + client-side parser fallback, so run the local mutation; also notify
-  // the hosted helper best-effort so a server-side install is registered.
-  if (route === '/sources/install') helperPost(path, body).catch(() => {});
+  // Source preferences are per-browser; never mutate the shared helper's state.
   const parserResult = await parserPost(path, body);
   if (parserResult) return parserResult;
   const init = { method: 'POST', headers: { Accept: 'application/json' } };
@@ -364,145 +325,47 @@ export async function del(path) {
 }
 
 
-// ---- installed sources (new-API model) ---------------------------------
-// The Explore grid + search operate on the user's OWN installed set (kept in
-// localStorage, per visitor), resolved against the hosted helper's catalog
-// (api.hasanraza.tech /sources/catalog). This replaces the old client-side
-// web-parser list. Installing a source adds its id here AND registers it on
-// the helper so browse/search work.
-// v3: default = ALL extensions enabled. When there is NO saved set, every catalog
-// source is treated as installed (Explore shows them all, no manual install step).
-// The saved set only exists once the user customizes it (install/uninstall), after
-// which their choices stick. Bumped v2→v3 so existing users pick up the new default.
-const INSTALLED_KEY = 'nyora.sources.installed.v3';
-
-/** The user's explicit saved set, or null if they haven't customized (→ all enabled). */
-function savedInstalledIds() {
-  try {
-    const raw = localStorage.getItem(INSTALLED_KEY);
-    if (raw == null) return null;
-    const arr = JSON.parse(raw);
-    return Array.isArray(arr) ? arr : null;
-  } catch { return null; }
-}
-function saveInstalledIds(ids) {
-  try { localStorage.setItem(INSTALLED_KEY, JSON.stringify([...new Set(ids)])); } catch { /* ignore */ }
-}
-
-// Pinned sources (per-visitor). Global search restricts to pinned when any exist,
-// otherwise searches all installed. Kept client-side like the installed set.
-const PINNED_KEY = 'nyora.sources.pinned.v1';
-function pinnedIds() {
-  try { const a = JSON.parse(localStorage.getItem(PINNED_KEY)); return Array.isArray(a) ? a : []; } catch { return []; }
-}
-function savePinnedIds(ids) {
-  try { localStorage.setItem(PINNED_KEY, JSON.stringify([...new Set(ids)])); } catch { /* ignore */ }
-}
-
-/** Effective installed ids: the saved set, or ALL catalog ids by default. */
+// ---- installed sources (per-browser, shared with cloud sync) -------------
 async function currentInstalledIds() {
-  const saved = savedInstalledIds();
-  if (saved != null) return saved;
-  return (await fetchCatalog()).map((e) => e.id); // default: all enabled
+  return (await fetchCatalog()).filter((e) => sourcePreferences.sourcePreference(e.id).enabled).map((e) => e.id);
+}
+function pinnedIds() {
+  return (_catalogCache || []).filter((e) => sourcePreferences.sourcePreference(e.id).pinned).map((e) => e.id);
 }
 
 // The catalog exposes contentType but not always an isNsfw flag; treat adult
 // (Hentai) content types as NSFW so the "Show 18+ sources" filter works.
 function isNsfwSource(e) {
-  return e.isNsfw === true || /hentai|adult|nsfw|18\+/i.test(String(e.contentType || ''));
+  return e.isNsfw === true || e.nsfw === true || /hentai|adult|nsfw|18\+/i.test(String(e.contentType || ''));
 }
 
 let _catalogCache = null;
 let _nsfwIds = null;   // Set of source ids flagged adult — for the history guard
 async function fetchCatalog() {
   if (_catalogCache) return _catalogCache;
-  const res = await get('/sources/catalog'); // hosted helper (static snapshot)
-  const list = (res && (res.entries || res.sources)) || (Array.isArray(res) ? res : []);
-  // Hide sources that a live health-check found dead / Cloudflare-blocked
-  // (see core/blocked-sources.js) so users only ever see working sources.
-  const filtered = (Array.isArray(list) ? list : []).filter((e) => !BLOCKED_SOURCE_IDS.has(e.id));
-  _catalogCache = filtered;
+  const res = await get('/sources/catalog?format=data-v1'); // separate from cached legacy snapshots
+  const list = (res && (res.entries || res.sources)) || (Array.isArray(res) ? res : null);
+  if (!Array.isArray(list) || !list.length || list.some((e) => typeof e?.id !== 'string' || !sourceId(e.id)) || new Set(list.map((e) => e.id)).size !== list.length) {
+    throw new Error('The helper has an incompatible catalogue. A data-driven helper update is required.');
+  }
+  // The helper owns runtime support, broken-source and browser-solver filtering.
+  migrateWebSources(library, list);
+  _catalogCache = list.filter((e) => !e.isBroken);
   _nsfwIds = new Set(_catalogCache.filter(isNsfwSource).map((e) => e.id));
   return _catalogCache;
 }
 
-// ---- source-id normalisation -------------------------------------------
-//
-// A stored source id can arrive in several shapes, because it may have been
-// written by any Nyora client and then synced here:
-//
-//   "parser:ATSUMOE"           the hosted helper's own id (what we must send)
-//   "DD_ATSUMOE"               the Android/desktop data-driven catalogue id
-//   "DD_asurascans"            ...and the catalogue does not agree on case
-//   "JS_MANGAFIRE_EN"          the old script-engine id
-//   '{"name":"DD_ATSUMOE"}'    a serialised MangaSourceRef that was stored raw
-//   "...MangaSourceRef.Parser" a Kotlin class name that leaked into a sync row
-//
-// The helper only serves `parser:` ids and compares them EXACTLY, so a bare or
-// wrongly-cased name 404s as "Unknown source". Everything is funnelled through
-// here and matched case-insensitively against the catalogue.
-
-/** Reduce any stored source id down to its bare name (no engine prefix). */
-export function bareSourceName(raw) {
-  let value = raw;
-  // A MangaSourceRef object, or the JSON text of one.
-  if (value && typeof value === 'object') value = value.name || value.id || '';
-  value = String(value == null ? '' : value).trim();
-  if (value.startsWith('{')) {
-    try {
-      const parsed = JSON.parse(value);
-      value = String((parsed && (parsed.name || parsed.id)) || '').trim();
-    } catch {
-      /* not JSON after all — fall through and use it as-is */
-    }
-  }
-  if (value.includes('.MangaSourceRef.')) value = value.split('.MangaSourceRef.').pop();
-  if (!value || value === 'UNKNOWN') return '';
-  if (value === 'LOCAL' || value === 'Local') return 'LOCAL';
-  if (value.startsWith('DD_') || value.startsWith('JS_')) return value.slice(3);
-  if (value.startsWith('parser:') || value.startsWith('script:')) {
-    return value.slice(value.indexOf(':') + 1);
-  }
-  return value;
-}
-
-let _sourceIndex = null;
-
-/** Bare name -> the catalogue's exact id, matched case-insensitively. */
-async function sourceIndex() {
-  if (_sourceIndex) return _sourceIndex;
-  const index = new Map();
-  try {
-    for (const entry of await fetchCatalog()) {
-      const id = entry && entry.id;
-      if (!id) continue;
-      index.set(String(id).split(':').pop().toLowerCase(), id);
-    }
-  } catch {
-    /* offline: fall back to the prefixed guess below */
-  }
-  _sourceIndex = index;
-  return index;
-}
-
-/**
- * Resolve any stored source id to the id the helper will accept.
- * Unresolvable names still get a `parser:` guess rather than being dropped — a
- * 404 naming the source is more useful than a silent no-op.
- */
+// Source IDs are opaque canonical catalogue keys. Never guess a different source.
 export async function helperSourceId(raw) {
-  const bare = bareSourceName(raw);
-  if (!bare || bare === 'LOCAL') return bare;
-  const hit = (await sourceIndex()).get(bare.toLowerCase());
-  // No catalogue match: send the prefixed guess anyway. A 404 naming the source
-  // is more useful than a silent no-op, and aliasing to a *similar* source would
-  // silently open the wrong site.
-  return hit || `parser:${bare}`;
+  return requireSourceId(raw);
 }
 
 // ---- the api surface ---------------------------------------------------
 
 export const api = {
+  async prepareSourceMigration() {
+    if (sourceMigrationPending()) await fetchCatalog();
+  },
   // expose the low-level helpers too
   get,
   post,
@@ -524,13 +387,12 @@ export const api = {
   refreshSources() {
     _catalogCache = null;
     _nsfwIds = null;
-    _sourceIndex = null;
     return Promise.resolve({ ok: true });
   },
-  /** Sync: is this source flagged adult? Best-effort — populated once the catalog
-   *  has loaded (it has by the time you reach a reader from Explore/Discover). */
+  /** True/false for known sources, null while metadata is unavailable. */
   isSourceNsfw(id) {
-    return !!(_nsfwIds && _nsfwIds.has(id));
+    if (!_catalogCache?.some((e) => e.id === id)) return null;
+    return _nsfwIds.has(id);
   },
   // The catalog dialog: the full hosted catalog with isInstalled overlaid from
   // the effective installed set (all by default).
@@ -539,37 +401,35 @@ export const api = {
     return { entries: catalog.map((e) => ({ ...e, isInstalled: ids.has(e.id), isNsfw: isNsfwSource(e) })) };
   },
   async installSource(id) {
-    const ids = await currentInstalledIds(); // materialize (all-by-default) then add
-    if (!ids.includes(id)) ids.push(id);
-    saveInstalledIds(ids);
-    // Register on the helper so popular/latest/search/details work for it.
-    try { await helperPost('/sources/install' + qs({ id })); } catch { /* best-effort */ }
+    sourcePreferences.setSourcePreference(requireSourceId(id), { enabled: true });
     return { ok: true };
   },
   async uninstallSource(id) {
-    const ids = await currentInstalledIds(); // materialize (all-by-default) then remove
-    saveInstalledIds(ids.filter((x) => x !== id));
-    try { await helperPost('/sources/uninstall' + qs({ id })); } catch { /* best-effort */ }
+    sourcePreferences.setSourcePreference(requireSourceId(id), { enabled: false, pinned: false });
     return { ok: true };
   },
-  // Replace the whole installed set in one shot (used by onboarding to seed the
-  // sources that match the user's chosen languages / 18+ preference). No per-id
-  // helper POSTs — the helper serves any catalog id by id, so registering the
-  // local set is enough; this keeps onboarding from firing hundreds of requests.
-  setInstalledSources(ids) {
-    saveInstalledIds(Array.isArray(ids) ? ids : []);
-    return Promise.resolve({ ok: true });
+  async setInstalledSources(ids, { deferredNsfwIds = [] } = {}) {
+    if (!Array.isArray(ids)) throw new Error('Expected a source list.');
+    const catalogue = await fetchCatalog();
+    const adultIds = new Set(catalogue.filter(isNsfwSource).map((e) => e.id));
+    sourcePreferences.setInstalledSources(ids, catalogue, deferredNsfwIds.filter((id) => adultIds.has(id)));
+    return { ok: true };
   },
-  pinSource(id, pinned) {
-    // Persist the pin locally (per-visitor); best-effort notify the helper.
-    const set = new Set(pinnedIds());
-    if (pinned) set.add(id); else set.delete(id);
-    savePinnedIds([...set]);
-    try { helperPost('/sources/pin' + qs({ id, pinned })); } catch { /* best-effort */ }
-    return Promise.resolve({ ok: true });
+  async enableSetupNsfwSources() {
+    const ids = (await fetchCatalog()).filter(isNsfwSource).map((e) => e.id);
+    return { added: sourcePreferences.enableSources(ids, true) };
   },
-  sourceFilters(id) {
-    return get('/sources/filters' + qs({ id }));
+  async installNsfwSources() {
+    const ids = (await fetchCatalog()).filter(isNsfwSource).map((e) => e.id);
+    return { added: sourcePreferences.enableSources(ids) };
+  },
+  async pinSource(id, pinned) {
+    const canonical = requireSourceId(id);
+    sourcePreferences.setSourcePreference(canonical, { pinned: !!pinned, ...(pinned ? { enabled: true } : {}) });
+    return { ok: true };
+  },
+  async sourceFilters(id) {
+    return get('/sources/filters' + qs({ id: requireSourceId(id) }));
   },
 
   // -- Browse -----------------------------------------------------------
@@ -588,7 +448,13 @@ export const api = {
   // -- Manga ------------------------------------------------------------
   // Served by the hosted helper as /sources/details and /sources/pages.
   async details(sid, url) {
-    return get('/sources/details' + qs({ id: await helperSourceId(sid), url }));
+    const id = await helperSourceId(sid);
+    // Direct reader links must know the source rating before writing history.
+    const [details] = await Promise.all([
+      get('/sources/details' + qs({ id, url })),
+      fetchCatalog().catch(() => null),
+    ]);
+    return details;
   },
   async pages(sid, chapterUrl, refresh) {
     return get('/sources/pages'

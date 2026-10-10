@@ -23,6 +23,9 @@ jobs:
         with:
           node-version: '22'
 
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
       - name: JavaScript syntax (node --check)
         run: |
           set -e
@@ -31,6 +34,9 @@ jobs:
             node --check "$f" || { echo "::error file=$f::syntax error"; fail=1; }
           done < <(find web functions -name '*.js' -type f -print0)
           exit $fail
+
+      - name: Source migration and sync regression tests
+        run: npm test
 
       - name: JSON validity
         run: |
@@ -56,7 +62,6 @@ jobs:
 
       - name: Bundle builds cleanly (resolves all imports)
         run: |
-          npm install --no-audit --no-fund
           # web/vendor/ort/ is fetched, not committed, and build.mjs refuses to
           # build without it — so the check needs it here too, same as deploy.
           npm run fetch:ort

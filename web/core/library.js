@@ -295,7 +295,8 @@ export const library = {
         (manga.isNsfw === true || /adult|porn|erotic|hentai|nsfw/i.test(String(manga.contentRating || '')));
       // body.sourceNsfw = the source itself is adult (airtight: catches titles
       // from 18+ sources even without a per-title rating).
-      if (prefs.noNsfwHistory && (body.sourceNsfw === true || mangaNsfw)) {
+      if (prefs.noNsfwHistory && (body.sourceNsfw === true || mangaNsfw ||
+        (Object.prototype.hasOwnProperty.call(body, 'sourceNsfw') && body.sourceNsfw == null))) {
         return;
       }
     } catch { /* ignore */ }
@@ -826,6 +827,16 @@ export const library = {
 
   exportData() {
     return clone(_data);
+  },
+
+  // Bounded source migration: write first, then publish. A quota failure leaves
+  // both the in-memory library and the durable migration marker unchanged.
+  persistSourceMigration(obj) {
+    const next = mergeShape(emptyData(), obj);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+    _data = next;
+    _storageOk = true;
+    try { db.mirrorAll(_data); } catch { /* mirror is best-effort */ }
   },
 
   importData(obj) {

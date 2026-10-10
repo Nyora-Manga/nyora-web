@@ -53,6 +53,7 @@ import { colorizePage, onColorizeStatus, clearColorizeCache, colorizeModelReady,
 import { pageMetrics, pagePriority } from './reader/viewport-priority.js';
 import { createAutoScroll } from './reader/auto-scroll.js';
 import { createPresentation, keepScreenAwake } from './reader/presentation.js';
+import { getLocalReader } from '../core/local-reader.js';
 
 export const meta = { title: 'Reader', nav: false, icon: 'library', order: 99 };
 
@@ -118,17 +119,26 @@ function buildFilter(g) {
 // ---------------------------------------------------------------------------
 
 export function render(view, params) {
-  const sid = params && params.sid;
-  const mangaUrl = params && params.url;
-  const startChapterUrl = params && params.chapterUrl;
-  // Resume coordinate: History / Bookmarks pass the last-read page. Applied once,
-  // to the chapter the reader opens on (chapter turns always start at page 0).
-  const startPage = Math.max(0, parseInt(params && params.page, 10) || 0);
-
   if (view.__readerTeardown) {
     try { view.__readerTeardown(); } catch { /* ignore */ }
     view.__readerTeardown = null;
   }
+
+  const local = getLocalReader(params && params.local);
+  if (params?.local && !local) {
+    document.body.classList.remove('reader-active', 'reader-immersive');
+    const back = params.back === 'downloads' ? 'downloads' : 'local';
+    view.replaceChildren(errorBox('Reopen this book from ' + (back === 'downloads' ? 'Downloads' : 'Local files') + ' to read it again.'),
+      btn(back === 'downloads' ? 'Back to downloads' : 'Back to files', { onClick: () => router.navigate(back) }));
+    return;
+  }
+  const sid = local ? null : params && params.sid;
+  const mangaUrl = local ? local.details.manga.url : params && params.url;
+  const startChapterUrl = local ? local.details.chapters[0].url : params && params.chapterUrl;
+  // Resume from this tab's local-book state or History / Bookmarks.
+  const startPage = Math.max(0, parseInt(local ? local.state.page : params && params.page, 10) || 0);
+  const readPages = (url) => local ? Promise.resolve({ pages: local.pages }) : api.pages(sid, url);
+  const readDetails = () => local ? Promise.resolve(local.details) : api.details(sid, mangaUrl);
 
   // Hide app-level UI
   document.body.classList.add('reader-active');
@@ -137,7 +147,8 @@ export function render(view, params) {
 
   view.replaceChildren(el('div', { class: 'reader-loading-screen' }, loadingBlock('Loading chapter…')));
 
-  if (!sid || !mangaUrl || !startChapterUrl) {
+  if ((!local && !sid) || !mangaUrl || !startChapterUrl) {
+    document.body.classList.remove('reader-active', 'reader-immersive');
     view.replaceChildren(errorBox('Reader needs a source, manga and chapter.'));
     return;
   }
@@ -267,6 +278,7 @@ export function render(view, params) {
     resetTranslations();
     resetColorize();
     clearColorizeCache();  // revoke the session's cached full-res colorized blob URLs
+    if (local) { local.state.page = st.currentPage; local.dispose(); }
     if (scrollListener) { (scrollTarget || window).removeEventListener('scroll', scrollListener); scrollListener = null; scrollTarget = null; }
   }
   view.__readerTeardown = teardown;
@@ -281,7 +293,8 @@ export function render(view, params) {
 
   // ── navigation ─────────────────────────────────────────────────────────
   function backToDetails() {
-    router.navigate('details', { sid: st.sid, url: st.mangaUrl });
+    if (local) router.navigate(local.back);
+    else router.navigate('details', { sid: st.sid, url: st.mangaUrl });
   }
 
   function toggleControls() {
@@ -335,7 +348,7 @@ export function render(view, params) {
       let pages = pagesCache.get(ch.url);
       if (!pages) {
         toast('Loading chapter…');
-        const data = await api.pages(st.sid, ch.url);
+        const data = await readPages(ch.url);
         pages = data.pages || [];
         pagesCache.set(ch.url, pages);
       }
@@ -363,6 +376,7 @@ export function render(view, params) {
   // Reflect the current chapter in the hash WITHOUT firing hashchange, so a
   // reload/share deep-links to the right chapter but the reader isn't re-mounted.
   function syncUrl() {
+    if (local) return;
     try {
       history.replaceState(null, '', '#/reader?sid=' + encodeURIComponent(st.sid)
         + '&url=' + encodeURIComponent(st.mangaUrl)
@@ -386,11 +400,11 @@ export function render(view, params) {
   // Fire both immediately and never let a slow (or broken) details call block
   // the first page paint — details hydrate the chrome whenever they land.
   async function loadAll() {
-    const pagesP = api.pages(st.sid, st.chapterUrl);
+    const pagesP = readPages(st.chapterUrl);
     let details = null;
     try {
       details = await Promise.race([
-        api.details(st.sid, st.mangaUrl),
+        readDetails(),
         pagesP.then(() => null).catch(() => null),
       ]);
     } catch { details = null; }
@@ -405,6 +419,11 @@ export function render(view, params) {
     const manga = details && details.manga;
     st.manga = manga || st.manga
       || { id: st.mangaUrl, title: 'Reading', url: st.mangaUrl, __placeholder: true };
+    if (local) {
+      st.chapters = local.details.chapters;
+      st.index = 0;
+      return;
+    }
     // Some sources omit the cover (and occasionally the title) in details —
     // recover them from the card grid's manga cache so history records with
     // artwork and a real name.
@@ -443,7 +462,7 @@ export function render(view, params) {
   }
 
   function hydrateDetailsLate() {
-    api.details(st.sid, st.mangaUrl).then((details) => {
+    readDetails().then((details) => {
       if (st.destroyed || !details) return;
       const prevMode = mode;
       applyDetails(details);
@@ -470,7 +489,7 @@ export function render(view, params) {
 
   function loadPrefs() {
     try {
-      const p = library.mangaPrefs(st.manga.id) || {};
+      const p = (local ? local.state.prefs : library.mangaPrefs(st.manga.id)) || {};
       if (Object.keys(p).length) {
         st.grade = {
           brightness: Number(p.brightness) || 0,
@@ -504,7 +523,7 @@ export function render(view, params) {
     if (scrollListener) { (scrollTarget || window).removeEventListener('scroll', scrollListener); scrollListener = null; scrollTarget = null; }
     view.replaceChildren(el('div', { class: 'reader-loading-screen' }, bar('top', true), loadingBlock('Loading pages…')));
     try {
-      const data = await (pagesPromise || api.pages(st.sid, st.chapterUrl));
+      const data = await (pagesPromise || readPages(st.chapterUrl));
       if (st.destroyed) return;
       st.pages = data.pages || [];
       pagesCache.set(st.chapterUrl, st.pages);
@@ -528,6 +547,7 @@ export function render(view, params) {
   // ── history + bookmarks + grade persistence ──────────────────────────────
   let historyTimer = null;
   function recordHistory(page) {
+    if (local) { local.state.page = page; return; }
     if (!st.manga || st.manga.__placeholder) return;
     const chapter = st.chapters[st.index];
     if (historyTimer) clearTimeout(historyTimer);
@@ -554,6 +574,7 @@ export function render(view, params) {
   }
 
   function checkBookmark() {
+    if (local) return;
     if (!st.manga || st.manga.__placeholder) return;
     try {
       const r = library.checkBookmark({
@@ -565,6 +586,7 @@ export function render(view, params) {
   }
 
   function toggleBookmark() {
+    if (local) return;
     if (!st.manga || st.manga.__placeholder) return;
     const chapter = st.chapters[st.index];
     try {
@@ -592,7 +614,7 @@ export function render(view, params) {
   function savePrefs() {
     if (!st.manga || st.manga.__placeholder) return;
     try {
-      library.saveMangaPrefs({
+      const prefs = {
         mangaId: st.manga.id,
         readerMode: mode,
         readerFit: fit,
@@ -606,7 +628,9 @@ export function render(view, params) {
         saturation: st.grade.saturation,
         invert: st.grade.invert,
         palette: st.grade.palette,
-      });
+      };
+      if (local) local.state.prefs = prefs;
+      else library.saveMangaPrefs(prefs);
     } catch { /* best-effort */ }
   }
 
@@ -619,7 +643,7 @@ export function render(view, params) {
     if (next < 0 || next >= st.chapters.length) return;
     const url = st.chapters[next].url;
     if (pagesCache.has(url)) return;
-    api.pages(st.sid, url).then((d) => pagesCache.set(url, d.pages || [])).catch(() => {});
+    readPages(url).then((d) => pagesCache.set(url, d.pages || [])).catch(() => {});
   }
 
   // ── in-image AI translation ───────────────────────────────────────────────
@@ -666,7 +690,7 @@ export function render(view, params) {
       tlSrcPromise = (async () => {
         const s = st.manga && st.manga.source;
         let code = norm(s && (s.lang || s.locale));
-        if (!code) {
+        if (!code && !local) {
           try {
             const { sources } = await api.listSources();
             const entry = (sources || []).find((x) => x.id === st.sid);
@@ -1080,7 +1104,7 @@ export function render(view, params) {
 
   function bar(place, minimal) {
     if (place === 'top') {
-      const back = iconBtn('back', backToDetails, 'Back to details');
+      const back = iconBtn('back', backToDetails, local ? (local.back === 'downloads' ? 'Back to downloads' : 'Back to files') : 'Back to details');
       
       const titleWrap = el('div', { class: 'reader-title', title: currentChapterTitle() },
         st.manga ? el('span', { class: 't-manga' }, st.manga.title || '') : null,
@@ -1138,7 +1162,7 @@ export function render(view, params) {
       return el('div', { class: 'reader-bar top' },
         el('div', { class: 'reader-title-group' }, back, titleWrap),
         el('div', { class: 'reader-actions' },
-          autoBtn, colorBtn, tlBtn, sidebarBtn, fsBtn, bmBtn, listBtn, settingsBtn,
+          autoBtn, colorBtn, tlBtn, sidebarBtn, fsBtn, local ? null : bmBtn, listBtn, settingsBtn,
         ),
       );
     }

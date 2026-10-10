@@ -1,6 +1,7 @@
 // screens/settings.js — client-side preferences for the Nyora web SPA.
 
 import library from '../core/library.js';
+import { api } from '../core/api.js';
 import { downloads } from '../core/downloads.js';
 import { colorizeModelReady, downloadColorizeModel } from '../core/colorize/engine.js';
 import {
@@ -512,7 +513,31 @@ function buildExpColorization() {
 function buildContent() {
   const prefs = store.get();
   const section = el('section', { class: 'settings-section' });
-  section.append(settingRow('Show 18+ sources', 'Enable adult-only manga sources in Explore and search.', switchToggle(prefs.showNsfw, (v) => store.set({ showNsfw: v }))));
+  const addAdultButton = btn('Add adult sources', {
+    onClick: async () => {
+      addAdultButton.disabled = true;
+      try {
+        const { added } = await api.installNsfwSources();
+        toast(added ? `Added ${added} adult source${added === 1 ? '' : 's'}` : 'Adult sources are already installed');
+        window.dispatchEvent(new CustomEvent('nyora:sources-synced'));
+      } catch (error) { toast(error.message); }
+      finally { addAdultButton.disabled = false; }
+    },
+  });
+  const addAdultRow = settingRow('Adult source catalogue',
+    'Add all available adult sources, including any excluded by an earlier setup. Individual sources can be removed in Explore → Catalog.', addAdultButton);
+  addAdultRow.style.display = prefs.showNsfw ? '' : 'none';
+  section.append(settingRow('Show 18+ sources', 'Show adult sources in Explore and search. Sources hidden by setup are restored; manually removed sources stay removed.',
+    switchToggle(prefs.showNsfw, async (v) => {
+      store.set({ showNsfw: v });
+      addAdultRow.style.display = v ? '' : 'none';
+      if (v) {
+        try { await api.enableSetupNsfwSources(); }
+        catch (error) { toast(error.message); }
+      }
+      window.dispatchEvent(new CustomEvent('nyora:sources-synced'));
+    })));
+  section.append(addAdultRow);
   section.append(settingRow('Keep 18+ out of history', 'Don’t save adult manga to your reading history.', switchToggle(prefs.noNsfwHistory, (v) => store.set({ noNsfwHistory: v }))));
   section.append(settingRow('Incognito mode', 'Pause reading history entirely — nothing you open is recorded until this is turned off.', switchToggle(prefs.incognito, (v) => { store.set({ incognito: v }); toast(v ? 'Incognito on — history paused' : 'Incognito off'); })));
   section.append(settingRow('Universal search scope', 'Pinned searches only the sources you pinned in Explore (faster, curated); All installed searches everything.',
@@ -740,12 +765,12 @@ function buildAbout() {
     el('div', { style: { color: 'var(--text-faint)', fontSize: '13px', marginBottom: '4px' } }, 'A free, open-source manga reader for the browser.'),
     el('div', { style: { color: 'var(--text-faint)', fontSize: '12px', marginBottom: '24px' } }, 'Released under the Apache 2.0 License.'),
     el('div', { class: 'row', style: { justifyContent: 'center' } },
-      iconLink('discord', 'https://discord.gg/f9DWbBn76', 'Join the Nyora Discord'),
+      iconLink('discord', 'https://discord.gg/3ZBHA8RtbR', 'Join the Nyora Discord'),
       iconLink('github', 'https://github.com/Nyora-Manga/nyora-web', 'Source code on GitHub'),
       iconLink('globe', 'https://nyora.xyz', 'Website'),
     ),
     el('div', { style: { marginTop: '18px', display: 'flex', justifyContent: 'center', gap: '20px', flexWrap: 'wrap' } },
-      textLink('Join Discord ↗', 'https://discord.gg/f9DWbBn76'),
+      textLink('Join Discord ↗', 'https://discord.gg/3ZBHA8RtbR'),
       textLink('Source code ↗', 'https://github.com/Nyora-Manga/nyora-web'),
       textLink('Report an issue ↗', 'https://github.com/Nyora-Manga/nyora-web/issues'),
       textLink('License ↗', 'https://github.com/Nyora-Manga/nyora-web/blob/main/LICENSE'),

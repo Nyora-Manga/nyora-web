@@ -4,12 +4,15 @@
 // real local folder in the browser. Each immediate subfolder of images becomes a
 // book; loose images at the root form one book; .cbz/.zip archives are unzipped
 // in-browser (stored + deflate via DecompressionStream). Pages render from
-// object URLs — nothing touches the network or a server filesystem.
+// object URLs. The shared reader also supplies translation and colorization.
 
 import {
-  el, $, toast, spinner, emptyState, errorBox, sectionHeader,
-  btn, iconBtn, icon, chip, pickDirectory,
+  el, spinner, emptyState, errorBox, sectionHeader,
+  btn, iconBtn, icon, pickDirectory,
 } from '../core/ui.js';
+import { router } from '../core/store.js';
+import { createLocalReader } from '../core/local-reader.js';
+import { unzipImages } from '../core/zip.js';
 
 export const meta = {
   title: 'Local',
@@ -21,15 +24,9 @@ export const meta = {
 const IMAGE_RE = /\.(jpe?g|png|webp|gif|avif|bmp)$/i;
 const ARCHIVE_RE = /\.(cbz|zip)$/i;
 
-// Session state: the scanned books, plus the object URLs to revoke on rescan.
+// Picked files stay available until another folder is selected or the tab closes.
 let books = [];
 let folderName = '';
-let _urls = [];
-
-function revokeUrls() {
-  for (const u of _urls) { try { URL.revokeObjectURL(u); } catch { /* ignore */ } }
-  _urls = [];
-}
 
 export function render(view, _params) {
   view.replaceChildren();
@@ -52,7 +49,7 @@ async function choose(view, body) {
   const picked = await pickDirectory();
   if (!picked) return; // cancelled / unsupported
   body.replaceChildren(centerSpinner());
-  revokeUrls();
+  books = [];
   folderName = picked.name || 'Folder';
   try {
     books = await buildBooks(picked.files);
@@ -77,7 +74,7 @@ async function buildBooks(files) {
   for (const f of files) {
     const rel = (f._relpath || f.name).replace(/^\/+/, '');
     if (ARCHIVE_RE.test(f.name)) {
-      out.push({ kind: 'archive', name: f.name.replace(ARCHIVE_RE, ''), file: f, pages: null });
+      out.push({ kind: 'archive', name: f.name.replace(ARCHIVE_RE, ''), file: f });
       continue;
     }
     if (!IMAGE_RE.test(f.name)) continue;
@@ -134,87 +131,29 @@ function bookRow(view, book) {
 }
 
 async function openBook(view, book) {
-  view.replaceChildren(centerSpinner());
+  const loading = centerSpinner();
+  view.replaceChildren(loading);
   let pages;
   try {
     if (book.kind === 'images') {
-      pages = book.files.map((f) => track(URL.createObjectURL(f)));
+      pages = book.files;
     } else {
-      if (!book.pages) book.pages = (await unzipImages(book.file)).map(track);
-      pages = book.pages;
+      pages = (await unzipImages(book.file)).map(e => new Blob([e.bytes]));
     }
   } catch (err) {
+    if (!loading.isConnected) return;
     view.replaceChildren(sectionHeader(book.name, backBtn(view)),
       errorBox(`Couldn't open "${book.name}": ${err.message || err}`));
     return;
   }
 
-  const header = sectionHeader(book.name, chip(`${pages.length} pages`), backBtn(view));
-  view.replaceChildren(header);
-  if (!pages.length) { view.appendChild(emptyState('This book has no readable pages.')); return; }
-
-  const reader = el('div', { class: 'reader webtoon fit-width', style: { paddingBottom: '48px' } });
-  for (let i = 0; i < pages.length; i++) {
-    const img = el('img', { class: 'reader-page', loading: 'lazy', decoding: 'async', alt: `Page ${i + 1}`, src: pages[i] });
-    img.addEventListener('error', () => {
-      img.replaceWith(el('div', { class: 'reader-page', style: { background: 'var(--surface2)', color: 'var(--text-dim)', display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '200px', borderRadius: 'var(--radius)' } }, icon('image')));
-    });
-    reader.appendChild(img);
+  if (!loading.isConnected) return;
+  if (!pages.length) {
+    view.replaceChildren(sectionHeader(book.name, backBtn(view)), emptyState('This book has no readable pages.'));
+    return;
   }
-  view.appendChild(reader);
-}
-
-function track(url) { _urls.push(url); return url; }
-
-// ---- in-browser ZIP/CBZ reader (stored + deflate) ----------------------
-
-async function unzipImages(file) {
-  const buf = new Uint8Array(await file.arrayBuffer());
-  const dv = new DataView(buf.buffer);
-  // Find End Of Central Directory (signature 0x06054b50), scanning back.
-  let eocd = -1;
-  for (let i = buf.length - 22; i >= 0 && i > buf.length - 22 - 65536; i--) {
-    if (dv.getUint32(i, true) === 0x06054b50) { eocd = i; break; }
-  }
-  if (eocd < 0) throw new Error('Not a valid ZIP');
-  const count = dv.getUint16(eocd + 10, true);
-  let off = dv.getUint32(eocd + 16, true);
-
-  const entries = [];
-  for (let i = 0; i < count; i++) {
-    if (dv.getUint32(off, true) !== 0x02014b50) break;
-    const method = dv.getUint16(off + 10, true);
-    const compSize = dv.getUint32(off + 20, true);
-    const nameLen = dv.getUint16(off + 28, true);
-    const extraLen = dv.getUint16(off + 30, true);
-    const commentLen = dv.getUint16(off + 32, true);
-    const localOff = dv.getUint32(off + 42, true);
-    const name = new TextDecoder().decode(buf.subarray(off + 46, off + 46 + nameLen));
-    if (IMAGE_RE.test(name)) entries.push({ name, method, compSize, localOff });
-    off += 46 + nameLen + extraLen + commentLen;
-  }
-  entries.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
-
-  const urls = [];
-  for (const e of entries) {
-    // Local file header: 30 + nameLen + extraLen, then the data.
-    const lnameLen = dv.getUint16(e.localOff + 26, true);
-    const lextraLen = dv.getUint16(e.localOff + 28, true);
-    const dataStart = e.localOff + 30 + lnameLen + lextraLen;
-    const comp = buf.subarray(dataStart, dataStart + e.compSize);
-    let bytes;
-    if (e.method === 0) {
-      bytes = comp; // stored
-    } else if (e.method === 8 && typeof DecompressionStream !== 'undefined') {
-      const ds = new DecompressionStream('deflate-raw');
-      const stream = new Blob([comp]).stream().pipeThrough(ds);
-      bytes = new Uint8Array(await new Response(stream).arrayBuffer());
-    } else {
-      continue; // unsupported compression
-    }
-    urls.push(URL.createObjectURL(new Blob([bytes])));
-  }
-  return urls;
+  book.readerState ||= {};
+  router.navigate('reader', createLocalReader({ title: book.name, pages, state: book.readerState }));
 }
 
 // ---- small building blocks ---------------------------------------------
@@ -231,7 +170,7 @@ function folderHint(name) {
 function cta(onChoose) {
   const wrap = el('div', { class: 'center', style: { flexDirection: 'column', gap: '14px', padding: '48px 0' } });
   wrap.append(
-    emptyState('Read offline — choose a folder of images or CBZ/ZIP archives. Everything stays on your device.'),
+    emptyState('Read offline — choose a folder of images or CBZ/ZIP archives. Images stay on your device. Optional translation sends recognized text to your translation provider.'),
     btn('Choose Folder', { variant: 'accent', icon: 'folder', onClick: onChoose }),
   );
   return wrap;

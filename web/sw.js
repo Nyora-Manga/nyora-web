@@ -4,7 +4,7 @@
  * Strategy:
  *   - app shell (html/css/js modules, icon)  -> stale-while-revalidate, precached
  *   - static app modules (js/css/json)        -> stale-while-revalidate
- *   - proxied cover/page images               -> cache-first (immutable-ish)
+ *   - proxied cover/page images               -> cache-first for 24 hours, offline fallback
  *   - everything else / API                   -> network-first, cache fallback
  */
 const VERSION = 'nyora-v2.6.0';
@@ -30,6 +30,8 @@ const SHELL_ASSETS = [
   '/index.html',
   '/styles.css',
   '/env.js',
+  '/boot/migrate.js',
+  '/boot/theme.js',
   '/app.js',
   '/core/motion.js',
   '/vendor/gsap.min.js',
@@ -77,28 +79,42 @@ function staleWhileRevalidate(request, cacheName) {
   );
 }
 
-function cacheFirst(request, cacheName) {
-  return caches.open(cacheName).then((cache) =>
-    cache.match(request).then((cached) => cached || fetch(request).then((res) => {
-      if (res && res.ok) cache.put(request, res.clone());
-      return res;
-    })),
-  );
-}
+// Track age separately so opaque CDN responses remain usable offline. Legacy
+// images without timestamps refresh once online; no source clears another's data.
+const IMAGE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+async function cacheFirstImage(request, cacheName) {
+  const cache = await caches.open(cacheName);
+  const ages = await caches.open(`${cacheName}-age`);
+  const cached = await cache.match(request);
+  const stamp = await ages.match(request);
+  const fetchedAt = stamp ? Number(await stamp.text()) : 0;
+  const age = Date.now() - fetchedAt;
+  if (cached && fetchedAt > 0 && age >= 0 && age < IMAGE_MAX_AGE_MS) return cached;
 
-// Cache-first for page/cover images, INCLUDING cross-origin opaque responses
-// (a cross-origin <img> fetch is no-cors → opaque, status 0). A direct load that
-// actually succeeded is exactly the byte stream we want to replay offline; a
-// direct load that FAILED made the app fall back to the /image proxy URL (cached
-// separately, validated), so a stale broken opaque entry is simply never
-// re-requested. This is what makes already-viewed chapters read offline.
-function cacheFirstImage(request, cacheName) {
-  return caches.open(cacheName).then((cache) =>
-    cache.match(request).then((cached) => cached || fetch(coiSafe(request)).then((res) => {
-      if (res && (res.ok || res.type === 'opaque')) cache.put(request, res.clone());
-      return res;
-    }).catch(() => cached)),
-  );
+  // Previous releases advertised helper images as immutable for a year. A daily
+  // helper cache key bypasses those objects without altering signed source URLs.
+  const url = new URL(request.url);
+  if (url.pathname === '/image' &&
+      (url.origin === self.location.origin || API_HOST.test(url.hostname))) {
+    url.searchParams.set('nyora_image_day', String(Math.floor(Date.now() / IMAGE_MAX_AGE_MS)));
+  }
+  const refresh = new Request(new Request(url, request), { cache: 'reload' });
+  try {
+    const response = await fetch(coiSafe(refresh));
+    if (response && (response.status === 200 || response.type === 'opaque')) {
+      // Storage failures must not turn a successful network load into an error.
+      try {
+        await cache.put(request, response.clone());
+        await ages.put(request, new Response(String(Date.now())));
+      } catch { /* cache storage may be unavailable/full */ }
+      return response;
+    }
+    if (cached) return cached;
+    throw new Error('Image response is unavailable or incomplete');
+  } catch (error) {
+    if (cached) return cached;
+    throw error;
+  }
 }
 
 // Under COEP:credentialless (see withCoi below) an opaque response relayed by
@@ -146,9 +162,9 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(request.url);
   const sameOrigin = url.origin === self.location.origin;
 
-  // Same-origin image proxy -> cache-first (covers and chapter pages are immutable-ish).
+  // Same-origin image proxy uses the same per-image daily refresh as remote sources.
   if (sameOrigin && url.pathname === '/image') {
-    event.respondWith(cacheFirst(request, IMAGES));
+    event.respondWith(cacheFirstImage(request, IMAGES));
     return;
   }
 
@@ -181,7 +197,7 @@ self.addEventListener('fetch', (event) => {
   }
 
   // Static app modules -> stale-while-revalidate.
-  if (/\.(?:js|css|json|webmanifest|png|svg|ico|woff2?)$/.test(url.pathname) || url.pathname === '/') {
+  if (/\.(?:m?js|css|json|webmanifest|png|svg|ico|woff2?)$/.test(url.pathname) || url.pathname === '/') {
     event.respondWith(coi(staleWhileRevalidate(request, RUNTIME)));
     return;
   }

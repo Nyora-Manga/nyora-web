@@ -6,92 +6,7 @@
        Runs before anything else so a reload always lands on the new domain and
        carries the visitor's local data (library, history, prefs, sources) across
        origins (localStorage doesn't cross origins on its own). One-shot. -->
-  <script>
-  (function () {
-    var NEW_ORIGIN = 'https://web.nyora.xyz';
-    var OLD_HOSTS = ['nyora.xyz', 'web.nyora.xyz'];
-    var isNyoraKey = function (k) {
-      return !!k && (k.lastIndexOf('nyora.', 0) === 0 || k.lastIndexOf('nyora:', 0) === 0);
-    };
-    // Merge two nyora.library.v1 blobs (favourites/history/bookmarks/…) so the
-    // incoming library adds to any library already on this origin instead of
-    // being dropped. History entries resolve by newest updatedAt.
-    var mergeLib = function (curStr, incStr) {
-      var cur = {}, inc = {};
-      try { cur = JSON.parse(curStr) || {}; } catch (e) {}
-      try { inc = JSON.parse(incStr) || {}; } catch (e) { return curStr; }
-      ['favourites', 'history', 'categories', 'categoryMembers', 'prefs', 'snapshots'].forEach(function (b) {
-        var c = (cur[b] && typeof cur[b] === 'object' && !Array.isArray(cur[b])) ? cur[b] : {};
-        var i = (inc[b] && typeof inc[b] === 'object' && !Array.isArray(inc[b])) ? inc[b] : {};
-        var out = {}, k;
-        for (k in c) out[k] = c[k];
-        for (k in i) {
-          if (b === 'history' && out[k] && (Number(out[k].updatedAt) || 0) >= (Number(i[k].updatedAt) || 0)) continue;
-          out[k] = i[k];
-        }
-        cur[b] = out;
-      });
-      var arr = (Array.isArray(cur.bookmarks) ? cur.bookmarks : []).concat(Array.isArray(inc.bookmarks) ? inc.bookmarks : []);
-      var seen = {}, merged = [];
-      arr.forEach(function (bm) { var id = bm && bm.id != null ? String(bm.id) : JSON.stringify(bm); if (!seen[id]) { seen[id] = 1; merged.push(bm); } });
-      cur.bookmarks = merged;
-      cur.seq = Math.max(Number(cur.seq) || 1, Number(inc.seq) || 1);
-      try { return JSON.stringify(cur); } catch (e) { return curStr; }
-    };
-    try {
-      if (OLD_HOSTS.indexOf(location.hostname) !== -1) {
-        // OLD domain: dump every nyora.* localStorage key, then hard-redirect to
-        // the new domain with the data in the URL fragment (fragments are never
-        // sent to the server, so no URL-length limit at the edge).
-        var dump = {};
-        try {
-          for (var i = 0; i < localStorage.length; i++) {
-            var k = localStorage.key(i);
-            if (isNyoraKey(k)) dump[k] = localStorage.getItem(k);
-          }
-        } catch (e) {}
-        // Never put credentials in a URL. The fragment isn't sent to a server,
-        // but it does transit the address bar, session-restore state, and any
-        // extension with tab access — so drop the LLM API key and the sync
-        // token from the payload. Both are re-entered/re-issued on the new
-        // origin; everything else (library, history, prefs) still migrates.
-        try { delete dump['nyora.sync.session.v1']; } catch (e) {}
-        try {
-          if (dump['nyora.prefs']) {
-            var pj = JSON.parse(dump['nyora.prefs']);
-            if (pj && pj.aiApiKey) { pj.aiApiKey = ''; dump['nyora.prefs'] = JSON.stringify(pj); }
-          }
-        } catch (e) {}
-        var frag = '';
-        try {
-          var b64 = btoa(unescape(encodeURIComponent(JSON.stringify(dump))));
-          // URL-encode so browsers that percent-encode +,/,= in the fragment
-          // can't corrupt the base64 on the way to the new origin.
-          if (b64.length <= 1900000) frag = '#__m=' + encodeURIComponent(b64); // guard against extreme URLs
-        } catch (e) {}
-        location.replace(NEW_ORIGIN + '/' + frag);
-        // Hide the page while the redirect is in flight.
-        document.documentElement.style.visibility = 'hidden';
-        return;
-      }
-      // NEW domain: if a migration payload arrived, import the keys we don't
-      // already have (don't clobber data created on this origin), then strip it.
-      if (location.hash.indexOf('#__m=') === 0) {
-        try {
-          var data = JSON.parse(decodeURIComponent(escape(atob(decodeURIComponent(location.hash.slice(5))))));
-          for (var key in data) {
-            if (!Object.prototype.hasOwnProperty.call(data, key)) continue;
-            var cur = localStorage.getItem(key);
-            if (cur == null) localStorage.setItem(key, data[key]);
-            else if (key === 'nyora.library.v1') localStorage.setItem(key, mergeLib(cur, data[key]));
-            // other keys: keep this origin's existing value (don't clobber prefs)
-          }
-        } catch (e) {}
-        try { history.replaceState(null, '', location.origin + location.pathname); } catch (e) {}
-      }
-    } catch (e) {}
-  })();
-  </script>
+  <script src="/boot/migrate.js"></script>
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=5" />
   <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#060810" />
   <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f1f5f9" />
@@ -222,18 +137,7 @@
   <!-- Theme preflight: resolve the saved (or system) theme and stamp it on
        <html> BEFORE first paint, so the app and splash never flash the wrong
        colour or the old buggy black shell. -->
-  <script>
-  (function () {
-    try {
-      var p = JSON.parse(localStorage.getItem('nyora.prefs') || '{}');
-      var a = p.appearance || 'DARK';
-      var t = a === 'LIGHT' ? 'LIGHT'
-        : a === 'DARK' ? 'DARK'
-        : (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches ? 'LIGHT' : 'DARK');
-      document.documentElement.setAttribute('data-theme', t);
-    } catch (e) { document.documentElement.setAttribute('data-theme', 'DARK'); }
-  })();
-  </script>
+  <script src="/boot/theme.js"></script>
   <!-- Splash: inline so it paints instantly, before styles.css or app.js load,
        covering the shell while the ES modules download + boot. Removed by app.js
        once the first screen renders. -->
@@ -295,7 +199,7 @@
         <input id="searchInput" placeholder="Search all sources…" aria-label="Search all sources" enterkeyhint="search" />
       </form>
       <span class="spacer"></span>
-      <a class="community-site" href="https://discord.gg/f9DWbBn76" target="_blank" rel="noopener" aria-label="Join the Nyora Discord">
+      <a class="community-site" href="https://discord.gg/3ZBHA8RtbR" target="_blank" rel="noopener" aria-label="Join the Nyora Discord">
         <svg viewBox="0 0 24 24" width="17" height="17" fill="currentColor" aria-hidden="true"><path d="M20.317 4.37a19.8 19.8 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.211.375-.445.865-.608 1.25a19.04 19.04 0 0 0-5.487 0 12.64 12.64 0 0 0-.618-1.25.077.077 0 0 0-.078-.037A19.74 19.74 0 0 0 3.677 4.37a.07.07 0 0 0-.032.028C.533 9.046-.319 13.58.099 18.058a.082.082 0 0 0 .031.056c2.053 1.508 4.041 2.423 5.993 3.03a.078.078 0 0 0 .084-.028c.462-.63.873-1.295 1.226-1.994a.076.076 0 0 0-.042-.106 12.3 12.3 0 0 1-1.872-.892.077.077 0 0 1-.008-.128c.126-.094.252-.192.372-.291a.074.074 0 0 1 .078-.01c3.928 1.793 8.18 1.793 12.061 0a.074.074 0 0 1 .079.009c.12.099.246.198.373.292a.077.077 0 0 1-.007.128c-.598.343-1.22.645-1.873.891a.077.077 0 0 0-.041.107c.36.698.772 1.363 1.225 1.993a.076.076 0 0 0 .084.029c1.961-.607 3.95-1.522 6.002-3.03a.077.077 0 0 0 .031-.055c.5-5.177-.838-9.674-3.548-13.66a.061.061 0 0 0-.031-.029ZM8.02 15.331c-1.183 0-2.157-1.086-2.157-2.419s.956-2.419 2.157-2.419c1.21 0 2.176 1.095 2.157 2.419 0 1.333-.956 2.419-2.157 2.419Zm7.975 0c-1.183 0-2.157-1.086-2.157-2.419s.955-2.419 2.157-2.419c1.21 0 2.176 1.095 2.157 2.419 0 1.333-.946 2.419-2.157 2.419Z"/></svg>
         <span class="community-site-label">Discord</span>
       </a>
@@ -324,7 +228,7 @@
   <h2>Get the app</h2>
   <ul>
     <li><a href="https://nyora.xyz" rel="noopener">Official website &amp; downloads</a></li>
-    <li><a href="https://discord.gg/f9DWbBn76" rel="noopener">Join the Nyora Discord community</a></li>
+    <li><a href="https://discord.gg/3ZBHA8RtbR" rel="noopener">Join the Nyora Discord community</a></li>
   </ul>
 </section>
     </main>

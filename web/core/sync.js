@@ -7,7 +7,8 @@
 // data moves through POST /functions/v1/nyora-sync with a Bearer access token
 // (no apikey/anon header). Google sign-in has been removed.
 
-import { bareSourceName } from './api.js';
+import { sourceId, sourceId as sourceIdValid, requireSourceId } from './source-identity.js';
+import { api } from './api.js';
 import library from './library.js';
 import { sourcePrefRows, applySourcePrefRows } from './parser-runtime.js';
 
@@ -214,6 +215,7 @@ function isFullPullDue(session) {
 }
 
 async function ensureSession() {
+  await api.prepareSourceMigration();
   const session = loadSession();
   if (!session.access_token) throw new Error('Sign in first.');
   // Access tokens live ~1h. Rather than proactively refreshing (and burning
@@ -388,7 +390,7 @@ async function pullAll(session, since) {
   const merged = fromRemoteRows({
     mangaRows, categoryRows, favouriteRows, historyRows,
     bookmarkRows, mangaCategoryRows, prefRows, updateRows,
-  }, since !== INITIAL_SYNC ? library.exportData() : null);
+  }, library.exportData());
   library.importData(merged);
   // Collapse any duplicate-title categories that arrived from legacy per-device seeds.
   try { library.dedupeCategories(); } catch { /* ignore */ }
@@ -411,7 +413,7 @@ function toRemoteRows(data, uid, nowIso) {
 
   const favourites = [];
   for (const [mangaId, rec] of Object.entries(data.favourites || {})) {
-    addManga(rec.manga, sourceIdFromManga(rec.manga), iso(rec.addedAt), mangaId);
+    if (!addManga(rec.manga, sourceIdFromManga(rec.manga), iso(rec.addedAt), mangaId)) continue;
     favourites.push({
       user_id: uid,
       manga_id: String(mangaId),
@@ -423,11 +425,11 @@ function toRemoteRows(data, uid, nowIso) {
 
   const history = [];
   for (const [mangaId, h] of Object.entries(data.history || {})) {
-    addManga(h.manga, h.sourceId, iso(h.updatedAt), mangaId);
+    if (!addManga(h.manga, h.sourceId, iso(h.updatedAt), mangaId)) continue;
     history.push({
       user_id: uid,
       manga_id: String(mangaId),
-      source_id: h.sourceId || openableSourceId(h.manga),
+      source_id: requireSourceId(h.sourceId || openableSourceId(h.manga)),
       chapter_id: String(h.chapterId || h.chapterUrl || ''),
       chapter_title: h.chapterTitle || '',
       page: Number(h.page) || 0,
@@ -441,7 +443,7 @@ function toRemoteRows(data, uid, nowIso) {
 
   const bookmarks = [];
   for (const b of data.bookmarks || []) {
-    addManga(b.manga, b.sourceId, iso(b.createdAt), b.mangaId);
+    if (!addManga(b.manga, b.sourceId, iso(b.createdAt), b.mangaId)) continue;
     bookmarks.push({
       user_id: uid,
       id: `${b.mangaId}:${b.chapterId}:${b.page}`,
@@ -472,7 +474,7 @@ function toRemoteRows(data, uid, nowIso) {
   const mangaCategories = [];
   for (const [categoryId, members] of Object.entries(data.categoryMembers || {})) {
     for (const mangaId of Object.keys(members || {})) {
-      if (!members[mangaId]) continue;
+      if (!members[mangaId] || !manga.has(String(mangaId))) continue;
       mangaCategories.push({
         user_id: uid,
         manga_id: String(mangaId),
@@ -483,7 +485,7 @@ function toRemoteRows(data, uid, nowIso) {
     }
   }
 
-  const prefs = Object.entries(data.prefs || {}).map(([mangaId, p]) => ({
+  const prefs = Object.entries(data.prefs || {}).filter(([id]) => manga.has(String(id))).map(([mangaId, p]) => ({
     user_id: uid,
     manga_id: String(mangaId),
     reader_mode: p.mode || p.reader_mode || '',
@@ -495,10 +497,10 @@ function toRemoteRows(data, uid, nowIso) {
     updated_at: nowIso,
   }));
 
-  const updates = Object.entries(data.snapshots || {}).map(([mangaId, s]) => ({
+  const updates = Object.entries(data.snapshots || {}).filter(([id, s]) => manga.has(String(id)) && sourceId(s.sourceId)).map(([mangaId, s]) => ({
     user_id: uid,
     manga_id: String(mangaId),
-    source_id: s.sourceId || '',
+    source_id: requireSourceId(s.sourceId),
     last_chapter_count: Number(s.chapterCount) || 0,
     new_chapters_count: Number(s.newChapters) || 0,
     latest_chapter_title: s.latestChapterTitle || '',
@@ -512,23 +514,24 @@ function toRemoteRows(data, uid, nowIso) {
   };
 }
 
-function cleanSourceId(sid) {
-  // `bareSourceName` also unwraps the shapes that used to be stored verbatim and
-  // then failed to open: a serialised MangaSourceRef, and the `DD_` ids the
-  // data-driven clients sync. Exact casing is settled later against the
-  // catalogue (see `helperSourceId`), since the helper compares ids exactly.
-  const bare = bareSourceName(sid);
-  if (!bare) return 'UNKNOWN';
-  if (bare === 'LOCAL') return 'LOCAL';
-  return `parser:${bare}`;
+function cleanSourceId(raw) {
+  return sourceId(raw);
 }
 
 function fromRemoteRows(rows, baseData) {
   const data = baseData || emptyLibraryData();
   const mangaById = new Map();
+  for (const bucket of [data.favourites, data.history]) {
+    for (const [id, rec] of Object.entries(bucket || {})) {
+      if (sourceId(rec.manga?.source)) mangaById.set(id, rec.manga);
+    }
+  }
+  for (const rec of data.bookmarks || []) {
+    if (sourceId(rec.manga?.source) && rec.mangaId != null) mangaById.set(String(rec.mangaId), rec.manga);
+  }
   for (const row of rows.mangaRows || []) {
     const m = mangaFromRow(row);
-    mangaById.set(m.id, m);
+    if (sourceId(m.source)) mangaById.set(m.id, m);
   }
 
   for (const row of rows.categoryRows || []) {
@@ -553,6 +556,7 @@ function fromRemoteRows(rows, baseData) {
   }
 
   for (const row of rows.favouriteRows || []) {
+    if (!mangaById.has(String(row.manga_id))) continue;
     if (row.deleted_at) {
       delete data.favourites[row.manga_id];
     } else {
@@ -564,6 +568,8 @@ function fromRemoteRows(rows, baseData) {
   }
 
   for (const row of rows.historyRows || []) {
+    if (!mangaById.has(String(row.manga_id))) continue;
+    if (row.source_id && !sourceId(row.source_id)) continue;
     if (row.deleted_at) {
       delete data.history[row.manga_id];
     } else {
@@ -584,6 +590,7 @@ function fromRemoteRows(rows, baseData) {
   }
 
   for (const row of rows.bookmarkRows || []) {
+    if (!mangaById.has(String(row.manga_id))) continue;
     const id = row.id || `${row.manga_id}:${row.chapter_id}:${row.page}`;
     data.bookmarks = (data.bookmarks || []).filter((b) => b.id !== id);
     if (!row.deleted_at) {
@@ -604,12 +611,14 @@ function fromRemoteRows(rows, baseData) {
   }
 
   for (const row of rows.mangaCategoryRows || []) {
+    if (!mangaById.has(String(row.manga_id))) continue;
     if (!data.categoryMembers[row.category_id]) data.categoryMembers[row.category_id] = {};
     if (row.deleted_at) delete data.categoryMembers[row.category_id][row.manga_id];
     else data.categoryMembers[row.category_id][row.manga_id] = true;
   }
 
   for (const row of rows.prefRows || []) {
+    if (!mangaById.has(String(row.manga_id))) continue;
     data.prefs[row.manga_id] = {
       reader_mode: row.reader_mode || '',
       brightness: Number(row.brightness) || 0,
@@ -621,6 +630,8 @@ function fromRemoteRows(rows, baseData) {
   }
 
   for (const row of rows.updateRows || []) {
+    if (!mangaById.has(String(row.manga_id))) continue;
+    if (row.source_id && !sourceId(row.source_id)) continue;
     data.snapshots[row.manga_id] = {
       sourceId: cleanSourceId(row.source_id),
       chapterCount: Number(row.last_chapter_count) || 0,
@@ -636,7 +647,7 @@ function fromRemoteRows(rows, baseData) {
 }
 
 function mangaRow(m, uid, updatedAt, sourceId, forcedId) {
-  if (!m) return null;
+  if (!m || !sourceIdValid(sourceId || sourceIdFromManga(m))) return null;
   // Prefer the caller's canonical library key so this manga row's id matches the
   // manga_id foreign key on the favourite/history/bookmark rows. For url-keyed
   // manga the library key is `sourceId|url`; falling back to bare m.url here
@@ -697,16 +708,11 @@ function encodeSourceRef(manga, sourceId) {
 }
 
 function decodeSourceRef(raw) {
-  try {
-    const value = typeof raw === 'string' ? JSON.parse(raw) : raw;
-    let name = value && (value.name || value.id || value.type || 'UNKNOWN');
-    if (name.includes('.MangaSourceRef.')) name = name.split('.MangaSourceRef.').pop();
-    return { name };
-  } catch {
-    let name = raw || 'UNKNOWN';
-    if (name.includes('.MangaSourceRef.')) name = name.split('.MangaSourceRef.').pop();
-    return { name };
+  let value = raw;
+  if (typeof raw === 'string' && raw.startsWith('{')) {
+    try { value = JSON.parse(raw); } catch { return { name: '' }; }
   }
+  return { name: sourceId(value) };
 }
 
 function sourceIdFromManga(manga) {
@@ -717,20 +723,11 @@ function sourceIdFromManga(manga) {
 }
 
 function sourceRefName(raw) {
-  let value = String(raw || '').trim();
-  if (value.includes('.MangaSourceRef.')) value = value.split('.MangaSourceRef.').pop();
-  if (!value || value === 'UNKNOWN') return 'UNKNOWN';
-  if (value === 'Local' || value === 'LOCAL') return 'LOCAL';
-  if (value.startsWith('JS_')) return value;
-  if (value.startsWith('parser:') || value.startsWith('script:')) return `JS_${value.slice(value.indexOf(':') + 1)}`;
-  return value;
+  return requireSourceId(raw);
 }
 
 function openableSourceId(manga) {
-  const bare = bareSourceName(sourceIdFromManga(manga));
-  if (!bare) return '';
-  if (bare === 'LOCAL') return 'LOCAL';
-  return `parser:${bare}`;
+  return sourceId(sourceIdFromManga(manga));
 }
 
 function parseArray(raw) {

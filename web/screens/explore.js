@@ -704,7 +704,12 @@ export function render(view, params) {
   // there's no per-screen teardown hook, so swap a single module-level handler
   // each render instead of stacking listeners.
   if (_onSourcesSynced) window.removeEventListener('nyora:sources-synced', _onSourcesSynced);
-  _onSourcesSynced = () => { if (view.isConnected) loadSources({ keepBrowse: true }); };
+  _onSourcesSynced = () => {
+    if (view.isConnected && router.current().name === 'explore') {
+      state.showNsfw = !!store.get().showNsfw;
+      loadSources({ keepBrowse: true });
+    }
+  };
   window.addEventListener('nyora:sources-synced', _onSourcesSynced);
 }
 

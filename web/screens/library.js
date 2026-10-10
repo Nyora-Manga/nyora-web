@@ -11,6 +11,7 @@ import {
 } from '../core/ui.js';
 import library from '../core/library.js';
 import { api } from '../core/api.js';
+import { sourceId } from '../core/source-identity.js';
 import { router, store } from '../core/store.js';
 import { render as downloadsRender } from './downloads.js';
 
@@ -28,7 +29,7 @@ async function installedSources() {
     const res = await api.listSources();
     _sourcesCache = Array.isArray(res) ? res : (res && res.sources) || [];
   } catch {
-    _sourcesCache = [];
+    return [];
   }
   return _sourcesCache;
 }
@@ -40,19 +41,8 @@ function refName(manga) {
   return s.name || s.id || '';
 }
 
-function resolveSid(manga, sources) {
-  const name = refName(manga);
-  if (!name) return '';
-  const normalized = name.startsWith('JS_') ? name.slice(3) : name;
-  const match = (sources || []).find(
-    (src) =>
-      src && src.isInstalled !== false &&
-      (src.id === name ||
-        src.id === `parser:${normalized}` ||
-        (src.id && src.id.endsWith(':' + normalized)) ||
-        src.name === name),
-  );
-  return match ? match.id : name;
+function resolveSid(manga) {
+  return sourceId(manga?.source);
 }
 
 // ---- sort ----------------------------------------------------------------
@@ -470,8 +460,7 @@ export function render(view, params) {
   renderGrid();
   applyTab();
 
-  // Resolve sources in the background; a card tap before this lands still
-  // falls back to the raw source ref name.
+  // Loading the catalogue also upgrades any saved legacy source references.
   installedSources().then((sources) => { state.sources = sources || []; });
 }
 

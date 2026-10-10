@@ -27,6 +27,15 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: '22'
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Source migration regression tests
+        run: npm test
+
+      - name: Verify deployed data-driven helper contract
+        run: npm run check:helper
+
       # The onnxruntime runtime (~35 MB, 24 MB of it wasm) is not committed —
       # it's fetched here and SHA-256 verified against pinned hashes, so the
       # deployed bundle self-hosts it without carrying it in git history.
@@ -36,7 +45,6 @@ jobs:
 
       - name: Build — bundle web/ into dist/
         run: |
-          npm install --no-audit --no-fund
           npm run build
 
       # Bake the Discover feed into dist/ so the cluster serves it as a static

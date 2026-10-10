@@ -6,7 +6,10 @@
 import { api } from '../api.js';
 import { colorizeModelCached, loadColorizeModel } from './model.js';
 
-const WORKER_PATH = '/core/colorize/worker.js';
+// The production build pins this URL to the bundled worker's content hash.
+// Unbundled development keeps the direct path.
+const WORKER_PATH = typeof __NYORA_COLORIZER_WORKER_URL__ !== 'undefined'
+  ? __NYORA_COLORIZER_WORKER_URL__ : '/core/colorize/worker.js';
 
 // Is the colorizer model already downloaded (cached)? Lets the settings gate the
 // Colorize toggle until it's present.

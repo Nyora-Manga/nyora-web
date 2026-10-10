@@ -142,7 +142,9 @@ async function createModelSession(buf) {
   await releaseModelSession();
   const hasGpu = typeof navigator !== 'undefined' && !!navigator.gpu;
   if (hasGpu) {
-    try { session = await ort.InferenceSession.create(buf, { executionProviders: ['webgpu', 'wasm'] }); webgpu = true; }
+    // A mixed provider list can silently succeed on WASM when no GPU adapter
+    // exists. Try GPU alone so its failure reaches the explicit CPU fallback.
+    try { session = await ort.InferenceSession.create(buf, { executionProviders: ['webgpu'] }); webgpu = true; }
     catch { session = null; }
   }
   if (!session) session = await ort.InferenceSession.create(buf, { executionProviders: ['wasm'] });
@@ -158,7 +160,10 @@ async function handle(id, bitmap) {
   // design point (we previously used a 1280px long side) gains nothing —
   // measured against the author's own sample it was no better, and staying on
   // the trained resolution keeps colours consistent.
-  const SIZE = 576;
+  // CPU inference needs a smaller working set, especially on the first visit
+  // before cross-origin isolation enables WASM threads. Final output still
+  // uses the full-resolution original's luminance and dimensions.
+  const SIZE = webgpu ? 576 : 384;
   let vw, vh; // valid (unpadded) model region
   if (OH < OW) { vh = Math.round(SIZE * 1.5); vw = Math.ceil(OW / (OH / (SIZE * 1.5))); }
   else { vw = SIZE; vh = Math.ceil(OH / (OW / SIZE)); }
@@ -170,15 +175,24 @@ async function handle(id, bitmap) {
   // model resolution; only chroma comes from the model (luminance is taken from
   // the full-resolution original in composePageBlob), so the visible cost is
   // slightly softer colour, against a page that otherwise never colours at all.
-  const MAX_MODEL_PIXELS = 576 * 1536;
+  const MAX_MODEL_PIXELS = webgpu ? 576 * 1536 : 384 * 1024;
   const overBudget = (vw * vh) / MAX_MODEL_PIXELS;
   if (overBudget > 1) {
     const shrink = Math.sqrt(overBudget);
     vw = Math.max(32, Math.floor(vw / shrink));
     vh = Math.max(32, Math.floor(vh / shrink));
   }
-  const mw = Math.max(32, Math.ceil(vw / 32) * 32);
-  const mh = Math.max(32, Math.ceil(vh / 32) * 32);
+  let mw = Math.max(32, Math.ceil(vw / 32) * 32);
+  let mh = Math.max(32, Math.ceil(vh / 32) * 32);
+  // Padding is part of the allocation too. Keep extreme strips inside the
+  // budget after rounding, then fit the image without changing its aspect.
+  while (mw * mh > MAX_MODEL_PIXELS) {
+    if (mh >= mw) mh -= 32;
+    else mw -= 32;
+  }
+  const fit = Math.min(1, mw / vw, mh / vh);
+  vw = Math.max(1, Math.floor(vw * fit));
+  vh = Math.max(1, Math.floor(vh * fit));
 
   let colorCanvas = null;
   try {
