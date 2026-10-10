@@ -833,23 +833,19 @@ export function card(manga, onClick) {
   // title's clamped 3rd line bleed through; as a normal descendant it clips right.
   const node = el(
     'md-elevated-card',
-    { class: 'card', role: 'button', tabindex: '0' },
-    el('div', { class: 'card-body' },
+    { class: 'card reading-room-card' },
+    el('button', { class: 'card-body card-open', type: 'button', 'aria-label': 'Open ' + (title || 'Untitled'), disabled: !onClick },
       coverWrap,
       el('div', { class: 'title', title: manga.title || '' }, manga.title || 'Untitled'),
     ),
   );
-  if (onClick) {
-    node.addEventListener('click', () => onClick(manga));
-    node.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' || e.key === ' ') {
-        e.preventDefault();
-        onClick(manga);
-      }
-    });
-  }
+  const openButton = node.querySelector('.card-open');
+  if (onClick) openButton.addEventListener('click', () => onClick(manga));
+  const source = manga.source;
+  const sourceLabel = typeof source === 'string' ? source : source?.title || source?.name || source?.id;
+  if (sourceLabel) openButton.appendChild(el('span', { class: 'card-source', title: String(sourceLabel).replace(/^data:/, '') }, String(sourceLabel).replace(/^data:/, '')));
   // Long-press / right-click → Material action menu (replaces the native one).
-  attachContextMenu(node, () => {
+  const getCardActions = () => {
     const fav = library.isFavourite(manga.id);
     return [
       onClick ? { icon: 'book', label: 'Open', onClick: () => onClick(manga) } : null,
@@ -872,7 +868,16 @@ export function card(manga, onClick) {
         },
       },
     ];
+  };
+  attachContextMenu(node, getCardActions);
+  const more = el('button', { class: 'card-overflow', type: 'button', 'aria-haspopup': 'menu', 'aria-label': 'Actions for ' + (title || 'Untitled'), title: 'Title actions' }, '⋯');
+  more.addEventListener('click', event => {
+    event.stopPropagation();
+    more.focus();
+    const bounds = more.getBoundingClientRect();
+    contextMenu(getCardActions(), bounds.left, bounds.bottom + 4);
   });
+  node.appendChild(more);
   return node;
 }
 

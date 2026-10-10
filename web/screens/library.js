@@ -1,9 +1,8 @@
-// screens/library.js — Library: Favourites + Downloads.
-//
-// Android-style Library: a two-way subsection toggle at the top switches
-// between Favourites (favourite categories, filterable/sortable grid) and
-// Downloads (the offline download queue). History and Stats remain their own
-// sidebar destinations. All state lives in the browser (see core/library.js).
+import { browserLibrary, browserFiles } from '../desktop/browser-services.js';
+import { downloads } from '../core/downloads.js';
+import { createLibraryResume, importLibraryComics } from '../desktop/library-presentation.js';
+import { LIBRARY_SORTS, selectLibraryEntries, librarySourceOptions, hasLibraryFilters, resetLibraryFilters } from '../desktop/library-tools.js';
+// Electron library presentation backed by browser storage.
 
 import {
   el, card, toast, skeletonCard, icon, btn, chip, emptyState,
@@ -47,10 +46,7 @@ function resolveSid(manga) {
 
 // ---- sort ----------------------------------------------------------------
 
-const SORTS = [
-  { label: 'Recent', value: 'recent' },
-  { label: 'Title', value: 'title' },
-];
+const SORTS = LIBRARY_SORTS;
 
 function sortEntries(entries, sort) {
   if (sort !== 'title') return entries; // 'recent' = the store's natural order
@@ -72,12 +68,13 @@ export function render(view, params) {
     activeCategoryId: null, // null = "All"
     sources: [],
     sort: 'recent',
+    tools: { query: '', source: '', reading: 'all' },
     tab: (params && params.tab === 'downloads') ? 'downloads' : 'favourites',
     dlLoaded: false,
   };
 
   // --- header: title + subtle count -------------------------------------
-  const countEl = el('span', {
+  const countEl = el('span', { class: 'library-result-count', 'aria-live': 'polite',
     style: { color: 'var(--text-faint)', fontSize: '13px', fontWeight: '600', whiteSpace: 'nowrap' },
   });
   const header = el('div', { class: 'section-header library-header', style: { marginTop: '0', marginBottom: '16px' } },
@@ -94,16 +91,65 @@ export function render(view, params) {
   const tabRow = el('div', { class: 'row library-tab-row', style: { marginBottom: '18px' } }, tabSeg);
 
   // --- Favourites subsection --------------------------------------------
-  const sortSeg = segmented(SORTS, state.sort, (v) => {
-    state.sort = v;
-    renderGrid();
-  });
+  const sortSeg = el('select', { class: 'input library-sort-select', 'aria-label': 'Sort library',
+    onChange: event => { state.sort = event.target.value; renderGrid(); } },
+    ...SORTS.map(item => el('option', { value: item.value }, item.label)));
   const sortRow = el('div', { class: 'row library-sort-row', style: { marginBottom: '14px' } }, sortSeg);
 
   const chipsEl = el('div', { class: 'chips library-filter-row', style: { marginBottom: '20px' } });
   const gridHost = el('div');
 
-  const favSection = el('div', { class: 'library-favourites' }, sortRow, chipsEl, gridHost);
+  const librarySearch = el('input', { class: 'input', type: 'search', placeholder: 'Search your library', 'aria-label': 'Search your library',
+    onInput: event => { state.tools.query = event.target.value; renderGrid(); } });
+  const sourceFilter = el('select', { class: 'input', 'aria-label': 'Filter library by source',
+    onChange: event => { state.tools.source = event.target.value; renderGrid(); } });
+  const readingFilter = el('select', { class: 'input', 'aria-label': 'Filter library by reading history', 'aria-describedby': 'library-history-filter-note',
+    onChange: event => { state.tools.reading = event.target.value; renderGrid(); } },
+    el('option', { value: 'all' }, 'All reading states'),
+    el('option', { value: 'with-history' }, 'With recent history'),
+    el('option', { value: 'no-history' }, 'No recent history'));
+  const quickControls = [['downloaded','Downloaded'],['completed','Completed'],['newChapters','New chapters']].map(([key,label]) => {
+    const input = el('input',{type:'checkbox',onChange:event=>{state.tools[key]=event.target.checked;renderGrid();}});
+    return {key,input,node:el('label',{class:'library-quick-filter'},input,el('span',null,label))};
+  });
+  const clearFilters = btn('Clear filters', { variant: 'ghost', onClick: resetFilters });
+  const historyNote = el('p', { id: 'library-history-filter-note', class: 'hint library-history-note' },
+    'Uses saved recent history. Clearing history or reading privately affects this view.');
+  const toolField = (label, control) => el('label', { class: 'library-tools-field' }, el('span', null, label), control);
+  const filterSummary = el('summary', { class: 'library-filter-toggle' }, 'Filters');
+  const filterDisclosure = el('details', { class: 'library-filter-disclosure' }, filterSummary,
+    el('div', { class: 'library-filter-panel' }, toolField('Source', sourceFilter),
+      toolField('Reading history', readingFilter), ...quickControls.map(c=>c.node), historyNote, clearFilters));
+  const toolsRow = el('div', { class: 'library-tools', role: 'group', 'aria-label': 'Library filters' },
+    librarySearch, filterDisclosure, sortRow);
+  const subnav = el('nav', { class: 'library-subnav', 'aria-label': 'Library views' },
+    ...[['history', 'History'], ['bookmarks', 'Bookmarks'], ['stats', 'Stats']].map(([route, label]) =>
+      btn(label, { variant: 'ghost', onClick: () => router.navigate(route) })));
+  header.appendChild(subnav);
+  const resume = createLibraryResume({ services: browserLibrary, el, btn, icon, router });
+  const favSection = el('div', { class: 'library-favourites' },
+    ...(resume ? [resume] : []), chipsEl, toolsRow, gridHost);
+  filterDisclosure.addEventListener?.('keydown', event => {
+    if (event.key === 'Escape') { filterDisclosure.open = false; filterSummary.focus(); }
+  });
+
+  function updateSourceFilter() {
+    const entries = library.favourites().entries || [];
+    sourceFilter.replaceChildren(el('option', { value: '' }, 'All sources'),
+      ...librarySourceOptions(entries, state.sources).map(option => el('option', { value: option.value }, option.label)));
+    sourceFilter.value = state.tools.source;
+  }
+  function resetFilters() {
+    state.tools = resetLibraryFilters(state.tools);
+    librarySearch.value = ''; sourceFilter.value = ''; readingFilter.value = 'all';
+    quickControls.forEach(c=>{c.input.checked=false;});
+    renderGrid();
+  }
+  function renderNoMatches() {
+    const empty = emptyState('No titles match these filters.', 'search');
+    empty.appendChild(btn('Reset filters', { variant: 'ghost', onClick: resetFilters }));
+    return empty;
+  }
 
   // --- Downloads subsection (lazy: mounted on first visit) --------------
   const dlSection = el('div', { class: 'library-downloads' });
@@ -120,6 +166,7 @@ export function render(view, params) {
 
   function applyTab() {
     const onFav = state.tab === 'favourites';
+    tabRow.hidden = onFav;
     favSection.style.display = onFav ? '' : 'none';
     dlSection.style.display = onFav ? 'none' : '';
     countEl.style.display = onFav ? '' : 'none';
@@ -164,16 +211,30 @@ export function render(view, params) {
 
   function renderGrid() {
     stopGridGrowth();   // any previous grid's sentinel is about to be discarded
-    let entries;
+    let entries, unfiltered;
     try {
-      entries = sortEntries(favEntries(), state.sort);
+      unfiltered = favEntries();
+      const snapshot = browserLibrary?.snapshot() || {};
+      const known = new Map((snapshot.favourites || []).map(m=>[String(m.id),m]));
+      entries = selectLibraryEntries(unfiltered.map(m=>({...m,libraryAddedAt:known.get(String(m.id))?.libraryAddedAt || 0})),
+        { ...state.tools, sort: state.sort }, library.history().entries || [],
+        {...snapshot,downloads:downloads?.list() || []});
+      const filtered = hasLibraryFilters(state.tools);
+      const totalTitles = (library.favourites().entries || []).length;
+      toolsRow.hidden = !totalTitles;
+      chipsEl.hidden = !totalTitles && !state.categories.length;
+      const filterCount = Number(!!state.tools.source) + Number(state.tools.reading !== 'all') + quickControls.filter(c=>state.tools[c.key]).length;
+      filterSummary.textContent = filterCount ? 'Filters (' + filterCount + ')' : 'Filters';
+      clearFilters.hidden = !filtered;
+      historyNote.hidden = state.tools.reading === 'all' && !['read','read-oldest'].includes(state.sort);
+      countEl.textContent = filtered ? entries.length + ' of ' + unfiltered.length + ' titles' : (entries.length === 1 ? '1 title' : entries.length + ' titles');
     } catch (e) {
       gridHost.replaceChildren(errorBox(e.message));
       return;
     }
 
     if (!entries.length) {
-      gridHost.replaceChildren(renderEmpty());
+      gridHost.replaceChildren(unfiltered.length && hasLibraryFilters(state.tools) ? renderNoMatches() : renderEmpty());
       return;
     }
 
@@ -304,10 +365,13 @@ export function render(view, params) {
       );
       return wrap;
     }
-    const wrap = emptyState("It's kind of empty here…", 'inbox');
-    wrap.appendChild(
-      btn('Explore', { variant: 'accent', icon: 'compass', onClick: () => router.navigate('explore') }),
-    );
+    const wrap = el('section', { class: 'library-welcome', 'aria-label': 'Empty library' },
+      el('div', { class: 'library-welcome-mark', 'aria-hidden': 'true' }, icon('library')),
+      el('h2', null, 'Your library starts here'),
+      el('p', null, 'Save a title from a source, or bring your own comics. Your next chapter will be waiting here.'),
+      el('div', { class: 'library-welcome-actions' },
+        btn('Browse sources', { variant: 'accent', icon: 'compass', onClick: () => router.navigate('explore') }),
+        btn('Import comics', { variant: 'ghost', icon: 'folder', onClick: () => importLibraryComics({ files: browserFiles, router, toast }) })));
     return wrap;
   }
 
@@ -448,6 +512,8 @@ export function render(view, params) {
 
   // ---- boot ----------------------------------------------------------
 
+  updateSourceFilter();
+
   renderSkeleton();
 
   try {
@@ -459,9 +525,15 @@ export function render(view, params) {
   renderChips();
   renderGrid();
   applyTab();
+  const offLibrary = library.onChange(()=>{if(favSection.isConnected){updateSourceFilter();renderGrid();}});
+  const nativeDownloads = downloads;
+  const offDownloads = nativeDownloads?.subscribe(()=>{if(favSection.isConnected)renderGrid();});
+
+  const observer = new MutationObserver(()=>{if(!favSection.isConnected){offLibrary?.();offDownloads?.();observer.disconnect();}});
+  observer.observe(view,{childList:true});
 
   // Loading the catalogue also upgrades any saved legacy source references.
-  installedSources().then((sources) => { state.sources = sources || []; });
+  installedSources().then((sources) => { if (!favSection.isConnected) return; state.sources = sources || []; updateSourceFilter(); });
 }
 
 export default { meta, render };

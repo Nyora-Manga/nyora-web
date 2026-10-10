@@ -26,6 +26,7 @@ test('a colorizer worker update versions its request and updates the app and ser
       'web/vendor/ort/ort.min.mjs': '// Build prerequisite; inference is not run by this test.',
       'web/index.html': '<script src="/boot/migrate.js"></script><script src="/boot/theme.js"></script><script src="/app.js?v=old"></script><link href="/styles.css?v=old">',
       'web/styles.css': 'body{}',
+      'web/desktop.css': 'body{}',
       'web/sw.js': "const VERSION = 'old';",
     };
     for (const [path, content] of Object.entries(files)) await writeFile(join(dir, path), content);

@@ -27,6 +27,7 @@ const MAX_TILES = 16;
  * @param {string} routeName  the active route key
  */
 export function revealView(view, routeName) {
+  if (document.documentElement.dataset.nyoraPlatform === 'desktop') return;
   const gsap = window.gsap;
   if (!gsap || !view || prefersReducedMotion() || SKIP_ROUTES.has(routeName)) return;
 

@@ -97,7 +97,7 @@ await pruneSources(OUT);
 
 // Include standalone code: SW-only and boot-only fixes must evict stale caches.
 const releaseHash = createHash('sha256');
-for (const file of ['app.js', 'sw.js', ...BOOT]) {
+for (const file of ['app.js', 'sw.js', 'styles.css', 'desktop.css', ...BOOT]) {
   releaseHash.update(file).update(await readFile(`${OUT}/${file}`));
 }
 const id = releaseHash.digest('hex').slice(0, 8);
@@ -112,8 +112,10 @@ for (const file of BOOT) {
 html = html.replace(/\/app\.js\?v=[\w-]+/g, `/app.js?v=${id}`);
 // Version styles.css by its content hash too, so CSS edits bust the cache
 // automatically (it was pinned at a hand-bumped ?v= that got forgotten).
-const cssId = createHash('sha256').update(await readFile(`${OUT}/styles.css`)).digest('hex').slice(0, 8);
-html = html.replace(/\/styles\.css\?v=[\w-]+/g, `/styles.css?v=${cssId}`);
+for (const file of ['styles.css', 'desktop.css']) {
+  const cssId = createHash('sha256').update(await readFile(`${OUT}/${file}`)).digest('hex').slice(0, 8);
+  html = html.replace(new RegExp('/' + file.replace('.', '\\.') + '\\?v=[\\w-]+', 'g'), `/${file}?v=${cssId}`);
+}
 await writeFile(`${OUT}/index.html`, html);
 
 let sw = await readFile(`${OUT}/sw.js`, 'utf8');

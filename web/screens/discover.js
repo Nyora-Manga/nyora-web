@@ -54,7 +54,7 @@ export function render(view, _params) {
   view.append(root);
 
   const body = el('div', { class: 'discover-body' });
-  root.append(body);
+  root.append(sectionHeader('Discover'), body);
 
   load(body);
 }
@@ -94,12 +94,7 @@ async function load(body, { forceRefresh = false } = {}) {
     feed = await fetchAnilistFeed();
   } catch (err) {
     if (token !== renderToken) return;
-    body.replaceChildren(
-      errorBox("Couldn't load discovery right now."),
-      el('div', { class: 'center', style: { marginTop: '14px' } },
-        btn('Retry', { variant: 'ghost', icon: 'refresh', onClick: () => load(body, { forceRefresh: true }) }),
-      ),
-    );
+    body.replaceChildren(readingRoomDiscoveryState('error', () => load(body, { forceRefresh: true })));
     return;
   }
 
@@ -108,12 +103,7 @@ async function load(body, { forceRefresh = false } = {}) {
   const { trending } = feed;
   const anyContent = Object.values(feed).some((arr) => Array.isArray(arr) && arr.length);
   if (!anyContent) {
-    body.replaceChildren(
-      emptyState('Nothing to discover right now — check back soon.', 'trending'),
-      el('div', { class: 'center', style: { marginTop: '14px' } },
-        btn('Retry', { variant: 'ghost', icon: 'refresh', onClick: () => load(body, { forceRefresh: true }) }),
-      ),
-    );
+    body.replaceChildren(readingRoomDiscoveryState('empty', () => load(body, { forceRefresh: true })));
     return;
   }
 
@@ -264,7 +254,7 @@ async function fetchAnilistFeed() {
   try {
     return await fetchFromMangaBaka();
   } catch {
-    return EMPTY_FEED;
+    throw new Error('Recommendations could not be loaded.');
   }
 }
 
@@ -513,4 +503,17 @@ function railSkeleton(title) {
     sectionHeader(title),
     track,
   );
+}
+
+function readingRoomDiscoveryState(kind, retry) {
+  const offline=typeof navigator!=='undefined' && navigator.onLine===false;
+  const title=offline?'You’re offline':kind==='empty'?'No recommendations right now':'Recommendations couldn’t load';
+  const message=offline?'Your library and downloaded chapters are still here. Reconnect to refresh recommendations.':kind==='empty'?'Try again later, or find your next read in Sources.':'The discovery service may be temporarily unavailable. You can keep reading from your library or browse a source.';
+  return el('section',{class:'reading-room-empty'},
+    el('div',{class:'reading-room-empty-icon','aria-hidden':'true'},'✦'),
+    el('h2',null,title),el('p',null,message),
+    el('div',{class:'reading-room-empty-actions'},
+      btn('Open library',{variant:'accent',onClick:()=>router.navigate('library')}),
+      btn('Browse sources',{variant:'ghost',onClick:()=>router.navigate('explore')}),
+      btn('Retry',{variant:'ghost',icon:'refresh',onClick:retry})));
 }

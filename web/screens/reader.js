@@ -1,3 +1,4 @@
+import {chaptersForBranch, nearestSlide} from '../desktop/reader-parity.js';
 // screens/reader.js — the chapter reader (full redesign, mac/linux parity).
 //
 // Renders a chapter's pages in one of three modes and matches the desktop
@@ -227,9 +228,9 @@ export function render(view, params) {
 
   // ── teardown / keyboard ────────────────────────────────────────────────
   function onKey(e) {
-    if (e.defaultPrevented) return;
-    const tag = (e.target && e.target.tagName) || '';
-    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+    if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey || e.isComposing) return;
+    const keyTargets = e.composedPath ? e.composedPath() : [e.target];
+    if (keyTargets.some(node => node && (['INPUT', 'TEXTAREA', 'SELECT'].includes(node.tagName) || node.isContentEditable))) return;
     if ($('#modalRoot .modal-backdrop')) return;
     const rtl = mode === 'PAGED_RTL';
     switch (e.key) {
@@ -456,7 +457,7 @@ export function render(view, params) {
         }
       } catch { /* history unavailable — keep what we have */ }
     }
-    st.chapters = (details && details.chapters) || st.chapters || [];
+    st.chapters = chaptersForBranch((details && details.chapters) || st.chapters || [], st.chapterUrl);
     st.index = st.chapters.findIndex((c) => c.url === st.chapterUrl);
     if (st.index < 0) st.index = 0;
   }
@@ -498,7 +499,7 @@ export function render(view, params) {
           invert: Number(p.invert) || 0,
           palette: p.palette || '',
         };
-        if (p.readerMode && ['WEBTOON', 'PAGED', 'PAGED_RTL'].includes(p.readerMode)) mode = p.readerMode;
+        if (p.readerMode && ['WEBTOON', 'PAGED', 'PAGED_RTL', 'VERTICAL'].includes(p.readerMode)) mode = p.readerMode;
         if (p.readerFit && ['WIDTH', 'HEIGHT'].includes(p.readerFit)) fit = p.readerFit;
         if (typeof p.prefetch === 'boolean') prefetch = p.prefetch;
         if (p.webtoonWidth) webtoonWidth = clampWidth(p.webtoonWidth);
@@ -1292,7 +1293,7 @@ export function render(view, params) {
       // viewport slide. Native swipe + momentum on touch; RTL handled by dir.
       const rtl = mode === 'PAGED_RTL';
       const track = el('div', {
-        class: 'reader-paged-track' + (fit === 'HEIGHT' ? ' fit-height' : ' fit-width'),
+        class: 'reader-paged-track' + (mode === 'VERTICAL' ? ' vertical' : '') + (fit === 'HEIGHT' ? ' fit-height' : ' fit-width'),
       });
       if (rtl) track.dir = 'rtl';
       st.pages.forEach((p, i) => {
@@ -1308,7 +1309,7 @@ export function render(view, params) {
         right.addEventListener('click', (e) => { e.stopPropagation(); pageStep(rtl ? -1 : 1); });
         zones.push(left, right);
       }
-      const stage = el('div', { class: 'reader-paged' }, track, ...zones);
+      const stage = el('div', { class: 'reader-paged' + (mode === 'VERTICAL' ? ' vertical' : '') }, track, ...zones);
       // Update currentPage from whichever slide is snapped under the centre.
       let raf = null;
       track.addEventListener('scroll', () => {
@@ -1470,7 +1471,7 @@ export function render(view, params) {
     if (zoomReset) zoomReset();   // leave zoom before turning the page
     const slide = track.children[i];
     if (!slide) return;
-    slide.scrollIntoView({ behavior: smooth ? 'smooth' : 'auto', inline: 'center', block: 'nearest' });
+    slide.scrollIntoView({ behavior: smooth ? 'smooth' : 'auto', inline: 'center', block: mode === 'VERTICAL' ? 'center' : 'nearest' });
     preloadAround(i);
   }
 
@@ -1501,13 +1502,7 @@ export function render(view, params) {
   // this works identically for LTR and RTL.
   function updatePagedCurrent(track) {
     const r = track.getBoundingClientRect();
-    const mid = r.left + r.width / 2;
-    let best = st.currentPage; let bestDist = Infinity;
-    for (const slide of track.children) {
-      const sr = slide.getBoundingClientRect();
-      const d = Math.abs((sr.left + sr.width / 2) - mid);
-      if (d < bestDist) { bestDist = d; best = Number(slide.dataset.page); }
-    }
+    const best = nearestSlide(r, [...track.children].map(slide=>slide.getBoundingClientRect()), mode==='VERTICAL');
     if (best !== st.currentPage) {
       st.currentPage = best;
       if (zoomReset) zoomReset();
@@ -1681,7 +1676,7 @@ export function render(view, params) {
       $$('.reader-page', view).forEach((img) => { img.style.filter = f; });
     }
     const modeSeg = segmented(
-      [{ label: 'Standard', value: 'PAGED' }, { label: 'RTL', value: 'PAGED_RTL' }, { label: 'Webtoon', value: 'WEBTOON' }],
+      [{ label: 'Standard', value: 'PAGED' }, { label: 'RTL', value: 'PAGED_RTL' }, {label:'Vertical',value:'VERTICAL'}, { label: 'Webtoon', value: 'WEBTOON' }],
       mode, (v) => setMode(v),
     );
     const fitSeg = segmented(

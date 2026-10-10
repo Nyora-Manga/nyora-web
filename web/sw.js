@@ -29,6 +29,8 @@ const SHELL_ASSETS = [
   '/',
   '/index.html',
   '/styles.css',
+  '/desktop.css',
+  '/fonts/poppins-semibold.ttf',
   '/env.js',
   '/boot/migrate.js',
   '/boot/theme.js',

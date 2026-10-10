@@ -11,3 +11,6 @@ build/
 
 # onnxruntime runtime — fetched by scripts/fetch-ort.mjs, not committed (24 MB wasm)
 web/vendor/ort/
+
+# Browser regression evidence
+test-results/

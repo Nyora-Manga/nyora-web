@@ -29,6 +29,7 @@ let books = [];
 let folderName = '';
 
 export function render(view, _params) {
+  if (matchMedia('(min-width:761px)').matches) return renderDesktop(view);
   view.replaceChildren();
 
   const chooseBtn = btn('Choose Folder', {
@@ -43,6 +44,49 @@ export function render(view, _params) {
   } else {
     body.replaceChildren(cta(() => choose(view, body)));
   }
+}
+
+export async function selectLocalFiles(kind = 'folder') {
+  let picked;
+  if (kind === 'folder') picked = await pickDirectory();
+  else {
+    const files = await new Promise(resolve => {
+      const input = el('input', { type: 'file', accept: '.cbz,.zip', multiple: true, hidden: true });
+      const finish = files => { input.remove(); resolve(files); };
+      input.addEventListener('change', () => finish([...input.files]), { once: true });
+      input.addEventListener('cancel', () => finish([]), { once: true });
+      document.body.append(input); input.click();
+    });
+    if (files.length) picked = { name: 'Imported comics', files };
+  }
+  if (!picked) return { cancelled: true, books: [] };
+  folderName = picked.name || 'Imported comics';
+  books = await buildBooks(picked.files);
+  return { cancelled: false, books };
+}
+
+function renderDesktop(view) {
+  const body = el('div', { class: 'local-body' });
+  const status = el('p', { role: 'status' });
+  const select = async (kind, control) => {
+    control.disabled = true;
+    try { const result = await selectLocalFiles(kind); if (!result.cancelled) paint(); }
+    catch (error) { status.textContent = error.message; }
+    finally { control.disabled = false; }
+  };
+  const folder = btn('Choose folder', { variant: 'accent', icon: 'folder', onClick: () => select('folder', folder) });
+  const archive = btn('Open archive', { variant: 'ghost', onClick: () => select('archive', archive) });
+  view.replaceChildren(sectionHeader('Local', folder, archive), status, body);
+  function paint() {
+    if (!books.length) { body.replaceChildren(emptyState('Choose a folder of images or CBZ/ZIP archives to read offline.')); return; }
+    const list = el('div', { class: 'list' });
+    for (const book of books) list.append(el('div', { class: 'row-item' },
+      el('div', { class: 'row-main' }, el('div', { class: 'name' }, book.name),
+        el('div', { class: 'sub' }, book.kind === 'images' ? `${book.files.length} pages` : 'Comic archive')),
+      el('div', { class: 'row-actions' }, btn('Read', { variant: 'ghost', onClick: () => openBook(view, book) }))));
+    body.replaceChildren(list);
+  }
+  paint();
 }
 
 async function choose(view, body) {

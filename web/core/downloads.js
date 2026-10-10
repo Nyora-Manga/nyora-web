@@ -418,7 +418,9 @@ async function runJob(job) {
 }
 
 // Start queued jobs up to the concurrency limit.
+let queuePaused = false;
 function pump() {
+  if (queuePaused) return;
   const running = jobs.filter((j) => j.status === STATUS.RUNNING).length;
   let slots = clampInt(settings.maxConcurrent, 1, 5, 2) - running;
   if (slots <= 0) return;
@@ -486,6 +488,15 @@ function findIndex(id) {
 export const downloads = {
   STATUS,
   FORMATS,
+  queuePaused: () => queuePaused,
+  pause() { queuePaused = true; notify(); return { paused: true }; },
+  resume() { queuePaused = false; notify(); pump(); return { paused: false }; },
+  async retryFailed() {
+    const ids = jobs.filter(job => job.status === STATUS.FAILED).map(job => job.id);
+    let requeued = 0;
+    for (const id of ids) if ((await this.retry(id)).ok) requeued++;
+    return { requeued };
+  },
 
   // ---- settings ----
   getSettings() {

@@ -63,8 +63,8 @@ try {
     };` }));
   await page.route('https://translate.googleapis.com/**', route => route.fulfill({ json: [[['I read books.', '本を読みます', null, null]], null, 'ja'] }));
   await page.goto(base + '/#/local');
-  await page.getByRole('button', { name: 'Choose Folder', exact: true }).first().click();
-  await page.getByText('Local test book', { exact: true }).last().click();
+  await page.getByRole('button', { name: /^Choose folder$/i }).first().click();
+  await page.locator('.local-body .row-item').filter({ hasText: 'Local test book' }).getByRole('button', { name: 'Read', exact: true }).click();
   await page.waitForURL(/#\/reader\?local=/, { timeout: 5000 });
   await page.locator('.reader-view').waitFor();
   await page.waitForFunction(() => document.querySelector('img.reader-page')?.naturalWidth === 400);
@@ -82,11 +82,11 @@ try {
   await page.locator('.local-body .row-item').filter({ hasText: 'Local test book' }).waitFor();
   assert.equal(await page.evaluate(() => document.body.classList.contains('reader-active')), false);
   assert.equal(await page.evaluate(async url => { try { await fetch(url); return true; } catch { return false; } }, original), false);
-  await page.getByText('Local test book', { exact: true }).last().click();
+  await page.locator('.local-body .row-item').filter({ hasText: 'Local test book' }).getByRole('button', { name: 'Read', exact: true }).click();
   await page.locator('.reader-view').waitFor();
   await page.waitForFunction(() => document.querySelector('img.reader-page')?.naturalWidth === 400);
   await page.locator('.reader-bar.top').getByRole('button', { name: 'Back to files', exact: true }).click();
-  await page.locator('.local-body .row-item').filter({ hasText: 'Archived book' }).click();
+  await page.locator('.local-body .row-item').filter({ hasText: 'Archived book' }).getByRole('button', { name: 'Read', exact: true }).click();
   await page.waitForFunction(() => document.querySelector('img.reader-page')?.naturalWidth === 1);
   await page.locator('.tl-block').filter({ hasText: 'I read books.' }).first().waitFor();
   assert.equal(await page.evaluate(() => (localStorage.getItem('nyora.library.v1') || '').includes('local:')), false,
@@ -96,7 +96,7 @@ try {
   await page.reload();
   await page.getByText(/Reopen this book/).waitFor();
   await page.getByRole('button', { name: 'Back to files', exact: true }).click();
-  await page.getByRole('button', { name: 'Choose Folder', exact: true }).first().waitFor();
+  await page.getByRole('button', { name: /^Choose folder$/i }).first().waitFor();
   // Seed a real offline archive in the same IndexedDB store used by downloads.
   await page.evaluate(async bytes => {
     const db = await new Promise((resolve, reject) => {
@@ -120,8 +120,8 @@ try {
   assert.equal(await page.evaluate(async url => { try { await fetch(url); return true; } catch { return false; } }, downloadedUrl), false);
   // The shared reader still honors the master feature gate and paged controls.
   await page.goto(base + '/?plain-reader#/local');
-  await page.getByRole('button', { name: 'Choose Folder', exact: true }).first().click();
-  await page.getByText('Local test book', { exact: true }).last().click();
+  await page.getByRole('button', { name: /^Choose folder$/i }).first().click();
+  await page.locator('.local-body .row-item').filter({ hasText: 'Local test book' }).getByRole('button', { name: 'Read', exact: true }).click();
   await page.locator('.reader-paged-track').waitFor();
   await page.keyboard.press('ArrowRight');
   await page.waitForFunction(() => document.querySelector('.reader-paged-track')?.scrollLeft > 0);

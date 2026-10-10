@@ -44,7 +44,7 @@ const DEFAULT_PREFS = {
   gridSize: 'M',        // cover grid density: 'S' | 'M' | 'L'
   showCardTitles: true, // titles under covers in grids
   reduceMotion: false,  // dampen page/app animations
-  darkStyle: 'BLACK',   // dark theme surfaces: 'BLACK' (pure) | 'SOFT' (M3 grey)
+  darkStyle: 'SOFT',   // dark theme surfaces: 'BLACK' (pure) | 'SOFT' (M3 grey)
   uiScale: 'M',         // interface scale: 'S' | 'M' | 'L'
   navRail: false,       // desktop sidebar as an icon-only rail
   noBlur: false,        // disable backdrop blur (low-power devices)

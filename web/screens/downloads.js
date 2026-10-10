@@ -1,3 +1,4 @@
+async function downloadControlMutation(operation) {try{return await operation();}catch(error){toast(error.message || 'Download action failed.');throw error;}}
 // screens/downloads.js — download queue, settings, and offline reader.
 //
 // Backed by core/downloads.js (the real client-side download engine). The list
@@ -78,10 +79,12 @@ function buildStorageStrip() {
         sub,
       ),
     ),
-    el('div', { class: 'dl-storage-actions' }, clearDone, clearAll),
+    el('details', { class: 'dl-storage-actions reading-download-actions' }, el('summary', null, 'Manage downloads'), el('div', {class:'reading-download-menu'}, clearDone, clearAll)),
   );
   const refresh = () => {
     const c = downloads.counts();
+    node.hidden = !downloads.list().length;
+    clearDone.hidden = !downloads.list().some(job => ['COMPLETED', 'FAILED', 'CANCELLED'].includes(job.status));
     const parts = [];
     if (c.completed) parts.push(`${c.completed} chapter${c.completed === 1 ? '' : 's'}`);
     parts.push(fmtBytes(c.totalBytes));
@@ -93,47 +96,56 @@ function buildStorageStrip() {
 
 // ── Queue list (grouped: In progress / Completed) ────────────────────────────
 
+const pendingDownloadControls = new Set();
+function replaceDownloadQueue(host, fragment) {
+  const focused = document.activeElement;
+  const rowId = host.contains(focused) ? focused.closest('[data-download-id]')?.dataset.downloadId : null;
+  const action = host.contains(focused) ? focused.dataset.downloadQueueAction : null;
+  const label = focused?.getAttribute('aria-label') || focused?.getAttribute('title');
+  host.replaceChildren(fragment);
+  const target = action ? [...host.querySelectorAll('[data-download-queue-action]')].find(node => node.dataset.downloadQueueAction === action)
+    : rowId ? [...host.querySelectorAll('[data-download-id]')].find(node => node.dataset.downloadId === rowId)?.querySelectorAll('button') : null;
+  const button = target && typeof target.focus === 'function' ? target : target ? [...target].find(node => (node.getAttribute('aria-label') || node.getAttribute('title')) === label) : null;
+  if(button && !button.disabled) button.focus({preventScroll:true});
+}
 function paintQueue(view, host) {
-  const rows = downloads.list();
-  if (!rows.length) {
-    host.replaceChildren(emptyState('No downloads yet — open a manga and tap Download.', 'download'));
-    return;
+  const rows = downloads.list(), paused = downloads.queuePaused();
+  const fragment = document.createDocumentFragment();
+  const control = (label,key,operation,onSuccess) => {
+    const button = btn(label,{variant:'ghost',class:'btn-sm',onClick:async()=>{
+      if(pendingDownloadControls.has(key))return;
+      pendingDownloadControls.add(key); paintQueue(view,host);
+      try { const result = await downloadControlMutation(operation); onSuccess?.(result); }
+      catch {} // The mutation wrapper displays the error.
+      finally { pendingDownloadControls.delete(key); if(host.isConnected)paintQueue(view,host); }
+    }});
+    button.dataset.downloadQueueAction=key; button.disabled=pendingDownloadControls.has(key); return button;
+  };
+  const ordinaryFailed=rows.filter(job=>job.status==='FAILED' && job.errorCode!=='SOURCE_VERIFICATION_REQUIRED');
+  const controls=el('div',{class:'download-queue-controls'},control(paused?'Resume queue':'Pause queue','pause',()=>paused?downloads.resume():downloads.pause()));
+  if(ordinaryFailed.length)controls.append(control('Retry failed ('+ordinaryFailed.length+')','retry-failed',()=>downloads.retryFailed(),result=>toast(result.requeued?'Queued '+result.requeued+' failed chapters':'No failed chapters to retry')));
+  if(rows.length)fragment.append(controls,el('p',{class:'download-queue-guidance',role:'status'},paused?'Queue paused. Current chapters finish; queued chapters wait until you resume.':'Pausing lets current chapters finish and holds queued chapters.'));
+  if(!rows.length) {
+    const browse = btn('Browse library', {variant:'accent', onClick:()=>router.navigate('library')});
+    browse.dataset.downloadQueueAction = 'browse-library';
+    fragment.append(el('section', {class:'reading-room-empty'},
+      el('div', {class:'reading-room-empty-icon', 'aria-hidden':'true'}, '↓'),
+      el('h2', null, 'Ready for offline reading'),
+      el('p', null, 'Download chapters from a title in your library. They’ll be ready here when you need them.'),
+      browse));
   }
-  const active = rows.filter((r) => ACTIVE.has(r.status));
-  const finished = rows.filter((r) => !ACTIVE.has(r.status));
-  const frag = document.createDocumentFragment();
-
-  if (active.length) {
-    const cancelAll = btn(`Cancel all (${active.length})`, {
-      variant: 'ghost', class: 'btn-danger btn-sm', icon: 'close',
-      onClick: () => { downloads.cancelAll(); toast('Cancelling downloads'); },
-    });
-    frag.appendChild(sectionHeader(`In progress (${active.length})`, cancelAll));
-    const list = el('div', { class: 'list' });
-    for (const job of active) list.appendChild(downloadRow(view, job));
-    frag.appendChild(list);
-  }
-
-  if (finished.length) {
-    const savable = finished.filter((r) => r.status === 'COMPLETED' && r.offline);
-    const actions = [];
-    if (savable.length > 1) {
-      actions.push(btn('Save all', {
-        variant: 'ghost', class: 'btn-sm', icon: 'download',
-        onClick: async () => {
-          toast('Bundling…');
-          const res = await downloads.saveBundle(savable.map((r) => r.id), 'nyora-downloads');
-          toast(res.ok ? `Saved ${res.count} chapters` : 'Nothing to save');
-        },
-      }));
+  for(const [status,title] of [['RUNNING','Running'],['QUEUED',paused?'Queued · paused':'Queued'],['FAILED','Failed'],['COMPLETED','Completed'],['CANCELLED','Cancelled']]) {
+    const group=rows.filter(job=>job.status===status);if(!group.length)continue;
+    const actions=[];
+    if(status==='RUNNING'||status==='QUEUED') {
+      const active=rows.filter(job=>ACTIVE.has(job.status));
+      if(status==='RUNNING'||!rows.some(job=>job.status==='RUNNING'))actions.push(control('Cancel all ('+active.length+')','cancel-all',()=>downloads.cancelAll(),()=>toast('Downloads cancelled')));
     }
-    frag.appendChild(sectionHeader(`Completed (${finished.length})`, ...actions));
-    const list = el('div', { class: 'list' });
-    for (const job of finished) list.appendChild(downloadRow(view, job));
-    frag.appendChild(list);
+    if(status==='COMPLETED' && group.filter(job=>job.offline).length>1)actions.push(control('Save all','save-all',()=>downloads.saveBundle(group.filter(job=>job.offline).map(job=>job.id)),result=>toast(result.status==='cancelled'?'Export cancelled':result.ok?'Saved '+result.count+' chapters':'Nothing to save')));
+    fragment.append(sectionHeader(title+' ('+group.length+')',...actions));
+    const list=el('div',{class:'list'});for(const job of group)list.append(downloadRow(view,job));fragment.append(list);
   }
-
-  host.replaceChildren(frag);
+  replaceDownloadQueue(host,fragment);
 }
 
 function downloadRow(view, job) {
@@ -149,12 +161,13 @@ function downloadRow(view, job) {
 
   if (status === 'RUNNING' || status === 'QUEUED') {
     const determinate = status === 'RUNNING' && total > 0;
-    main.appendChild(el('div', { class: determinate ? 'progress' : 'progress indeterminate' },
+    const held = status === 'QUEUED' && downloads.queuePaused();
+    main.appendChild(el('div', { class: held ? 'progress queue-held' : determinate ? 'progress' : 'progress indeterminate' },
       el('span', determinate ? { style: { width: `${pct}%` } } : null)));
     main.appendChild(el('div', { class: 'sub dl-meta' },
       status === 'RUNNING'
         ? (total > 0 ? `${done} / ${total} pages · ${pct}%` : 'Fetching pages…')
-        : 'Queued'));
+        : (downloads.queuePaused() ? 'Queued · paused' : 'Queued')));
   } else if (status === 'COMPLETED') {
     main.appendChild(el('div', { class: 'sub dl-meta' },
       `${num(job.completedPages)} pages · ${fmtBytes(job.bytes)}`
@@ -187,7 +200,7 @@ function downloadRow(view, job) {
     actions.appendChild(iconBtn('trash', () => { downloads.remove(job.id); }, 'Remove'));
   }
 
-  return el('div', { class: 'row-item' }, main, actions);
+  return el('div', { class: 'row-item', 'data-download-id': job.id }, main, actions);
 }
 
 // ── Offline reader ──────────────────────────────────────────────────────────

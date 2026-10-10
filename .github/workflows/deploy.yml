@@ -49,6 +49,14 @@ jobs:
         run: |
           npm run build
 
+      - name: Install browser for UI regression checks
+        run: npx playwright install --with-deps chromium
+
+      - name: Check desktop UI and responsive browser behavior
+        env:
+          CHROMIUM_CHANNEL: chromium
+        run: npm run test:desktop
+
       # Bake the Discover feed into dist/ so the cluster serves it as a static
       # file — a first-ever visitor gets content same-origin instead of waiting
       # on a cross-origin AniList call. Runs AFTER build (build wipes dist/).

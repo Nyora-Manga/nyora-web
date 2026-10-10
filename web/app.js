@@ -1,3 +1,4 @@
+import { mountBrowserDesktop } from './desktop/browser-shell.js';
 // Nyora Web — app shell bootstrap + router dispatch.
 //
 // router.start() only fires the onChange listener with the parsed route; it does
@@ -173,7 +174,8 @@ function dispatch(route) {
 function syncNav(name) {
   const items = document.querySelectorAll('#sidebar [data-route]');
   for (const item of items) {
-    const on = item.getAttribute('data-route') === name;
+    const itemRoute = item.getAttribute('data-route');
+    const on = itemRoute === name || (itemRoute === 'library' && document.documentElement.dataset.nyoraPlatform === 'desktop' && ['history','bookmarks','stats'].includes(name));
     item.classList.toggle('active', on);
     if (on) item.setAttribute('aria-current', 'page'); else item.removeAttribute('aria-current');
   }
@@ -238,92 +240,6 @@ function buildSidebar() {
     }
   }
   sidebar.replaceChildren(...children);
-}
-
-// Desktop web uses the same focused navigation as the Electron client. Keep
-// the original grouped links in the DOM for the mobile drawer, where they are
-// still useful; desktop gets a compact primary rail plus Settings at the foot.
-function buildDesktopShell() {
-  const sidebar = $('#sidebar');
-  const topbar = $('#topbar');
-  if (!sidebar || !topbar) return;
-  document.body.classList.add('web-desktop-shell');
-  const desktopViewport = window.matchMedia('(min-width: 761px)');
-  const syncDesktopStyles = () => {
-    if (desktopViewport.matches) document.documentElement.dataset.nyoraPlatform = 'desktop';
-    else delete document.documentElement.dataset.nyoraPlatform;
-  };
-  syncDesktopStyles();
-  desktopViewport.addEventListener?.('change', syncDesktopStyles);
-
-  const nav = el('nav', { class: 'web-desktop-nav', 'aria-label': 'Main navigation' });
-  const destinations = [
-    ['library', 'Library', 'heart'], ['discover', 'Discover', 'home'],
-    ['explore', 'Sources', 'compass'], ['updates', 'Updates', 'bell'],
-    ['downloads', 'Downloads', 'download'], ['local', 'Local files', 'folder'],
-  ];
-  for (const [key, label, glyph] of destinations) {
-    const item = el('a', {
-      class: 'nav-item', 'data-route': key, href: `#/${key}`,
-      'aria-label': label, title: label,
-      onClick: () => document.body.classList.remove('nav-open'),
-    }, icon(glyph), el('span', null, label));
-    nav.append(item);
-  }
-  const footer = el('div', { class: 'web-desktop-footer' });
-  const settings = el('a', {
-    class: 'nav-item', 'data-route': 'settings', href: '#/settings',
-    'aria-label': 'Settings', title: 'Settings',
-  }, icon('settings'), el('span', null, 'Settings'));
-  const collapse = el('button', {
-    class: 'web-sidebar-collapse', type: 'button',
-    title: 'Collapse sidebar', 'aria-label': 'Collapse sidebar',
-    onClick: () => store.set({ navRail: !store.get().navRail }),
-  }, icon('panel'));
-  footer.append(settings, collapse);
-  sidebar.append(nav, footer);
-  const brand = sidebar.querySelector('.brand');
-  if (brand) brand.onclick = () => router.navigate('library');
-
-  const context = el('div', { class: 'web-desktop-context', 'aria-live': 'polite' });
-  const isMac = /Mac|iPhone|iPad/.test(navigator.platform || '');
-  const search = el('button', {
-    class: 'web-desktop-search', type: 'button',
-    'aria-label': 'Search manga',
-    onClick: () => router.navigate('search'),
-  }, icon('search'), el('span', null, 'Search manga'), el('kbd', null, isMac ? '⌘ K' : 'Ctrl K'));
-  const sourceBrowser = el('button', {
-    class: 'btn btn-ghost web-desktop-browser', type: 'button',
-    onClick: () => router.navigate('browser'),
-  }, 'Source catalog');
-  topbar.prepend(context);
-  topbar.append(sourceBrowser, search);
-
-  const titles = {
-    library: 'Library', discover: 'Discover', explore: 'Sources', updates: 'Updates',
-    downloads: 'Downloads', local: 'Local files', settings: 'Settings',
-    search: 'Search', browser: 'Source browser', history: 'History',
-    bookmarks: 'Bookmarks', stats: 'Reading statistics', details: 'Manga details',
-    reader: 'Reader',
-  };
-  const update = () => {
-    const route = router.current().name;
-    context.textContent = titles[route] || 'Nyora';
-    sourceBrowser.hidden = route !== 'explore';
-    search.hidden = route === 'search' || route === 'details' || route === 'reader';
-    collapse.setAttribute('aria-expanded', String(!store.get().navRail));
-    collapse.title = store.get().navRail ? 'Expand sidebar' : 'Collapse sidebar';
-    collapse.setAttribute('aria-label', collapse.title);
-  };
-  router.onChange(update);
-  store.subscribe(update);
-  update();
-  window.addEventListener('keydown', (event) => {
-    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
-      event.preventDefault();
-      router.navigate('search');
-    }
-  });
 }
 
 function buildMobileNav() {
@@ -605,13 +521,13 @@ function setupPullToRefresh() {
 store.applyTheme();
 buildSidebar();
 buildMobileNav();
-buildDesktopShell();
 buildTabbar();
 wireTopbar();
 setupInstallPrompt();
 setupPullToRefresh();
 registerSW();
 router.onChange(dispatch);
+mountBrowserDesktop({ router, store, buildSidebar, syncNav, render: dispatch });
 
 // First-run welcome / start screen (sign in with Google, continue as guest,
 // restore from backup). Show it BEFORE any main content renders so the app shell
@@ -621,9 +537,9 @@ if (shouldShowWelcome()) {
   // Genuine first run — the welcome screen is the introduction, so record the
   // version rather than stacking a "what's new" dialog on top of it.
   markChangelogSeen();
-  showWelcome(() => router.start(routes, 'discover'));
+  showWelcome(() => router.start(routes, matchMedia('(min-width:761px)').matches ? 'library' : 'discover'));
 } else {
-  router.start(routes, 'discover');
+  router.start(routes, matchMedia('(min-width:761px)').matches ? 'library' : 'discover');
   // Existing installs have no stored version, so this fires once for people
   // already using the app. Wait for the splash to clear so it doesn't animate
   // in behind it.

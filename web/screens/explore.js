@@ -1,3 +1,5 @@
+import { openSourceFilters } from '../desktop/source-filters.js';
+import { filterLabel } from '../desktop/source-filter-state.js';
 // screens/explore.js — android-style Explore.
 //
 // Landing (default): a universal search field, a 2x2 quick-actions card
@@ -22,7 +24,7 @@ import {
 } from '../core/ui.js';
 import { store, router } from '../core/store.js';
 
-export const meta = { title: 'Explore', nav: true, icon: 'compass', order: 0 };
+export const meta = { title: 'Sources', nav: true, icon: 'compass', order: 0 };
 
 const LAST_SOURCE_KEY = 'nyora.explore.lastSource';
 const MOBILE_MQ = '(max-width: 760px)';
@@ -53,9 +55,12 @@ export function render(view, params) {
     sourcesLoading: true,
     sourcesError: null,
     filter: '',
+    pinnedOnly: false,
     lang: 'all',
     showNsfw: !!prefs.showNsfw,
     mode: 'POPULAR',
+    browseFilters: [],
+    browseRequestPage: 1,
     query: '',
     entries: [],
     page: 1,
@@ -70,9 +75,10 @@ export function render(view, params) {
   const wantSourceId = params && params.source ? String(params.source) : null;
   if (wantSourceId) {
     state.screen = 'browse';
-    const hit = exploreCache && exploreCache.sourceId === wantSourceId && exploreCache.entries.length;
+    const hit = exploreCache && exploreCache.sourceId === wantSourceId;
     state.mode = hit ? exploreCache.mode : 'POPULAR';
     state.query = hit ? exploreCache.query : '';
+    state.browseFilters = hit ? structuredClone(exploreCache.browseFilters || []) : [];
     // Keep the source object if we already have it (back-nav); else resolve it
     // once the source list loads (reload / deep link).
     if (!(store.source && store.source.id === wantSourceId)) store.source = null;
@@ -90,7 +96,7 @@ export function render(view, params) {
   function syncExploreCache() {
     if (state.screen === 'browse' && store.source) {
       exploreCache = {
-        sourceId: store.source.id, mode: state.mode, query: state.query,
+        sourceId: store.source.id, mode: state.mode, query: state.query, browseFilters: structuredClone(state.browseFilters),
         entries: state.entries.slice(), page: state.page, hasNext: state.hasNext,
       };
     }
@@ -184,53 +190,43 @@ export function render(view, params) {
   }
 
   function sourcesSection() {
-    const wrap = el('div', { class: 'explore-sources' });
-    const { el: langSel, langCount } = buildLangSelect(renderLanding);
-    const actions = [btn('Catalog', { variant: 'ghost', icon: 'download', onClick: openExtensions })];
-    if (langCount > 1) actions.unshift(langSel);
-    wrap.appendChild(sectionHeader('Manga sources', ...actions));
-
+    const wrap = el('div', { class: 'explore-sources reading-room-sources' });
     const body = el('div', { class: 'explore-sources-body' });
-    wrap.appendChild(body);
-
-    if (state.sourcesLoading) {
-      body.appendChild(el('div', { class: 'center', style: { padding: '32px 0' } }, spinner()));
-      return wrap;
-    }
-    if (state.sourcesError) {
-      body.appendChild(errorBox(state.sourcesError));
-      body.appendChild(el('div', { class: 'center', style: { padding: '8px 0 0' } },
-        btn('Retry', { variant: 'ghost', icon: 'refresh', onClick: () => loadSources() })));
-      return wrap;
-    }
-
-    const installed = installedVisible();
-    if (!installed.length) {
-      body.appendChild(emptyState('No sources installed yet.', 'compass'));
-      body.appendChild(el('div', { class: 'center', style: { padding: '4px 0 0' } },
-        btn('Open catalog', { variant: 'accent', icon: 'download', onClick: openExtensions })));
-      return wrap;
-    }
-
-    // Apply the language filter to the tiles (options/counts above stay built
-    // from the full installed set so every language remains selectable).
-    const shown = state.lang === 'all'
-      ? installed
-      : installed.filter((s) => (s.lang || s.locale || '').toLowerCase() === state.lang);
-    if (!shown.length) {
-      body.appendChild(emptyState(`No ${langLabel({ lang: state.lang })} sources installed.`, 'compass'));
-      return wrap;
-    }
-
-    const byName = (a, b) => (a.name || '').toLowerCase().localeCompare((b.name || '').toLowerCase());
-    const ordered = shown.slice().sort((a, b) => {
-      const p = (b.isPinned ? 1 : 0) - (a.isPinned ? 1 : 0);
-      return p !== 0 ? p : byName(a, b);
+    const count = el('span', { class: 'reading-source-count', role:'status', 'aria-live':'polite' });
+    const search = el('input', {
+      class:'input reading-source-search', type:'search', placeholder:'Search sources',
+      'aria-label':'Search sources', value:state.filter,
+      onInput:event=>{state.filter=event.target.value;paintSources();},
     });
-
-    const grid = el('div', { class: 'source-grid' });
-    for (const s of ordered) grid.appendChild(sourceTile(s));
-    body.appendChild(grid);
+    const { el:langSel, langCount } = buildLangSelect(renderLanding);
+    const pinned = btn('Pinned only', {variant:'ghost',onClick:()=>{
+      state.pinnedOnly=!state.pinnedOnly;
+      pinned.setAttribute('aria-pressed', String(state.pinnedOnly));
+      paintSources();
+    }});
+    pinned.setAttribute('aria-pressed', String(!!state.pinnedOnly));
+    wrap.append(sectionHeader('Sources', btn('Source catalog', {variant:'ghost', onClick:openExtensions})),
+      el('p', {class:'reading-room-intro'}, 'Find a source, then explore its collection. Pin your favourites to keep them close.'),
+      el('div', {class:'reading-source-toolbar'}, search, langCount>1?langSel:null, pinned), count, body);
+    function paintSources() {
+      body.replaceChildren();
+      count.textContent='';
+      if(state.sourcesLoading){body.append(el('div',{class:'center',style:{padding:'32px 0'}},spinner()));return;}
+      if(state.sourcesError){body.append(errorBox(state.sourcesError),btn('Retry',{variant:'ghost',onClick:()=>loadSources()}));return;}
+      if(!installedVisible().length){body.append(emptyState('No sources installed yet.','compass'),btn('Open catalog',{variant:'accent',onClick:openExtensions}));return;}
+      const shown=filteredSources().filter(source=>!state.pinnedOnly || source.isPinned);
+      count.textContent=shown.length+' source'+(shown.length===1?'':'s');
+      if(!shown.length){body.append(emptyState('No sources match these filters. Try another name or language.','compass'));return;}
+      const byName=(a,b)=>(a.name||'').localeCompare(b.name||'');
+      for(const [label,group] of [['Pinned sources',shown.filter(source=>source.isPinned)],['All sources',shown.filter(source=>!source.isPinned)]]){
+        if(!group.length)continue;
+        body.append(el('h2',{class:'reading-source-group'},label));
+        const grid=el('div',{class:'source-grid'});
+        for(const source of group.sort(byName))grid.append(sourceTile(source));
+        body.append(grid);
+      }
+    }
+    paintSources();
     return wrap;
   }
 
@@ -243,7 +239,7 @@ export function render(view, params) {
       role: 'button', tabindex: '0',
       title: src.name || 'Source',
       onClick: () => selectSource(src),
-      onKeydown: (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); selectSource(src); } },
+      onKeydown: (e) => { if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); selectSource(src); } },
     },
       pinBtn,
       medallion(src, 'source-tile-badge' + (src.isPinned ? ' pinned' : '')),
@@ -378,12 +374,12 @@ export function render(view, params) {
   function openExtensions() {
     const listWrap = el('div', { class: 'list ext-list' });
     const searchInput = el('input', {
-      class: 'field ext-search', type: 'search', placeholder: 'Search extensions…',
+      class: 'field ext-search', type: 'search', placeholder: 'Search sources…', 'aria-label': 'Search source catalog',
     });
     let catLang = 'all';
     let langSelect = null; // menuSelect trigger, mounted in the toolbar once ≥2 languages are known
     const toolbar = el('div', { class: 'ext-toolbar' }, searchInput);
-    modal({ title: 'Catalog', body: el('div', { class: 'ext-sheet' }, toolbar, listWrap) });
+    modal({ title: 'Source catalog', body: el('div', { class: 'ext-sheet' }, toolbar, listWrap) });
 
     let entries = [];
     let extToken = 0;
@@ -515,8 +511,15 @@ export function render(view, params) {
     if (!browsePane) return;
     browsePane.replaceChildren();
     browsePane.appendChild(browseHeader());
+    if (state.browseFilters.length) browsePane.appendChild(el('div', {class:'browse-filter-summary', 'aria-label':'Applied filters'},
+      ...state.browseFilters.map(item=>el('span', null,
+        item.name === 'Tags' ? item.value.split(',').length + ' genres included' :
+        item.name === 'Excluded tags' ? item.value.split(',').length + ' genres excluded' :
+        filterLabel(item.name) + ': ' + item.value.split(',').map(filterLabel).join(' · '))),
+      btn('Clear filters', {variant:'ghost', onClick:()=>applySourceFilters([],state.query)})));
 
-    if (state.mode === 'SEARCH') {
+
+    if (state.mode === 'SEARCH' && !state.browseFilters.length) {
       const input = el('input', {
         class: 'field browse-search', type: 'search', placeholder: 'Search this source…', value: state.query,
         onKeydown: (e) => {
@@ -561,10 +564,15 @@ export function render(view, params) {
       pill,
       el('div', { class: 'browse-head-actions' },
         segmented(
-          [{ label: 'Popular', value: 'POPULAR' }, { label: 'Latest', value: 'LATEST' }, { label: 'Search', value: 'SEARCH' }],
+          [{ label: 'Popular', value: 'POPULAR' }, { label: 'Latest', value: 'LATEST' }, { label: state.browseFilters.length ? 'Filtered' : 'Search', value: 'SEARCH' }],
           state.mode,
-          (m) => { if (m === state.mode) return; state.mode = m; state.entries = []; state.browseError = null; loadBrowse(1); renderBrowse(); },
+          (m) => { if (m === state.mode) return; state.mode = m; state.browseFilters = []; state.entries = []; state.browseError = null; loadBrowse(1); renderBrowse(); },
         ),
+        btn(state.browseFilters.length ? 'Filter & sort (' + state.browseFilters.length + ')' : 'Filter & sort', {
+          variant: state.browseFilters.length ? 'accent' : 'ghost',
+          onClick:()=>{ if(store.source) openSourceFilters({el,btn,modal,api,source:store.source,
+            filters:state.browseFilters,query:state.mode==='SEARCH'?state.query:'',onApply:applySourceFilters}); }
+        }),
         iconBtn('refresh', () => loadBrowse(1, true), 'Refresh'),
       ),
     );
@@ -574,7 +582,7 @@ export function render(view, params) {
     body.replaceChildren();
 
     // Search mode with no query yet -> a gentle prompt, not a void.
-    if (state.mode === 'SEARCH' && !state.query && !state.browseLoading && !state.entries.length && !state.browseError) {
+    if (state.mode === 'SEARCH' && !state.query && !state.browseFilters.length && !state.browseLoading && !state.entries.length && !state.browseError) {
       body.appendChild(emptyState('Type above and press Enter to search.', 'search'));
       return;
     }
@@ -651,24 +659,36 @@ export function render(view, params) {
     }
   }
 
+  function applySourceFilters(filters, query) {
+    if (!root.isConnected) return;
+    state.browseFilters = structuredClone(filters);
+    state.query = query;
+    state.mode = filters.length || query ? 'SEARCH' : 'POPULAR';
+    state.entries = []; state.page = 1; state.hasNext = false;
+    syncExploreCache();
+    loadBrowse(1);
+  }
+
   async function loadBrowse(page, force = false) {
     const src = store.source;
     if (!src) return;
-    if (state.mode === 'SEARCH' && !state.query) { renderBrowse(); return; }
+    if (state.mode === 'SEARCH' && !state.query && !state.browseFilters.length) { ++state.browseToken; state.browseLoading=false; state.hasNext=false; syncExploreCache(); renderBrowse(); return; }
     const token = ++state.browseToken;
-    state.page = page;
     state.browseLoading = true;
+    state.browseRequestPage = page;
+    if (page === 1) state.hasNext = false;
     state.browseError = null;
     if (page === 1 && !force) state.entries = [];
     renderBrowse();
     try {
       let res;
       if (state.mode === 'LATEST') res = await api.latest(src.id, page);
-      else if (state.mode === 'SEARCH') res = await api.search(src.id, state.query, page);
+      else if (state.mode === 'SEARCH') res = await api.search(src.id, state.query, page, state.browseFilters);
       else res = await api.popular(src.id, page);
       if (token !== state.browseToken) return;
       const got = (res && res.entries) || [];
       state.entries = page === 1 ? got : state.entries.concat(got);
+      state.page = page;
       state.hasNext = !!(res && res.hasNextPage);
       state.browseLoading = false;
       renderBrowse();

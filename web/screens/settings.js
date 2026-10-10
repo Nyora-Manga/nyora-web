@@ -1,3 +1,31 @@
+export function render(view, params) {
+  if (!matchMedia('(min-width:761px)').matches) return renderMobile(view, params);
+  view.replaceChildren();
+  const s=params && params.s;
+  const sub=params && params.sub;
+  const section=SECTIONS.find(item=>item.id===(s || 'appearance'));
+  if(!section){router.navigate('settings');return;}
+  view.append(sectionHeader('Settings'));
+  const list=el('nav',{class:'settings-nav reading-settings-categories','aria-label':'Settings categories'});
+  for(const item of SECTIONS){
+    const row=navRow(item.name,item.sub,item.icon,()=>router.navigate('settings',{s:item.id}));
+    if(item.id===section.id){row.classList.add('is-current');row.setAttribute('aria-current','page');}
+    list.append(row);
+  }
+  const detail=el('div',{class:'reading-settings-detail'});
+  const layout=el('div',{class:'reading-settings-layout'+(s?' has-selection':' is-hub')},list,detail);
+  view.append(layout);
+  if(s==='experimental' && sub && EXP_CHILDREN[sub]){
+    const child=EXP_CHILDREN[sub];
+    const back=iconBtn('back',()=>router.navigate('settings',{s:'experimental'}),'Back to Experimental');
+    detail.append(el('div',{class:'settings-subheader reading-settings-nested'},back,el('h1',null,child.name)));
+    if(store.get().experimental!==true)detail.append(el('p',{class:'exp-hint'},'Enable experimental features to use this.'));
+    detail.append(child.build());return;
+  }
+  const back=iconBtn('back',()=>router.navigate('settings'),'Back to settings');
+  detail.append(el('div',{class:'settings-subheader'},back,el('h1',null,section.name)),section.build());
+}
+
 // screens/settings.js — client-side preferences for the Nyora web SPA.
 
 import library from '../core/library.js';
@@ -119,7 +147,7 @@ const EXP_CHILDREN = {
   colorization: { name: 'Colorization', sub: 'AI-colour black-and-white manga on-device', icon: 'droplet', build: buildExpColorization },
 };
 
-export function render(view, params) {
+function renderMobile(view, params) {
   view.replaceChildren();
   const s = params && params.s;
   const sub = params && params.sub;
@@ -158,6 +186,11 @@ export function render(view, params) {
 function buildAppearance() {
   const prefs = store.get();
   const section = el('section', { class: 'settings-section' });
+  if (matchMedia('(min-width:761px)').matches) section.append(el('aside', {class:'reading-appearance-preview', 'aria-label':'Live appearance preview'},
+    el('span', {class:'reading-preview-marker', 'aria-hidden':'true'}),
+    el('span', {class:'reading-preview-label'}, 'LIVE PREVIEW'),
+    el('h3', null, 'Your reading room'),
+    el('p', null, 'A little space for your next chapter.')));
   section.append(settingRow('Theme', 'System follows your OS setting and switches live.',
     segmented([{ value: 'SYSTEM', label: 'System' }, { value: 'DARK', label: 'Dark' }, { value: 'LIGHT', label: 'Light' }],
       ['SYSTEM', 'LIGHT', 'DARK'].includes(prefs.appearance) ? prefs.appearance : 'DARK',
@@ -271,7 +304,7 @@ function buildReader() {
   const prefs = store.get();
   const r = prefs.reader || {};
   const section = el('section', { class: 'settings-section' });
-  section.append(settingRow('Default reading mode', 'New manga open in this mode; each title remembers its own override.', segmented([{ value: 'WEBTOON', label: 'Webtoon' }, { value: 'PAGED', label: 'Paged' }, { value: 'PAGED_RTL', label: 'Paged RTL' }], r.mode, (v) => store.set({ reader: { mode: v } }))));
+  section.append(settingRow('Default reading mode', 'New manga open in this mode; each title remembers its own override.', segmented([{ value: 'WEBTOON', label: 'Webtoon' }, { value: 'PAGED', label: 'Paged' }, { value: 'PAGED_RTL', label: 'Paged RTL' }, {value:'VERTICAL',label:'Vertical pages'}], r.mode, (v) => store.set({ reader: { mode: v } }))));
   section.append(settingRow('Image fit', null, segmented([{ value: 'WIDTH', label: 'Width' }, { value: 'HEIGHT', label: 'Height' }], r.fit, (v) => store.set({ reader: { fit: v } }))));
   section.append(settingRow('Prefetch next chapter', 'Preload the next chapter’s pages for seamless chapter turns.', switchToggle(r.prefetch, (v) => store.set({ reader: { prefetch: v } }))));
 
@@ -594,66 +627,17 @@ function buildBackupData() {
 }
 
 function buildSync() {
-  const section = el('section', { class: 'settings-section' });
-
-  const statusText = el('span', { class: 'hint' }, 'Checking...');
-  const actions = el('div', { class: 'col', style: { gap: '10px', width: '100%' } });
-  section.append(settingRow('Status', 'Your Nyora account keeps favourites, history and bookmarks in sync across all your devices — Android, iOS, desktop, terminal and the web.', statusText));
-  section.append(actions);
-
-  const authAndSync = async (register) => {
-    const email = emailInput.value.trim();
-    const password = passwordInput.value;
-    if (!email || !password) { toast('Enter your email and password'); return; }
-    await runSync(register ? 'Creating account...' : 'Signing in...', async () => {
-      // Create Account → migrate this device's (guest) library up to the new
-      // cloud account. Sign In → fetch the account's library down from the cloud.
-      if (register) await sync.registerAndMigrate(email, password);
-      else await sync.signInAndFetch(email, password);
-    }, register ? 'Library migrated to your account' : 'Cloud library ready', paint, true);
-  };
-
-  const emailInput = el('input', {
-    class: 'input', type: 'email', autocomplete: 'email',
-    placeholder: 'Email', style: { width: '100%' },
-  });
-  const passwordInput = el('input', {
-    class: 'input', type: 'password', autocomplete: 'current-password',
-    placeholder: 'Password', style: { width: '100%' },
-  });
-  passwordInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') authAndSync(false); });
-
-  const paint = () => {
-    const st = sync.status();
-    statusText.textContent = !st.isConfigured
-      ? 'Not configured'
-      : st.isAuthenticated
-        ? `Signed in${st.email ? ` (${st.email})` : ` (${st.userId.slice(0, 8)})`}`
-        : 'Signed out';
-    actions.replaceChildren();
-    if (st.isAuthenticated) {
-      actions.append(el('div', { class: 'row', style: { flexWrap: 'wrap', gap: '10px' } },
-        btn('Sync Now', { icon: 'refresh', onClick: () => runSync('Syncing...', () => sync.syncNow(), 'Cloud sync complete', paint) }),
-        btn('Restore', { icon: 'download', variant: 'ghost', onClick: () => runSync('Restoring...', () => sync.restoreFromCloud(), 'Cloud library restored', paint, true) }),
-        btn('Sign Out', { variant: 'ghost', onClick: () => { sync.signOut(); paint(); toast('Signed out'); } }),
-      ));
-    } else {
-      emailInput.value = '';
-      passwordInput.value = '';
-      actions.append(
-        el('div', { class: 'field', style: { margin: 0 } }, emailInput),
-        el('div', { class: 'field', style: { margin: 0 } }, passwordInput),
-        el('div', { class: 'row', style: { flexWrap: 'wrap', gap: '10px' } },
-          btn('Sign In', { onClick: () => authAndSync(false) }),
-          btn('Create Account', { variant: 'ghost', onClick: () => authAndSync(true) }),
-        ),
-      );
+    const section=el('section',{class:'settings-section desktop-sync'}),status=el('p',{class:'desktop-sync-status',role:'status'});
+    async function run(action){for(const button of section.querySelectorAll('button'))button.disabled=true;status.textContent='Working…';try{await action();await draw();}catch(error){status.textContent=error.message;for(const button of section.querySelectorAll('button'))button.disabled=false;}}
+    async function draw(){const account=sync.status();section.replaceChildren(el('p',{class:'desktop-sync-intro'},account.isAuthenticated?'Merge your library with your account whenever you choose.':'Sign in to sync your library across devices.'),status);status.textContent='';
+      const note=el('p',{class:'desktop-sync-note'},'Your library syncs across devices. Offline files and website sessions stay in this browser.');
+      if(account.isAuthenticated){section.append(el('p',{class:'desktop-sync-account'},'Signed in as '+account.email),el('div',{class:'desktop-sync-actions'},btn('Merge and sync',{variant:'accent',onClick:()=>run(async()=>{await sync.syncNow();toast('Library synced');})}),btn('Sign out',{variant:'ghost',onClick:()=>run(()=>sync.signOut())})),note);return;}
+      const email=el('input',{class:'input',type:'email',autocomplete:'email',placeholder:'Email','aria-label':'Email',required:true}),password=el('input',{class:'input',type:'password',autocomplete:'current-password',placeholder:'Password','aria-label':'Password',required:true});
+      const form=el('form',{class:'desktop-sync-form'},field('Email',email),field('Password',password),el('div',{class:'desktop-sync-actions'},btn('Sign in',{type:'submit',variant:'accent'}),btn('Create account',{variant:'ghost',onClick:()=>{if(form.reportValidity())run(async()=>{try{await sync.registerAndMigrate(email.value.trim(),password.value);}finally{password.value='';}});}})));
+      form.addEventListener('submit',event=>{event.preventDefault();run(async()=>{try{await sync.signInAndFetch(email.value.trim(),password.value);}finally{password.value='';}});});section.append(form,note);
     }
-  };
-
-  paint();
-  return section;
-}
+    draw().catch(error=>{status.textContent=error.message;section.append(status);});return section;
+  }
 
 async function runSync(working, fn, done, repaint, isRestore) {
   toast(working);
@@ -741,47 +725,16 @@ function buildAdvanced() {
 }
 
 function buildAbout() {
-  const section = el('section', { class: 'settings-section about-section', style: { borderBottom: 'none', textAlign: 'center', padding: '48px 0' } });
-
-  const iconLink = (iconName, url, title) => el('a', {
-    href: url, target: '_blank', rel: 'noopener', title, 'aria-label': title,
-    class: 'social-link' + (iconName === 'discord' ? ' social-link-discord' : ''),
-    style: {
-      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-      width: '42px', height: '42px', borderRadius: 'var(--radius)',
-      background: 'var(--surface2)', color: 'var(--text-dim)',
-      transition: 'all 0.2s var(--ease)',
-      margin: '0 8px',
-    }
-  }, icon(iconName));
-
-  const textLink = (label, url) => el('a', {
-    href: url, target: '_blank', rel: 'noopener',
-    style: { color: 'var(--accent)', fontSize: '13px', textDecoration: 'none', fontWeight: '600' },
-  }, label);
-
-  const credits = el('div', { class: 'credits' },
-    el('div', { style: { fontWeight: '800', fontSize: '18px', letterSpacing: '0.08em', marginBottom: '6px', color: 'var(--text)' } }, 'NYORA WEB 2.0'),
-    el('div', { style: { color: 'var(--text-faint)', fontSize: '13px', marginBottom: '4px' } }, 'A free, open-source manga reader for the browser.'),
-    el('div', { style: { color: 'var(--text-faint)', fontSize: '12px', marginBottom: '24px' } }, 'Released under the Apache 2.0 License.'),
-    el('div', { class: 'row', style: { justifyContent: 'center' } },
-      iconLink('discord', 'https://discord.gg/3ZBHA8RtbR', 'Join the Nyora Discord'),
-      iconLink('github', 'https://github.com/Nyora-Manga/nyora-web', 'Source code on GitHub'),
-      iconLink('globe', 'https://nyora.xyz', 'Website'),
-    ),
-    el('div', { style: { marginTop: '18px', display: 'flex', justifyContent: 'center', gap: '20px', flexWrap: 'wrap' } },
-      textLink('Join Discord ↗', 'https://discord.gg/3ZBHA8RtbR'),
-      textLink('Source code ↗', 'https://github.com/Nyora-Manga/nyora-web'),
-      textLink('Report an issue ↗', 'https://github.com/Nyora-Manga/nyora-web/issues'),
-      textLink('License ↗', 'https://github.com/Nyora-Manga/nyora-web/blob/main/LICENSE'),
-    ),
-    el('div', {
-      style: { color: 'var(--text-faint)', fontSize: '12px', marginTop: '20px', maxWidth: '420px', marginLeft: 'auto', marginRight: 'auto', lineHeight: '1.5' },
-    }, 'Nyora — your manga library, everywhere. Available on Android, Windows, macOS, Linux, iOS and the web.')
-  );
-
-  section.append(credits);
-  return section;
+  const resources = el('nav', { class: 'desktop-about-links', 'aria-label': 'Application resources' });
+  for (const [label, href, glyph] of [
+    ['Website', 'https://nyora.xyz', 'globe'],
+    ['Project on GitHub', 'https://github.com/Nyora-Manga/nyora-web', 'github'],
+    ['Discord', 'https://discord.gg/3ZBHA8RtbR', 'discord'],
+    ['License', 'https://www.apache.org/licenses/LICENSE-2.0', 'book'],
+  ]) resources.append(el('a', { href, target: '_blank', rel: 'noopener noreferrer', class: 'btn btn-ghost' }, icon(glyph), el('span', null, label)));
+  return el('section', { class: 'settings-section about-section desktop-about' },
+    el('h2', null, 'Nyora'), el('p', { class: 'hint' }, 'Web edition'),
+    el('p', null, 'A manga reader with a personal library and offline reading.'), resources);
 }
 
 // ── Tracking ─────────────────────────────────────────────────────────────────

@@ -1,3 +1,4 @@
+import {chapterBranch} from '../desktop/reader-parity.js';
 // screens/details.js — the hero screen for a single manga.
 
 import { api } from '../core/api.js';
@@ -180,13 +181,13 @@ function buildDetails(view, sid, url, manga, chapters, params) {
     if (Number.isFinite(lastNum)) {
       return (c) => {
         const n = Number(c.number);
-        return Number.isFinite(n) ? n <= lastNum : false;
+        return chapterBranch(c) === chapterBranch(last) && Number.isFinite(n) ? n <= lastNum : false;
       };
     }
     // No usable numbers — fall back to position within reading order (oldest =
     // last element), marking the last-read chapter and everything older read.
     const lastIdx = readingOrder.indexOf(last);
-    return (c) => readingOrder.indexOf(c) >= lastIdx;
+    return (c) => chapterBranch(c) === chapterBranch(last) && readingOrder.indexOf(c) >= lastIdx;
   }
   let isDerived = derivedRead();
   function isRead(c) {
@@ -203,7 +204,7 @@ function buildDetails(view, sid, url, manga, chapters, params) {
   function markPreviousRead(c) {
     const n = Number(c.number) || 0;
     for (const x of ascByNumber) {
-      if ((Number(x.number) || 0) <= n) { overrides.read.add(x.url); overrides.unread.delete(x.url); }
+      if (chapterBranch(x)===chapterBranch(c) && (Number(x.number) || 0) <= n) { overrides.read.add(x.url); overrides.unread.delete(x.url); }
     }
     saveOverrides(mangaId, overrides);
   }
@@ -259,9 +260,9 @@ function buildDetails(view, sid, url, manga, chapters, params) {
   paintFav();
 
   const downloadAllBtn = btn('Download', { variant: 'ghost', icon: 'download' });
-  downloadAllBtn.addEventListener('click', () => openDownloadDialog(sid, url, mangaId, title, chapters));
+  downloadAllBtn.addEventListener('click', () => openDownloadDialog(sid, url, mangaId, title, chapters.filter(c=>state2.branch===null || chapterBranch(c)===state2.branch)));
 
-  const cta = buildCTA(sid, url, mangaId, chapters, ascByNumber, isRead);
+  const cta = el('div', {class:'chapter-branch-cta'}, buildCTA(sid, url, mangaId, chapters, ascByNumber, isRead));
 
   const descText = plainText(manga.description);
   let descNode;
@@ -313,7 +314,7 @@ function buildDetails(view, sid, url, manga, chapters, params) {
   );
 
   // ── RIGHT: chapters ───────────────────────────────────────────────────────
-  const state2 = { filter: 'all', sortKey: 'number', asc: false };
+  const state2 = { filter: 'all', sortKey: 'number', asc: false, query: '', branch: null };
   const listHost = el('ul', { class: 'd2-chapter-list' });
   const countEl = el('span', { class: 'd2-count' });
 
@@ -325,7 +326,7 @@ function buildDetails(view, sid, url, manga, chapters, params) {
   };
 
   function sorted() {
-    let list = ascByNumber.slice();
+    let list = ascByNumber.filter(c=>state2.branch===null || chapterBranch(c)===state2.branch);
     if (state2.sortKey === 'date') {
       list.sort((a, b) => (Number(a.uploadDate) || 0) - (Number(b.uploadDate) || 0));
     }
@@ -340,9 +341,16 @@ function buildDetails(view, sid, url, manga, chapters, params) {
     let list = sorted();
     if (state2.filter === 'unread') list = list.filter((c) => !isRead(c));
     else if (state2.filter === 'downloaded') list = list.filter((c) => { const s = downloads.statusOf(sid, c.url); return s && s.status === 'COMPLETED'; });
-    const unread = unreadCount();
-    countEl.textContent = `${readingOrder.length} chapters · ${unread} unread`;
-    if (!list.length) { listHost.appendChild(emptyState(state2.filter === 'unread' ? 'All caught up.' : 'Nothing here.')); return; }
+    const query = state2.query.trim().toLocaleLowerCase();
+    if (query) list = list.filter(chapter => {
+      const originalIndex = readingOrder.length - 1 - readingOrder.indexOf(chapter);
+      return fmt.chapterTitle(chapter, originalIndex).toLocaleLowerCase().includes(query)
+        || String(chapter.number ?? '').toLocaleLowerCase().includes(query);
+    });
+    const visible = readingOrder.filter(c=>state2.branch===null || chapterBranch(c)===state2.branch);
+    const unread = visible.filter(c=>!isRead(c)).length;
+    countEl.textContent = query ? `${list.length} matching · ${readingOrder.length} chapters` : `${visible.length} chapters · ${unread} unread`;
+    if (!list.length) { listHost.appendChild(emptyState(query ? 'No chapters match this search and filter.' : state2.filter === 'unread' ? 'All caught up.' : 'Nothing here.')); return; }
     for (const c of list) {
       const oldestIdx = readingOrder.length - 1 - readingOrder.indexOf(c);
       listHost.appendChild(buildChapterRow(ctx, c, oldestIdx));
@@ -362,15 +370,28 @@ function buildDetails(view, sid, url, manga, chapters, params) {
       onClick: () => { if (state2.sortKey === 'date') state2.asc = !state2.asc; else { state2.sortKey = 'date'; state2.asc = false; } renderRows(); } },
   ], r.left, r.bottom + 6); }, 'Sort');
   const markAllBtn = iconBtn('check', (e) => { const r = e.currentTarget.getBoundingClientRect(); contextMenu([
-    { label: 'Mark all as read', icon: 'check', onClick: () => { for (const c of readingOrder) setRead(c, true); renderRows(); toast('Marked all read'); } },
-    { label: 'Mark all as unread', onClick: () => { for (const c of readingOrder) setRead(c, false); renderRows(); toast('Marked all unread'); } },
+    { label: 'Mark all as read', icon: 'check', onClick: () => { for (const c of readingOrder.filter(c=>state2.branch===null || chapterBranch(c)===state2.branch)) setRead(c, true); renderRows(); toast('Marked all read'); } },
+    { label: 'Mark all as unread', onClick: () => { for (const c of readingOrder.filter(c=>state2.branch===null || chapterBranch(c)===state2.branch)) setRead(c, false); renderRows(); toast('Marked all unread'); } },
   ], r.left, r.bottom + 6); }, 'Mark');
 
+  const chapterSearch = el('input', {
+    class: 'input reading-chapter-search', type: 'search', placeholder: 'Search chapters',
+    'aria-label': 'Search chapters', value: state2.query,
+    onInput: event => { state2.query = event.target.value; renderRows(); },
+  });
+  const branches = [...new Set(chapters.map(chapterBranch))];
+  const branchSelect = el('select',{class:'input chapter-branch-select','aria-label':'Chapter branch',onChange:event=>{
+    state2.branch=event.target.value==='all'?null:branches[Number(event.target.value)];renderRows();
+    const selected=chapters.filter(c=>state2.branch===null || chapterBranch(c)===state2.branch);
+    cta.replaceChildren(buildCTA(sid,url,mangaId,selected,ascByNumber.filter(c=>selected.includes(c)),isRead));
+  }},el('option',{value:'all'},'All translations'),...branches.map((branch,index)=>el('option',{value:String(index)},branch||'Default translation')));
+  branchSelect.hidden=branches.length<2;
   const chapters2 = el('div', { class: 'd2-chapters' },
     el('div', { class: 'd2-toolbar' },
       el('div', { class: 'd2-toolbar-l' }, el('h2', null, 'Chapters'), countEl),
-      el('div', { class: 'd2-toolbar-r' }, markAllBtn, filterBtn, sortBtn),
+      el('div', { class: 'd2-toolbar-r' }, branchSelect, markAllBtn, filterBtn, sortBtn),
     ),
+    el('div', { class: 'reading-chapter-searchbar' }, chapterSearch),
     el('div', { class: 'd2-chapter-scroll' }, listHost),
   );
 
