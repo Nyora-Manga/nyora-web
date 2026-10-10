@@ -17,3 +17,7 @@ test-results/
 
 __pycache__/
 *.pyc
+
+# Previous deployment content hashes used during scheduled catalogue refresh
+data/series-page-manifest.json
+data/series.json.tmp

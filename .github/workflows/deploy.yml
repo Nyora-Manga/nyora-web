@@ -14,6 +14,8 @@ on:
   push:
     branches: [deploy]
   workflow_dispatch:
+  schedule:
+    - cron: '23 3 * * *'
 
 concurrency:
   group: deploy-nyora-web
@@ -48,6 +50,33 @@ jobs:
       - name: Fetch onnxruntime runtime (verified)
         run: npm run fetch:ort
 
+      # Read public snapshots directly: Cloudflare can challenge CI datacenter IPs.
+      # SSH errors fail the build; empty files mean a genuine first deployment.
+      - name: Read previous catalogue from the origin
+        env:
+          DEPLOY_NODES: ${{ secrets.DEPLOY_NODES }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          mkdir -p ~/.ssh /tmp/nyora-published-series
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          host=$(jq -r '.nyora.host' <<<"$DEPLOY_NODES")
+          user=$(jq -r '.nyora.user' <<<"$DEPLOY_NODES")
+          echo "::add-mask::$host"
+          for file in catalog.json page-manifest.json; do
+            ssh -i ~/.ssh/id_ed25519 -o IdentitiesOnly=yes "$user@$host" \
+              "if test -f /var/www/nyora-web/manga/$file; then cat /var/www/nyora-web/manga/$file; fi" \
+              > "/tmp/nyora-published-series/$file"
+          done
+          rm ~/.ssh/id_ed25519
+
+      - name: Refresh curated manga metadata and covers
+        env:
+          NYORA_PUBLISHED_SERIES_DIR: /tmp/nyora-published-series
+        run: npm run refresh:series -- --published
+
       - name: Build — bundle web/ into dist/
         run: |
           npm run build
@@ -59,6 +88,11 @@ jobs:
         env:
           CHROMIUM_CHANNEL: chromium
         run: npm run test:desktop
+
+      - name: Check catalogue search and crawlable series pages
+        env:
+          CHROMIUM_CHANNEL: chromium
+        run: npm run test:catalogue
 
       # Bake the Discover feed into dist/ so the cluster serves it as a static
       # file — a first-ever visitor gets content same-origin instead of waiting

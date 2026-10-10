@@ -54,7 +54,7 @@ export function render(view, _params) {
   view.append(root);
 
   const body = el('div', { class: 'discover-body' });
-  root.append(sectionHeader('Discover'), body);
+  root.append(sectionHeader('Discover', el('a', { class: 'btn btn-ghost', href: '/manga/' }, 'Browse manga catalogue')), body);
 
   load(body);
 }

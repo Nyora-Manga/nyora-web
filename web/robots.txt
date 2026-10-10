@@ -1,9 +1,7 @@
 User-agent: *
 Allow: /
 
-# Nyora is a single-page app. The ONLY indexable URL is the app root (/).
-# Hash routes (#/explore, #/library, #/suggestions, #/discover) are client-side
-# only and are NOT separate crawlable pages — do not expect them in the index.
+# Public series documents live at /manga/. App hash routes remain client-side.
 
 # AI answer-engine crawlers: allowed. Nyora is free, ad-free and safe to summarize;
 # see /llms.txt for a structured description intended for LLMs.

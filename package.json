@@ -5,7 +5,7 @@
   "type": "module",
   "description": "Nyora Web \u2014 production build (bundles web/ into dist/ for Cloudflare Pages).",
   "scripts": {
-    "build": "node build.mjs",
+    "build": "node build.mjs && node scripts/build-series.mjs",
     "fetch:ort": "node scripts/fetch-ort.mjs",
     "prerender:discover": "node scripts/prerender-discover.mjs",
     "check:rails": "node scripts/check-rails.mjs",
@@ -13,7 +13,9 @@
     "test:reader": "node tests/local-reader.browser.mjs",
     "test:colorizer": "node tests/colorizer-worker.browser.mjs",
     "check:helper": "node scripts/check-helper.mjs",
-    "test:desktop": "node tests/desktop-ui.browser.mjs"
+    "test:desktop": "node tests/desktop-ui.browser.mjs",
+    "refresh:series": "node scripts/refresh-series.mjs",
+    "test:catalogue": "node tests/series.browser.mjs"
   },
   "devDependencies": {
     "esbuild": "^0.24.0",

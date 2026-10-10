@@ -1,0 +1,11 @@
+# Public series catalogue and TF-IDF dictionary
+
+The user requested a TF-IDF dictionary integrated into the site and discoverable by Google. Implement the previously described real series URLs alongside existing hash app routes. Use build-time HTML because both nodes already serve static files; a new request-time server adds no value for identical public metadata. A client-only search index alone cannot supply crawlable series documents.
+
+Start with 40 explicit AniList series IDs, non-adult only, each with a substantial synopsis, aliases, genres, creators, publication information and a cover mirrored to this origin. Preserve a series path after initial creation. Attribute metadata. No source catalogue, private library or chapter content enters the public dictionary. The fixed set can be expanded deliberately later.
+
+Build a weighted, normalized TF-IDF inverted dictionary from title, aliases, genres, creators and synopsis. Use the same scoring module for catalogue search and precomputed related links. Render all catalogue and related links in initial HTML. Each series has its own title, description, canonical, cover and Open in Nyora link to the existing cross-source search. Search queries are progressive enhancement and never create extra sitemap URLs.
+
+A scheduled daily deployment refreshes the fixed metadata set. Keep committed snapshots as a build fallback and reuse the last published snapshot to preserve content-change dates. Fail scheduled refresh on upstream failure instead of publishing a partial or rolled-back catalogue. Update lastmod only when visible content (including related links) changes. Missing or adult records are excluded and their documents disappear on rsync --delete. CSP and protected API routes remain unchanged.
+
+Verification: deterministic scoring, malicious metadata escaping, stable routes/dates, incomplete/adult exclusion, complete sitemap/page consistency, daily refresh validation and browser tests with and without JS. Deploy to both nodes and verify HTTP HTML, headers, covers, search and app handoff. Publish sitemap through robots.txt; use Search Console only if an authenticated owner session is available. Never claim Google has indexed pages without evidence.

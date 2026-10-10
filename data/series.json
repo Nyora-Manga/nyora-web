@@ -1,0 +1,1624 @@
+{
+  "version": 1,
+  "ids": [
+    105778,
+    105398,
+    101517,
+    30002,
+    30013,
+    53390,
+    87216,
+    63327,
+    34632,
+    85486,
+    74347,
+    30656,
+    108556,
+    30642,
+    87423,
+    119257,
+    106130,
+    72451,
+    30012,
+    86635,
+    102988,
+    132029,
+    30026,
+    30003,
+    86123,
+    30001,
+    97852,
+    117195,
+    120760,
+    31706,
+    87170,
+    85611,
+    65243,
+    101583,
+    85143,
+    30021,
+    30011,
+    100994,
+    85135,
+    125828
+  ],
+  "series": [
+    {
+      "id": 105778,
+      "path": "/manga/chainsaw-man-105778/",
+      "title": "Chainsaw Man",
+      "aliases": [
+        "チェンソーマン",
+        "CSM",
+        "رجل المنشار",
+        "Человек-бензопила",
+        "체인소 맨",
+        "鏈鋸人",
+        "电锯人",
+        "มนุษย์เลื่อยยนต์",
+        "Testere Adam"
+      ],
+      "description": "The name says it all! Denji's life of poverty is changed forever when he merges with his pet chainsaw dog, Pochita! Now he's living in the big city and an official Devil Hunter. But he's got a lot to learn about his new job and chainsaw powers! (Source: MANGA Plus) Notes: - Nominated for the 2020 Manga Taisho Award. - Winner of the 2021 Kono Manga ga Sugoi Award. - Winner of the 66th Shogakukan Manga Award in the shounen category. - Winner of the 2021 and 2022 Harvey Award for Best Manga. - Chapters 1-97 were released in Weekly Shounen Jump from Dec 3, 2018 to Dec 13, 2020. The series resumed from Ch. 98 in Shounen Jump+ on July 12, 2022",
+      "genres": [
+        "Action",
+        "Comedy",
+        "Drama",
+        "Horror",
+        "Supernatural"
+      ],
+      "creators": [
+        "Tatsuki Fujimoto"
+      ],
+      "status": "FINISHED",
+      "format": "MANGA",
+      "country": "JP",
+      "year": 2018,
+      "chapters": 232,
+      "volumes": 24,
+      "isAdult": false,
+      "metadataUrl": "https://anilist.co/manga/105778",
+      "coverSource": "https://s4.anilist.co/file/anilistcdn/media/manga/cover/medium/bx105778-euxXZEIfDY2u.png",
+      "cover": "/manga/covers/105778-a9492decfb33.png",
+      "hash": "5f218929cc9f1e536cb4e8be9c5cae3c7a9793f0fd7d70d28899b71ea0669fd3",
+      "lastmod": "2026-10-10"
+    },
+    {
+      "id": 105398,
+      "path": "/manga/solo-leveling-105398/",
+      "title": "Solo Leveling",
+      "aliases": [
+        "Na Honjaman Level Up",
+        "나 혼자만 레벨업",
+        "I Level Up Alone",
+        "Only I Level Up",
+        "俺だけレベルアップな件",
+        "我獨自升級",
+        "Ore dake Level Up na Ken",
+        "Поднятие уровня в одиночку",
+        "Тільки я візьму новий рівень",
+        "Вебтун. Поднятие уровня в одиночку. Solo Leveling"
+      ],
+      "description": "In a world where awakened beings called “Hunters” must battle deadly monsters to protect humanity, Seong Jin-U, nicknamed “the weakest hunter of all mankind,” finds himself in a constant struggle for survival. One day, after a brutal encounter in an overpowered dungeon wipes out his party and threatens to end his life, a mysterious System chooses him as its sole player: Jin-U has been granted the rare opportunity to level up his abilities, possibly beyond any known limits. Follow Jin-U’s journey as he takes on ever-stronger enemies, both human and monster, to discover the secrets deep within the dungeons and the ultimate extent of his powers. (Source: Tappytoon) Note: Includes 22 extra chapters.",
+      "genres": [
+        "Action",
+        "Adventure",
+        "Fantasy"
+      ],
+      "creators": [
+        "Seong-Rak Jang",
+        "So-Ryeong Gi",
+        "Chu-Gong",
+        "Hyeon-Gun",
+        "DISCIPLES"
+      ],
+      "status": "FINISHED",
+      "format": "MANGA",
+      "country": "KR",
+      "year": 2018,
+      "chapters": 201,
+      "volumes": 15,
+      "isAdult": false,
+      "metadataUrl": "https://anilist.co/manga/105398",
+      "coverSource": "https://s4.anilist.co/file/anilistcdn/media/manga/cover/medium/bx105398-b673Vt5ZSuz3.jpg",
+      "cover": "/manga/covers/105398-ce3ab23db07e.jpg",
+      "hash": "fd7575289ca8aa866173426b63a1ac5589ae05b568d3d014bbd85649a63654f3",
+      "lastmod": "2026-10-10"
+    },
+    {
+      "id": 101517,
+      "path": "/manga/jujutsu-kaisen-101517/",
+      "title": "Jujutsu Kaisen",
+      "aliases": [
+        "呪術廻戦",
+        "Sorcery Fight",
+        "주술회전",
+        "咒术回战",
+        "Guerra de Hechiceros",
+        "Batalha de Feiticeiros",
+        "JJK",
+        "มหาเวทย์ผนึกมาร",
+        "Chú thuật hồi chiến",
+        "Магическая битва",
+        "La guerra màgica",
+        "Prokleté války",
+        "咒術迴戰",
+        "Contiendas de Brujería",
+        "Lanet Savaşları"
+      ],
+      "description": "Although Yuji Itadori looks like your average teenager, his immense physical strength is something to behold! Every sports club wants him to join, but Itadori would rather hang out with the school outcasts in the Occult Research Club. One day, the club manages to get their hands on a sealed cursed object. Little do they know the terror they’ll unleash when they break the seal… (Source: VIZ Media) Notes: - Ranked 1st in Japan's Bookstore Employees Top Manga of 2018. - Nominated for the 25th Annual Tezuka Osamu Cultural Prize in 2021. - Nominated for the 65th Shogakukan Manga Award in the Shounen Category in 2019. - Includes one extra chapter.",
+      "genres": [
+        "Action",
+        "Drama",
+        "Supernatural"
+      ],
+      "creators": [
+        "Gege Akutami"
+      ],
+      "status": "FINISHED",
+      "format": "MANGA",
+      "country": "JP",
+      "year": 2018,
+      "chapters": 272,
+      "volumes": 30,
+      "isAdult": false,
+      "metadataUrl": "https://anilist.co/manga/101517",
+      "coverSource": "https://s4.anilist.co/file/anilistcdn/media/manga/cover/medium/bx101517-H3TdM3g5ZUe9.jpg",
+      "cover": "/manga/covers/101517-ab137af41c2e.jpg",
+      "hash": "d4fac68ae3ca412c33e5d2bf6538744f03c98b2cddc96a692b83165efaf7451d",
+      "lastmod": "2026-10-10"
+    },
+    {
+      "id": 30002,
+      "path": "/manga/berserk-30002/",
+      "title": "Berserk",
+      "aliases": [
+        "ベルセルク",
+        "بيرسيرك",
+        "Beruseruku",
+        "Берсерк",
+        "ברזרק",
+        "برزرک",
+        "เบอร์เซิร์ก",
+        "烙印勇士",
+        "烙印战士",
+        "베르세르크",
+        "Berserk Max",
+        "烙印戰士"
+      ],
+      "description": "His name is Guts, the Black Swordsman, a feared warrior spoken of only in whispers. Bearer of a gigantic sword, an iron hand, and the scars of countless battles and tortures, his flesh is also indelibly marked with The Brand, an unholy symbol that draws the forces of darkness to him and dooms him as their sacrifice. But Guts won't take his fate lying down; he'll cut a crimson swath of carnage through the ranks of the damned—and anyone else foolish enough to oppose him! Accompanied by Puck the Elf, more an annoyance than a companion, Guts relentlessly follows a dark, bloodstained path that leads only to death...or vengeance. (Source: Dark Horse) Notes: - Volumes 1-5 contain the 16 prequel chapters 0A - 0P. - Chapter 83 was omitted from Volume 13 due to the author’s request. - Volume 14 includes “ Berserk: The Prototype ”. - Due to the author's passing, starting from Chapter 365, the manga is illustrated by Studio Gaga (Miura's assistants) and supervised by Kouji Mori (a close friend of Miura's).",
+      "genres": [
+        "Action",
+        "Adventure",
+        "Drama",
+        "Fantasy",
+        "Horror",
+        "Psychological"
+      ],
+      "creators": [
+        "Kentarou Miura",
+        "Studio Gaga",
+        "Dan Nakrosis"
+      ],
+      "status": "RELEASING",
+      "format": "MANGA",
+      "country": "JP",
+      "year": 1989,
+      "chapters": null,
+      "volumes": null,
+      "isAdult": false,
+      "metadataUrl": "https://anilist.co/manga/30002",
+      "coverSource": "https://s4.anilist.co/file/anilistcdn/media/manga/cover/medium/bx30002-Cul4OeN7bYtn.jpg",
+      "cover": "/manga/covers/30002-87599a212154.jpg",
+      "hash": "f2b09e2466dc502111568a56d2e42d7da7d3ebaa19556a4a300ff261c7c00744",
+      "lastmod": "2026-10-10"
+    },
+    {
+      "id": 30013,
+      "path": "/manga/one-piece-30013/",
+      "title": "One Piece",
+      "aliases": [
+        "ONE PIECE",
+        "원피스",
+        "וואן פיס",
+        "One Piece - Большой куш",
+        "ワンピース",
+        "ONE PIECE～航海王～",
+        "วันพีซ"
+      ],
+      "description": "As a child, Monkey D. Luffy was inspired to become a pirate by listening to the tales of the buccaneer \"Red-Haired\" Shanks. But his life changed when Luffy accidentally ate the Gum-Gum Devil Fruit and gained the power to stretch like rubber...at the cost of never being able to swim again! Years later, still vowing to become the king of the pirates, Luffy sets out on his adventure...one guy alone in a rowboat, in search of the legendary \"One Piece,\" said to be the greatest treasure in the world... (Source: VIZ Media)",
+      "genres": [
+        "Action",
+        "Adventure",
+        "Comedy",
+        "Fantasy"
+      ],
+      "creators": [
+        "Eiichirou Oda",
+        "Susan Daigle-Leach"
+      ],
+      "status": "RELEASING",
+      "format": "MANGA",
+      "country": "JP",
+      "year": 1997,
+      "chapters": null,
+      "volumes": null,
+      "isAdult": false,
+      "metadataUrl": "https://anilist.co/manga/30013",
+      "coverSource": "https://s4.anilist.co/file/anilistcdn/media/manga/cover/medium/bx30013-BeslEMqiPhlk.jpg",
+      "cover": "/manga/covers/30013-a8c6942bd4d3.jpg",
+      "hash": "55fb70e99180004eab51a6325158af1fb392fa431b1e0088c98ec3b653253d98",
+      "lastmod": "2026-10-10"
+    },
+    {
+      "id": 53390,
+      "path": "/manga/attack-on-titan-53390/",
+      "title": "Attack on Titan",
+      "aliases": [
+        "Shingeki no Kyojin",
+        "進撃の巨人",
+        "Atak Tytanów",
+        "SnK",
+        "AoT",
+        "Ataque dos Titãs",
+        "Ataque a los Titanes",
+        "L'Attacco dei Giganti",
+        "Titana Saldırı",
+        "Útok titánů",
+        "Titaanien sota - Attack on Titan",
+        "Атака на титанов",
+        "Napad titana",
+        "ผ่าพิภพไททัน",
+        "L'Attaque des Titans",
+        "Atacul Titanilor",
+        "進擊的巨人",
+        "진격의 거인",
+        "Đại chiến Titan",
+        "Ataque de los Titanes",
+        "Atac als Titans",
+        "Атака титанів",
+        "Атаката на титаните"
+      ],
+      "description": "In this post-apocalyptic sci-fi story, humanity has been devastated by the bizarre, giant humanoids known as the Titans. Little is known about where they came from or why they are bent on consuming mankind. Seemingly unintelligent, they have roamed the world for years, killing everyone they see. For the past century, what's left of man has hidden in a giant, three-walled city. People believe their 50-meter-high walls will protect them from the Titans, but the sudden appearance of an immense Titan is about to change everything. (Source: Kodansha USA) Note: Includes two extra chapters.",
+      "genres": [
+        "Action",
+        "Drama",
+        "Fantasy",
+        "Mystery"
+      ],
+      "creators": [
+        "Hajime Isayama"
+      ],
+      "status": "FINISHED",
+      "format": "MANGA",
+      "country": "JP",
+      "year": 2009,
+      "chapters": 141,
+      "volumes": 34,
+      "isAdult": false,
+      "metadataUrl": "https://anilist.co/manga/53390",
+      "coverSource": "https://s4.anilist.co/file/anilistcdn/media/manga/cover/medium/bx53390-1RsuABC34P9D.jpg",
+      "cover": "/manga/covers/53390-3e8129fc32a6.jpg",
+      "hash": "d59e594fda3cc88e135fba43ee4b7fc868eac2757a10ddf69a38d34c6866c635",
+      "lastmod": "2026-10-10"
+    },
+    {
+      "id": 87216,
+      "path": "/manga/demon-slayer-kimetsu-no-yaiba-87216/",
+      "title": "Demon Slayer: Kimetsu no Yaiba",
+      "aliases": [
+        "Kimetsu no Yaiba",
+        "鬼滅の刃",
+        "KnY",
+        "Guardianes de la Noche",
+        "Miecz zabójcy demonów",
+        "Les Rôdeurs de la nuit",
+        "İblis Keser",
+        "Zabiják démonů",
+        "귀멸의 칼날",
+        "قاتل الشياطين",
+        "ดาบพิฆาตอสูร",
+        "Thanh gươm diệt quỷ",
+        "Guardians de la Nit",
+        "Истребитель демонов",
+        "Ubica demona",
+        "鬼滅之刃"
+      ],
+      "description": "The setting is Taisho era Japan. Tanjirou is a kindhearted young boy who lived peacefully with his family as a coal seller. Their normal life changes completely when his family is slaughtered by demons. The only other survivor, Tanjirou's younger sister Nezuko, has become a ferocious demon. In order to return Nezuko to normal and get revenge on the demon that killed their family, the two of them depart on a journey. From a young talent, an adventure tale of blood and swords begins! (Source: Shonen Jump) Notes: - Includes two extra chapters. - Nominated to the 24th and 25th Annual Tezuka Osamu Cultural Prize.",
+      "genres": [
+        "Action",
+        "Adventure",
+        "Drama",
+        "Supernatural"
+      ],
+      "creators": [
+        "Koyoharu Gotouge"
+      ],
+      "status": "FINISHED",
+      "format": "MANGA",
+      "country": "JP",
+      "year": 2016,
+      "chapters": 207,
+      "volumes": 23,
+      "isAdult": false,
+      "metadataUrl": "https://anilist.co/manga/87216",
+      "coverSource": "https://s4.anilist.co/file/anilistcdn/media/manga/cover/medium/bx87216-c9bSNVD10UuD.png",
+      "cover": "/manga/covers/87216-2d908a8635da.png",
+      "hash": "7378f5c70dbfdf3f6bc145c8683c4e7176c4cf677340dc2c1764c29a95cf9712",
+      "lastmod": "2026-10-10"
+    },
+    {
+      "id": 63327,
+      "path": "/manga/tokyo-ghoul-63327/",
+      "title": "Tokyo Ghoul",
+      "aliases": [
+        "東京喰種 トーキョーグール",
+        "Toukyou Kushu",
+        "Tokyo Guru",
+        "Tokyo Gûl",
+        "Tokijský ghúl",
+        "Токийский гуль",
+        "도쿄 구울",
+        "Tokijski gul",
+        "東京喰種"
+      ],
+      "description": "Shy Ken Kaneki is thrilled to go on a date with the beautiful Rize. But it turns out that she’s only interested in his body—eating it, that is. When a morally questionable rescue transforms him into the first half-human half-Ghoul hybrid, Ken is drawn into the dark and violent world of Ghouls, which exists alongside our own. (Source: VIZ Media) Note: Includes one extra chapter.",
+      "genres": [
+        "Action",
+        "Horror",
+        "Mystery",
+        "Psychological",
+        "Supernatural"
+      ],
+      "creators": [
+        "Sui Ishida"
+      ],
+      "status": "FINISHED",
+      "format": "MANGA",
+      "country": "JP",
+      "year": 2011,
+      "chapters": 144,
+      "volumes": 14,
+      "isAdult": false,
+      "metadataUrl": "https://anilist.co/manga/63327",
+      "coverSource": "https://s4.anilist.co/file/anilistcdn/media/manga/cover/medium/bx63327-glC9cDxYBja9.png",
+      "cover": "/manga/covers/63327-224155232396.png",
+      "hash": "d8a5e9f83870ec2c255d1f1bb5827ec2d886838e0ba629591afc7c48db1b108d",
+      "lastmod": "2026-10-10"
+    },
+    {
+      "id": 34632,
+      "path": "/manga/goodnight-punpun-34632/",
+      "title": "Goodnight Punpun",
+      "aliases": [
+        "Oyasumi Punpun",
+        "おやすみプンプン",
+        "Dobranoc, Punpunie",
+        "Bonne nuit Punpun!",
+        "Boa Noite Punpun",
+        "Bona nit, Punpun",
+        "Buenas noches, Punpun",
+        "Gute Nacht, Punpun",
+        "잘자 뿡뿡",
+        "晚安布布",
+        "לילה טוב, פונפון",
+        "Buonanotte, Punpun",
+        "İyi Geceler, Punpun",
+        "ฝันดีนะปุนปุน",
+        "Laku noć, Punpune",
+        "Добраніч, Пунпуне"
+      ],
+      "description": "Meet Punpun Punyama. He’s an average kid in an average town. He wants to win a Nobel Prize and save the world. He wants the girl he has a crush on to like him back. He wants to find some porn. That’s what he wants, but what does he get…? (Source: VIZ Media)",
+      "genres": [
+        "Drama",
+        "Psychological",
+        "Slice of Life"
+      ],
+      "creators": [
+        "Inio Asano",
+        "Annaliese Christman"
+      ],
+      "status": "FINISHED",
+      "format": "MANGA",
+      "country": "JP",
+      "year": 2007,
+      "chapters": 147,
+      "volumes": 13,
+      "isAdult": false,
+      "metadataUrl": "https://anilist.co/manga/34632",
+      "coverSource": "https://s4.anilist.co/file/anilistcdn/media/manga/cover/medium/bx34632-5xMDkx3pXsEh.png",
+      "cover": "/manga/covers/34632-daeb983e0e56.png",
+      "hash": "39dea323237e8e57f24245e24a225c1acf92db6b2bde46ec1f208f961e10548f",
+      "lastmod": "2026-10-10"
+    },
+    {
+      "id": 85486,
+      "path": "/manga/my-hero-academia-85486/",
+      "title": "My Hero Academia",
+      "aliases": [
+        "Boku no Hero Academia",
+        "僕のヒーローアカデミア",
+        "HeroAca",
+        "ヒロアカ",
+        "BNHA",
+        "MHA",
+        "My Hero Academia- Akademia bohaterów",
+        "Mitt Helteakademia",
+        "나의 히어로 아카데미아",
+        "나히아",
+        "מיי הירו אקדמיה",
+        "אקדמיית הגיבורים שלי",
+        "Kahramanlık Akademim",
+        "My Hero Academia - Moje hrdinská akademie",
+        "Моя геройская академия",
+        "Học Viện Siêu Anh Hùng",
+        "มายฮีโร่อคาเดเมีย",
+        "我的英雄學院"
+      ],
+      "description": "Middle school student Izuku Midoriya wants to be a hero more than anything, but he hasn’t got an ounce of power in him. With no chance of ever getting into the prestigious U.A. High School for budding heroes, his life is looking more and more like a dead end. Then an encounter with All Might, the greatest hero of them all, gives him a chance to change his destiny… (Source: VIZ Media) Note: - Winner of the 1st Next Manga Award in the Print Category in 2015. - Nominated for the 8th Manga Taisho Award in 2015. - Nominated for the 40th Kodansha Manga Award in the Shounen Category in 2016. - Includes one extra chapter.",
+      "genres": [
+        "Action",
+        "Adventure",
+        "Comedy",
+        "Drama",
+        "Fantasy"
+      ],
+      "creators": [
+        "Kouhei Horikoshi"
+      ],
+      "status": "FINISHED",
+      "format": "MANGA",
+      "country": "JP",
+      "year": 2014,
+      "chapters": 432,
+      "volumes": 42,
+      "isAdult": false,
+      "metadataUrl": "https://anilist.co/manga/85486",
+      "coverSource": "https://s4.anilist.co/file/anilistcdn/media/manga/cover/medium/bx85486-INqnYx8gL3eX.jpg",
+      "cover": "/manga/covers/85486-6235453c7f87.jpg",
+      "hash": "a4b2e4b87e2eb51ca07994a6f4ba4dbcfc5679e1281a4413821722a2f4905f77",
+      "lastmod": "2026-10-10"
+    },
+    {
+      "id": 74347,
+      "path": "/manga/one-punch-man-74347/",
+      "title": "One-Punch Man",
+      "aliases": [
+        "One Punch-Man",
+        "ワンパンマン",
+        "OPM",
+        "One Punch Man",
+        "Wanpanman",
+        "رجل اللكمة الواحدة",
+        "One-Punch Man: Tek Yumruk",
+        "원펀맨",
+        "ONE-PUNCH MAN 一拳超人"
+      ],
+      "description": "In this new action-comedy, everything about a young man named Saitama screams \"AVERAGE,” from his lifeless expression, to his bald head, to his unimpressive physique. However, this average-looking fellow doesn't have your average problem... He's actually a superhero that's looking for tough opponents! The problem is, every time he finds a promising candidate he beats the snot out of them in one punch. Can Saitama finally find an evil villain strong enough to challenge him? Follow Saitama through his hilarious romps as he searches for new bad guys to challenge! (Source: VIZ Media)",
+      "genres": [
+        "Action",
+        "Comedy",
+        "Sci-Fi",
+        "Supernatural"
+      ],
+      "creators": [
+        "Yuusuke Murata",
+        "ONE"
+      ],
+      "status": "RELEASING",
+      "format": "MANGA",
+      "country": "JP",
+      "year": 2012,
+      "chapters": null,
+      "volumes": null,
+      "isAdult": false,
+      "metadataUrl": "https://anilist.co/manga/74347",
+      "coverSource": "https://s4.anilist.co/file/anilistcdn/media/manga/cover/medium/bx74347-sZpmNJ5xLwRK.jpg",
+      "cover": "/manga/covers/74347-be7c9e119e6e.jpg",
+      "hash": "5073feaeca330313a66912ba85eb2daa30b768a1ce4bb64fabf445d8967daeaf",
+      "lastmod": "2026-10-10"
+    },
+    {
+      "id": 30656,
+      "path": "/manga/vagabond-30656/",
+      "title": "Vagabond",
+      "aliases": [
+        "バガボンド",
+        "배가본드"
+      ],
+      "description": "At seventeen years of age, Miyamoto Musashi--still known by his childhood name, Shinmen Takezo--was a wild young brute just setting out along the way of the sword. In the aftermath of the epic Battle of Sekigahara, Takezo finds himself a fugitive survivor on the losing side of the war. Takezo's vicious nature has made him an outcast even in his own village, and he is hunted down like an animal. At this crucial crossroads in Takezo's life, an eccentric monk and a childhood friend are the only ones who can help him find his way. (Source: VIZ Media)",
+      "genres": [
+        "Action",
+        "Adventure",
+        "Drama"
+      ],
+      "creators": [
+        "Takehiko Inoue",
+        "Eiji Yoshikawa",
+        "Steve Dutro"
+      ],
+      "status": "RELEASING",
+      "format": "MANGA",
+      "country": "JP",
+      "year": 1998,
+      "chapters": null,
+      "volumes": null,
+      "isAdult": false,
+      "metadataUrl": "https://anilist.co/manga/30656",
+      "coverSource": "https://s4.anilist.co/file/anilistcdn/media/manga/cover/medium/bx30656-9mW113O7rDnA.png",
+      "cover": "/manga/covers/30656-e577ff6adb53.png",
+      "hash": "f3036cba736ee3cfdea65be6f1b88278727a678bfca7e47521766a6ef76361c1",
+      "lastmod": "2026-10-10"
+    },
+    {
+      "id": 108556,
+      "path": "/manga/spy-x-family-108556/",
+      "title": "SPY x FAMILY",
+      "aliases": [
+        "SPY×FAMILY",
+        "SxF",
+        "스파이 패밀리",
+        "SPY×FAMILY: WJ Special Extra Mission!!",
+        "间谍过家家",
+        "スパイファミリー",
+        "Семья шпиона",
+        "SPY×FAMILY 間諜家家酒"
+      ],
+      "description": "The master spy codenamed <Twilight> has spent his days on undercover missions, all for the dream of a better world. But one day, he receives a particularly difficult new order from command. For his mission, he must form a temporary family and start a new life?! A Spy/Action/Comedy about a one-of-a-kind family! (Source: MANGA Plus) Notes: - Nominated for the 24th Tezuka Osamu Cultural Prize in 2020. - Nominated for the 13th and 14th Manga Taisho Award in 2020 and 2021. - Nominated for the 44th Kodansha Manga Award in the Shounen Category in 2020.",
+      "genres": [
+        "Action",
+        "Comedy",
+        "Slice of Life",
+        "Supernatural"
+      ],
+      "creators": [
+        "Tatsuya Endou",
+        "Rina Mapa",
+        "Nathalie Bougon"
+      ],
+      "status": "RELEASING",
+      "format": "MANGA",
+      "country": "JP",
+      "year": 2019,
+      "chapters": null,
+      "volumes": null,
+      "isAdult": false,
+      "metadataUrl": "https://anilist.co/manga/108556",
+      "coverSource": "https://s4.anilist.co/file/anilistcdn/media/manga/cover/medium/bx108556-NHjkz0BNJhLx.jpg",
+      "cover": "/manga/covers/108556-4f98cd5951ad.jpg",
+      "hash": "eaf3f50bcdc99d43832e34d8904360ddd0360688e7e57027d81e02893675e3d1",
+      "lastmod": "2026-10-10"
+    },
+    {
+      "id": 30642,
+      "path": "/manga/vinland-saga-30642/",
+      "title": "Vinland Saga",
+      "aliases": [
+        "ヴィンランド・サガ",
+        "Saga Winlandzka",
+        "Сага о Винланде",
+        "Сага про Вінланд",
+        "海盜戰記VINLAND SAGA",
+        "빈란드 사가",
+        "冰海战记"
+      ],
+      "description": "As a child, Thorfinn sat at the feet of the great Leif Ericson and thrilled to wild tales of a land far to the west. But his youthful fantasies were shattered by a mercenary raid. Raised by the Vikings who murdered his father, Thorfinn became a terrifying warrior, forever seeking to kill the band's leader, Askeladd, and avenge his father. Sustaining Thorfinn through his ordeal are his pride in his family and his dreams of a fertile westward land, a land without war or slavery … the land Leif called Vinland. (Source: Kodansha USA) Notes: - Includes the one-shot \"Sayonara ga Chikai no de\" (For Our Farewell Is Near) - Includes the one-shot \"Assassin's Creed: Valhalla x Vinland Saga\" - Includes two extra chapters. - Won the Grand Prize at the Japan Media Arts Festival in 2009. - Winner of the 36th Kodansha Manga Award in the General category in 2012.",
+      "genres": [
+        "Action",
+        "Adventure",
+        "Drama"
+      ],
+      "creators": [
+        "Makoto Yukimura"
+      ],
+      "status": "FINISHED",
+      "format": "MANGA",
+      "country": "JP",
+      "year": 2005,
+      "chapters": 224,
+      "volumes": 29,
+      "isAdult": false,
+      "metadataUrl": "https://anilist.co/manga/30642",
+      "coverSource": "https://s4.anilist.co/file/anilistcdn/media/manga/cover/medium/bx30642-0mjRDkf4THpo.jpg",
+      "cover": "/manga/covers/30642-7484567bb387.jpg",
+      "hash": "fadca6264655cbc42c8c70c5f9713de744835f38afa7e0763b5f9420fc17450b",
+      "lastmod": "2026-10-10"
+    },
+    {
+      "id": 87423,
+      "path": "/manga/the-promised-neverland-87423/",
+      "title": "The Promised Neverland",
+      "aliases": [
+        "Yakusoku no Neverland",
+        "約束のネバーランド",
+        "YakuNeba",
+        "Vadedilmiş Yokyer",
+        "TPN",
+        "Zaslíbená Země Nezemě",
+        "Miền đất hứa",
+        "Обещанная страна грёз",
+        "พันธสัญญาเนเวอร์แลนด์",
+        "約定的夢幻島",
+        "Obećana Nedođija",
+        "약속의 네버랜드"
+      ],
+      "description": "Emma, Norman and Ray are the brightest kids at the Grace Field House orphanage. And under the care of the woman they refer to as “Mom,” all the kids have enjoyed a comfortable life. Good food, clean clothes and the perfect environment to learn—what more could an orphan ask for? One day, though, Emma and Norman uncover the dark truth of the outside world they are forbidden from seeing. (Source: VIZ Media) Note: Nominated to the 22nd, 23rd, and 25th Annual Tezuka Osamu Cultural Prize.",
+      "genres": [
+        "Drama",
+        "Fantasy",
+        "Horror",
+        "Mystery",
+        "Psychological",
+        "Thriller"
+      ],
+      "creators": [
+        "Posuka Demizu",
+        "Kaiu Shirai",
+        "Hinoko"
+      ],
+      "status": "FINISHED",
+      "format": "MANGA",
+      "country": "JP",
+      "year": 2016,
+      "chapters": 181,
+      "volumes": 20,
+      "isAdult": false,
+      "metadataUrl": "https://anilist.co/manga/87423",
+      "coverSource": "https://s4.anilist.co/file/anilistcdn/media/manga/cover/medium/bx87423-gPNtu8QbGped.jpg",
+      "cover": "/manga/covers/87423-3157153d5d76.jpg",
+      "hash": "615a582cf36a41621531c062c3540ceb6d8650749b0ced48a954ec8fb2371f67",
+      "lastmod": "2026-10-10"
+    },
+    {
+      "id": 119257,
+      "path": "/manga/omniscient-reader-119257/",
+      "title": "Omniscient Reader",
+      "aliases": [
+        "Jeonjijeok Dokja Sijeom",
+        "전지적 독자 시점",
+        "Omniscient Reader's Viewpoint",
+        "ORV",
+        "Punkt Widzenia Wszechwiedzącego Czytelnika",
+        "Lector omnisciente",
+        "Lecteur Omniscient",
+        "Der allwissende Leser",
+        "전독시",
+        "全知读者",
+        "全知讀者視角",
+        "อ่านชะตาวันสิ้นโลก",
+        "全知的な読者の視点から",
+        "Zenchiteki na Dokusha no Shiten kara",
+        "Всеведущий читатель"
+      ],
+      "description": "Back then, Dok-Ja had no idea. He had no idea his favorite web novel 'Three Ways to Survive the Apocalypse' was going to come to life, and that he would become the only person to know how the world was going to end. He also had no idea he would end up becoming the protagonist of this novel-turned-reality. Now, Dok-Ja will go on a journey to change the course of the story and save humankind once and for all. (Source: WEBTOON, edited)",
+      "genres": [
+        "Action",
+        "Adventure",
+        "Fantasy"
+      ],
+      "creators": [
+        "Singsyong",
+        "Sleepy-C",
+        "UMI"
+      ],
+      "status": "RELEASING",
+      "format": "MANGA",
+      "country": "KR",
+      "year": 2020,
+      "chapters": null,
+      "volumes": null,
+      "isAdult": false,
+      "metadataUrl": "https://anilist.co/manga/119257",
+      "coverSource": "https://s4.anilist.co/file/anilistcdn/media/manga/cover/medium/bx119257-Pi21aq3ey9GG.jpg",
+      "cover": "/manga/covers/119257-0f5f82d1812e.jpg",
+      "hash": "f4809406f0647749da0e2e71f9f0cffbfd3d9ad40730a38ac9c4b505660d6d44",
+      "lastmod": "2026-10-10"
+    },
+    {
+      "id": 106130,
+      "path": "/manga/blue-lock-106130/",
+      "title": "Blue Lock",
+      "aliases": [
+        "ブルーロック",
+        "Bluelock",
+        "BLUE LOCK ขังดวลแข้ง",
+        "Синя тюрма",
+        "블루 록",
+        "Блу Лок"
+      ],
+      "description": "After a disastrous defeat at the 2018 World Cup, Japan's team struggles to regroup. But what's missing? An absolute Ace Striker, who can guide them to the win. The Japan Football Union is hell-bent on creating a striker who hungers for goals and thirsts for victory, and who can be the decisive instrument in turning around a losing match...and to do so, they've gathered 300 of Japan's best and brightest youth players. Who will emerge to lead the team...and will they be able to out-muscle and out-ego everyone who stands in their way? (Source: Kodansha USA) Note: Winner of the 45th Kodansha Manga Award in the Shounen Category in 2021.",
+      "genres": [
+        "Action",
+        "Drama",
+        "Sports"
+      ],
+      "creators": [
+        "Muneyuki Kaneshiro",
+        "Yuusuke Nomura"
+      ],
+      "status": "RELEASING",
+      "format": "MANGA",
+      "country": "JP",
+      "year": 2018,
+      "chapters": null,
+      "volumes": null,
+      "isAdult": false,
+      "metadataUrl": "https://anilist.co/manga/106130",
+      "coverSource": "https://s4.anilist.co/file/anilistcdn/media/manga/cover/medium/bx106130-yPNeuSu75ey1.jpg",
+      "cover": "/manga/covers/106130-2fe2d8e46f3b.jpg",
+      "hash": "37ef7050001a47c2dd899659a24bee5af530d3b454b37873cda775f6ae12a431",
+      "lastmod": "2026-10-10"
+    },
+    {
+      "id": 72451,
+      "path": "/manga/horimiya-72451/",
+      "title": "Horimiya",
+      "aliases": [
+        "ホリミヤ",
+        "โฮริมิยะ สาวมั่นกับนายมืดมน",
+        "Horimiya - Hori and Miyamura",
+        "Хорімія",
+        "호리미야"
+      ],
+      "description": "At school, Kyouko Hori is known for being smart, attractive, and popular. On the other hand, her classmate, the boring, gloomy Izumi Miyamura tends to get painted as a \"loser fanboy.\" But when a liberally pierced and tattooed (not to mention downright gorgeous) Miyamura appears unexpectedly on the doorstep of secretly plain-Jane homebody Hori, these two similarly dissimilar teenagers discover that there are multiple sides to every story...and person! (Source: Yen Press) Notes: - Includes 20 extra chapters. - The 17th volume was released on July 18, 2023, two years after the series' original ending. This new volume included 10 additional chapters.",
+      "genres": [
+        "Comedy",
+        "Romance",
+        "Slice of Life"
+      ],
+      "creators": [
+        "Daisuke Hagiwara",
+        "HERO",
+        "Studio Charon"
+      ],
+      "status": "FINISHED",
+      "format": "MANGA",
+      "country": "JP",
+      "year": 2011,
+      "chapters": 152,
+      "volumes": 17,
+      "isAdult": false,
+      "metadataUrl": "https://anilist.co/manga/72451",
+      "coverSource": "https://s4.anilist.co/file/anilistcdn/media/manga/cover/medium/bx72451-vVXtRwyttjGG.png",
+      "cover": "/manga/covers/72451-836a2531dc9c.png",
+      "hash": "30e269d683e71d84b8cbc70a6fd26c799ea57c952446fe65a0a27e33df1e2905",
+      "lastmod": "2026-10-10"
+    },
+    {
+      "id": 30012,
+      "path": "/manga/bleach-30012/",
+      "title": "Bleach",
+      "aliases": [
+        "BLEACH",
+        "ブリーチ",
+        "بلیچ",
+        "死神",
+        "BLEACH 블리치",
+        "境·界死神（）"
+      ],
+      "description": "Ichigo Kurosaki has always been able to see ghosts, but this ability doesn't change his life nearly as much as his close encounter with Rukia Kuchiki, a Soul Reaper and member of the mysterious Soul Society. While fighting a Hollow, an evil spirit that preys on humans who display psychic energy, Rukia attempts to lend Ichigo some of her powers so that he can save his family; but much to her surprise, Ichigo absorbs every last drop of her energy. Now a full-fledged Soul Reaper himself, Ichigo quickly learns that the world he inhabits is one full of dangerous spirits and, along with Rukia— who is slowly regaining her powers— it's Ichigo's job to protect the innocent from Hollows and help the spirits themselves find peace. (Source: VIZ Media) Note: Includes the 12-chapter “Turn Back The Pendulum” side story and 8 extra chapters.",
+      "genres": [
+        "Action",
+        "Adventure",
+        "Supernatural"
+      ],
+      "creators": [
+        "Tite Kubo",
+        "Mark McMurray",
+        "Dave Lanphear",
+        "Andy Ristaino",
+        "Evan Waldinger"
+      ],
+      "status": "FINISHED",
+      "format": "MANGA",
+      "country": "JP",
+      "year": 2001,
+      "chapters": 706,
+      "volumes": 74,
+      "isAdult": false,
+      "metadataUrl": "https://anilist.co/manga/30012",
+      "coverSource": "https://s4.anilist.co/file/anilistcdn/media/manga/cover/medium/bx30012-1epmVfTSv2rr.png",
+      "cover": "/manga/covers/30012-bd365bdd4020.png",
+      "hash": "592975de3c52afbf9e3be2c2aa935907ed953c28168a45217156959a54ef4c23",
+      "lastmod": "2026-10-10"
+    },
+    {
+      "id": 86635,
+      "path": "/manga/kaguya-sama-love-is-war-86635/",
+      "title": "Kaguya-sama: Love is War",
+      "aliases": [
+        "Kaguya-sama wa Kokurasetai: Tensaitachi no Renai Zunousen",
+        "かぐや様は告らせたい～天才たちの恋愛頭脳戦～",
+        "Kaguya Wants to be Confessed To: The Geniuses' War of Love and Brains",
+        "카구야 님은 고백받고 싶어 ~천재들의 연애 두뇌전~",
+        "Miłość to wojna",
+        "Kaguya-sama wa Kokurasetai: Tensai-tachi no Renai Zunousen",
+        "Госпожа Кагуя: В любви как на войне. Любовная битва двух гениев",
+        "สารภาพรักกับคุณคางุยะซะดีๆ ~สงครามประสาทความรักของเหล่าอัจฉริยะ~",
+        "Kaguya-sama: Cuộc chiến tỏ tình",
+        "辉夜大小姐想让我告白 ~天才们的恋爱头脑战",
+        "輝夜姬想讓人告白~天才們的戀愛頭腦戰~",
+        "Kaguya-sama: Aşk Savaştır"
+      ],
+      "description": "As leaders of their prestigious academy’s student council, Kaguya and Miyuki are the elite of the elite! But it’s lonely at the top… Luckily for them, they’ve fallen in love! There’s just one problem—they both have too much pride to admit it. And so begins the daily scheming to get the object of their affection to confess their romantic feelings first… Love is a war you win by losing. (Source: VIZ Media) Notes: - The first 10 chapters were published in Monthly Miracle Jump. It switched to Weekly Young Jump starting with Ch. 11, with the chapter count being reset. This entry still includes the first 10 chapters from Miracle Jump. - Winner of the 65th Shogakukan Manga Award for \"Best General Manga\" category in 2019.",
+      "genres": [
+        "Comedy",
+        "Psychological",
+        "Romance",
+        "Slice of Life"
+      ],
+      "creators": [
+        "Aka Akasaka"
+      ],
+      "status": "FINISHED",
+      "format": "MANGA",
+      "country": "JP",
+      "year": 2015,
+      "chapters": 281,
+      "volumes": 28,
+      "isAdult": false,
+      "metadataUrl": "https://anilist.co/manga/86635",
+      "coverSource": "https://s4.anilist.co/file/anilistcdn/media/manga/cover/medium/bx86635-EdaLQmsn86Fy.png",
+      "cover": "/manga/covers/86635-97344113ad84.png",
+      "hash": "c352bb5d396481fbf52760c4ef16ab0b39ea0645552897feb3a207f82dcdddae",
+      "lastmod": "2026-10-10"
+    },
+    {
+      "id": 102988,
+      "path": "/manga/tokyo-revengers-102988/",
+      "title": "Tokyo Revengers",
+      "aliases": [
+        "Tokyo卍Revengers",
+        "東京卍リベンジャーズ",
+        "Toukyou卍Revengers",
+        "Tokyo Manji Revengers",
+        "โตเกียว卍รีเวนเจอร์ส",
+        "โตเกียว รีเวนเจอร์ส",
+        "Токійські месники",
+        "Токийские мстители",
+        "Tokijski osvetnici",
+        "Justițiarii din Tokio",
+        "도쿄 리벤저스",
+        "TOKYO REVENGERS โตเกียว รีเวนเจอร์ส"
+      ],
+      "description": "Hanagaki Takemichi was once a low-life punk, but after biting off more than he could chew with a gang in middle school, he ran away from his old life. Now that he’s an adult, the gang that once terrorized him has grown into the largest gang in Tokyo, and they’ve started killing people–including his old girlfriend! After learning this news, a mysterious force on a train platform shoves Takemichi right in front of an approaching train. As his life flashes before his eyes, he blinks to find himself transported back to middle school, before he fled from the gang! Now he has the chance to right what went wrong all those years ago. Can he save his girlfriend’s life in the future–and what else might he change if he’s rewriting the past? (Source: Seven Seas Entertainment) Notes: - Winner of the Shounen Manga category of the 44th annual Kodansha Manga Awards. - Includes one extra chapter.",
+      "genres": [
+        "Action",
+        "Drama",
+        "Romance",
+        "Supernatural"
+      ],
+      "creators": [
+        "Ken Wakui"
+      ],
+      "status": "FINISHED",
+      "format": "MANGA",
+      "country": "JP",
+      "year": 2017,
+      "chapters": 279,
+      "volumes": 31,
+      "isAdult": false,
+      "metadataUrl": "https://anilist.co/manga/102988",
+      "coverSource": "https://s4.anilist.co/file/anilistcdn/media/manga/cover/medium/bx102988-OoVJxQCH6fbR.jpg",
+      "cover": "/manga/covers/102988-b3d9145e1a09.jpg",
+      "hash": "0193b6073788ca0ef722bfc75a029924b9a1426e6d912fe5a20a77dfc44fba91",
+      "lastmod": "2026-10-10"
+    },
+    {
+      "id": 132029,
+      "path": "/manga/dandadan-132029/",
+      "title": "Dandadan",
+      "aliases": [
+        "ダンダダン",
+        "ดันดาดัน",
+        "膽大黨",
+        "단다단"
+      ],
+      "description": "Momo Ayase strikes up an unusual friendship with her school’s UFO fanatic, whom she nicknames “Okarun” because he has a name that is not to be said aloud. While Momo believes in spirits, she thinks aliens are nothing but nonsense. Her new friend, meanwhile, thinks the exact opposite. To settle matters, the two set out to prove each other wrong—Momo to a UFO hotspot and Okarun to a haunted tunnel! What unfolds next is a beautiful story of young love…and oddly horny aliens and spirits? (Source: VIZ Media) Note: Nominated for the 15th Manga Taisho Award in 2022.",
+      "genres": [
+        "Action",
+        "Comedy",
+        "Drama",
+        "Romance",
+        "Sci-Fi",
+        "Supernatural"
+      ],
+      "creators": [
+        "Yukinobu Tatsu"
+      ],
+      "status": "RELEASING",
+      "format": "MANGA",
+      "country": "JP",
+      "year": 2021,
+      "chapters": null,
+      "volumes": null,
+      "isAdult": false,
+      "metadataUrl": "https://anilist.co/manga/132029",
+      "coverSource": "https://s4.anilist.co/file/anilistcdn/media/manga/cover/medium/bx132029-prGF4gePdSKv.jpg",
+      "cover": "/manga/covers/132029-10096ee138f5.jpg",
+      "hash": "dab16785cd4e1327641d470aae1bfe6000fc20108270963ff876fef9a0b8609f",
+      "lastmod": "2026-10-10"
+    },
+    {
+      "id": 30026,
+      "path": "/manga/hunter-x-hunter-30026/",
+      "title": "Hunter x Hunter",
+      "aliases": [
+        "HUNTER×HUNTER",
+        "ハンター×ハンター",
+        "HxH",
+        "헌터×헌터",
+        "القناص"
+      ],
+      "description": "Gon might be a country boy, but he has high aspirations. Despite his Aunt Mito's protests, Gon decides to follow in his father's footsteps and become a legendary Hunter. The Hunter hopefuls begin their journey by storm-tossed ship, where Gon meets Leorio and Kurapika, the only other applicants who aren't devastated by bouts of seasickness. Having survived the terrors of the high seas, Gon and his companions now have to prove their worth in a variety of tests in order to find the elusive Exam Hall. And once they get there, will they ever leave alive...? (Source: VIZ Media)",
+      "genres": [
+        "Action",
+        "Adventure",
+        "Comedy",
+        "Fantasy"
+      ],
+      "creators": [
+        "Yoshihiro Togashi",
+        "Éric Montésinos"
+      ],
+      "status": "RELEASING",
+      "format": "MANGA",
+      "country": "JP",
+      "year": 1998,
+      "chapters": null,
+      "volumes": null,
+      "isAdult": false,
+      "metadataUrl": "https://anilist.co/manga/30026",
+      "coverSource": "https://s4.anilist.co/file/anilistcdn/media/manga/cover/medium/bx30026-uCvXMudMzmwI.jpg",
+      "cover": "/manga/covers/30026-5b9a382c7015.jpg",
+      "hash": "71da96c61e3a21cb6afa2d95cb159f3d01ba71bb29da4ccde190179280fce9c5",
+      "lastmod": "2026-10-10"
+    },
+    {
+      "id": 30003,
+      "path": "/manga/20th-century-boys-30003/",
+      "title": "20th Century Boys",
+      "aliases": [
+        "20 Seiki Shounen",
+        "20世紀少年",
+        "Nijuu Seiki Shounen",
+        "Nijuusseiki Shounen",
+        "20thCB",
+        "20th Century Boys - Chłopaki z dwudziestego wieku",
+        "فتيان القرن 20"
+      ],
+      "description": "Humanity, having faced extinction at the end of the 20th century, would not have entered the new millennium if it weren't for them. In 1969, during their youth, they created a symbol. In 1997, as the coming disaster slowly starts to unfold, that symbol returns. This is the story of a group of boys who try to save the world. For Kenji, a simple convenience store manager who once dreamed of becoming a rock 'n' roll musician, a host of memories from his past come rushing back when one of his childhood friends mysteriously commits suicide. Could this new death be related to the rise of a bizarre new cult that's been implicated in several other murders and disappearances? Determined to dig deeper, Kenji reunites with some of his old buddies in the hope of learning the truth behind it all. (Source: VIZ Media)",
+      "genres": [
+        "Drama",
+        "Mystery",
+        "Psychological",
+        "Sci-Fi",
+        "Thriller"
+      ],
+      "creators": [
+        "Naoki Urasawa",
+        "Freeman Wong"
+      ],
+      "status": "FINISHED",
+      "format": "MANGA",
+      "country": "JP",
+      "year": 1999,
+      "chapters": 249,
+      "volumes": 22,
+      "isAdult": false,
+      "metadataUrl": "https://anilist.co/manga/30003",
+      "coverSource": "https://s4.anilist.co/file/anilistcdn/media/manga/cover/medium/bx30003-E84fwIh22LAQ.jpg",
+      "cover": "/manga/covers/30003-0906ea280618.jpg",
+      "hash": "3254f897147cb1bdc298d1758c32ad4df928ef13a7a2c4316698b9981bd29f46",
+      "lastmod": "2026-10-10"
+    },
+    {
+      "id": 86123,
+      "path": "/manga/black-clover-86123/",
+      "title": "Black Clover",
+      "aliases": [
+        "ブラッククローバー",
+        "블랙 클로버"
+      ],
+      "description": "Young Asta was born with no magic ability in a world where magic is everything. In order to prove his strength and keep a promise with his friend, Asta dreams of becoming the greatest mage in the land, the Wizard King! (Source: VIZ Media)",
+      "genres": [
+        "Action",
+        "Comedy",
+        "Drama",
+        "Fantasy"
+      ],
+      "creators": [
+        "Yuuki Tabata"
+      ],
+      "status": "FINISHED",
+      "format": "MANGA",
+      "country": "JP",
+      "year": 2015,
+      "chapters": 392,
+      "volumes": 38,
+      "isAdult": false,
+      "metadataUrl": "https://anilist.co/manga/86123",
+      "coverSource": "https://s4.anilist.co/file/anilistcdn/media/manga/cover/medium/bx86123-Ill8uBdtvWrR.png",
+      "cover": "/manga/covers/86123-bc8c268e2ecc.png",
+      "hash": "b86520b3033cc6e3910becd217fd41a89db77dbcea3221d46cc0606c154c9e20",
+      "lastmod": "2026-10-10"
+    },
+    {
+      "id": 30001,
+      "path": "/manga/monster-30001/",
+      "title": "Monster",
+      "aliases": [
+        "MONSTER",
+        "몬스터"
+      ],
+      "description": "Everyone faces uncertainty at some point in their lives. Even a brilliant surgeon like Kenzo Tenma is no exception. But there’s no way he could have known that his decision to stop chasing professional success and instead concentrate on his oath to save peoples’ lives would result in the birth of an abomination. The questions of good and evil now take on a terrifyingly real dimension. Years later, in Germany during the tumultuous post-reunification period, middle-aged childless couples are being killed one after another. The serial killer’s identity is known. The reasons why he kills are not. Dr. Tenma sets out on a journey to find the killer’s twin sister, who may hold some clues to solving the enigma of the “Monster.” (Source: VIZ Media)",
+      "genres": [
+        "Drama",
+        "Mystery",
+        "Psychological",
+        "Thriller"
+      ],
+      "creators": [
+        "Naoki Urasawa",
+        "Les Travaux d'Hercule"
+      ],
+      "status": "FINISHED",
+      "format": "MANGA",
+      "country": "JP",
+      "year": 1994,
+      "chapters": 162,
+      "volumes": 18,
+      "isAdult": false,
+      "metadataUrl": "https://anilist.co/manga/30001",
+      "coverSource": "https://s4.anilist.co/file/anilistcdn/media/manga/cover/medium/bx30001-Knby7l1jevE7.jpg",
+      "cover": "/manga/covers/30001-a72e101f78ed.jpg",
+      "hash": "2a1c35845066471952a4e8284df2b3d080adca2c00f40c96d83c3e703b6f825b",
+      "lastmod": "2026-10-10"
+    },
+    {
+      "id": 97852,
+      "path": "/manga/komi-can-t-communicate-97852/",
+      "title": "Komi Can't Communicate",
+      "aliases": [
+        "Komi-san wa, Komyushou desu.",
+        "古見さんは、コミュ症です。",
+        "Comi san ha Comyusho desu",
+        "Komi-san wa Communication Shougai desu.",
+        "Komi-san wa Comyushou desu.",
+        "Miss Komi is Bad at Communication.",
+        "Komi-san Can't Communicate",
+        "Komi-san Has a Communication Disorder",
+        "Komi-san no puede comunicarse",
+        "古见同学有交流障碍症",
+        "โฉมงามพูดไม่เก่งกับผองเพื่อนไม่เต็มเต็ง",
+        "Komi cherche ses mots",
+        "Komi - Nữ thần sợ giao tiếp",
+        "Komi Não Consegue se Comunicar",
+        "Komi Konuşmaktan Korkuyor",
+        "코미 양은 커뮤증입니다",
+        "Komi Sulit Berkomunikasi",
+        "Komi ne ume da komunicira"
+      ],
+      "description": "Timid Tadano is a total wallflower, and that’s just the way he likes it. But all that changes when he finds himself alone in a classroom on the first day of high school with the legendary Komi. He quickly realizes she isn’t aloof—she’s just super awkward. Now he’s made it his mission to help her on her quest to make 100 friends! (Source: VIZ Media) Notes: - Winner of the 67th Shogakukan Manga Award in the Shounen Category in 2021. - Includes 37 extra chapters.",
+      "genres": [
+        "Comedy",
+        "Romance",
+        "Slice of Life"
+      ],
+      "creators": [
+        "Tomohito Oda",
+        "Erwan Lossois",
+        "Eve Grandt"
+      ],
+      "status": "FINISHED",
+      "format": "MANGA",
+      "country": "JP",
+      "year": 2016,
+      "chapters": 537,
+      "volumes": 37,
+      "isAdult": false,
+      "metadataUrl": "https://anilist.co/manga/97852",
+      "coverSource": "https://s4.anilist.co/file/anilistcdn/media/manga/cover/medium/bx97852-M7vlc2OGR2gp.jpg",
+      "cover": "/manga/covers/97852-24dacdc4f9ec.jpg",
+      "hash": "66a8c9d6aff1791153acf11b8e33efbf8b4636dc012490d1c353c334a88a118d",
+      "lastmod": "2026-10-10"
+    },
+    {
+      "id": 117195,
+      "path": "/manga/oshi-no-ko-117195/",
+      "title": "[Oshi no Ko]",
+      "aliases": [
+        "【推しの子】",
+        "Favorite Girl",
+        "My Idol's Child",
+        "[Mein*Star]",
+        "[เกิดใหม่เป็นลูกโอชิ]",
+        "Anak Idola",
+        "【OSHI NO KO】",
+        "【MOJA GWIAZDA】",
+        "【我推的孩子】",
+        "OSHI NO KO - DƯỚI ÁNH HÀO QUANG",
+        "Oshi no Ko: Minha Estrela Preferida",
+        "[Moje hvězda]",
+        "【OSHI NO KO】Mi Idol Favorita",
+        "【최애의 아이】"
+      ],
+      "description": "Gorou is a gynecologist and idol fan who’s in shock after his favorite star, Ai, announces an impromptu hiatus. Little does Gorou realize that he’s about to forge a bond with her that defies all common sense! Lies are an idol’s weapon! (Source: Yen Press) Notes: - Nominated for the 14th and 15th Manga Taisho, the 26th Tezuka Osamu Cultural Prize, the 67th Shogakukan Manga Award in the general category and the 46th Kodansha Manga Award. - Winner of the 7th Next Manga Award in the print category. - Includes \"[Oshi no Ko]: interlude\" and one extra chapter.",
+      "genres": [
+        "Drama",
+        "Mystery",
+        "Psychological",
+        "Supernatural"
+      ],
+      "creators": [
+        "Aka Akasaka",
+        "Mengo Yokoyari"
+      ],
+      "status": "FINISHED",
+      "format": "MANGA",
+      "country": "JP",
+      "year": 2020,
+      "chapters": 171,
+      "volumes": 16,
+      "isAdult": false,
+      "metadataUrl": "https://anilist.co/manga/117195",
+      "coverSource": "https://s4.anilist.co/file/anilistcdn/media/manga/cover/medium/bx117195-r3kf8eF0xkDJ.png",
+      "cover": "/manga/covers/117195-65dda3c39bfb.png",
+      "hash": "bb40c3b8ae5dd8e4416199acf94507ee88ff5ccf8e5fc4b318bb9466f6f51622",
+      "lastmod": "2026-10-10"
+    },
+    {
+      "id": 120760,
+      "path": "/manga/kaiju-no-8-120760/",
+      "title": "Kaiju No.8",
+      "aliases": [
+        "Kaijuu 8-gou",
+        "怪獣８号",
+        "Monster #8",
+        "8Kaijuu",
+        "KAIJU No. EIGHT",
+        "Kaiju Nº8",
+        "怪兽8号",
+        "Kaidžú č. 8",
+        "괴수 8호",
+        "怪獸8號"
+      ],
+      "description": "A man working a job far removed from his childhood dreams gets wrapped up in an unexpected situation…! Becoming a monster, he aims once again to fulfill his lifelong dream…! (Source: MANGA Plus) Note: - Nominated for the 14th Manga Taisho Award in 2021. - Winner of the 7th Next Manga Award in the Web Manga Category in 2021.",
+      "genres": [
+        "Action",
+        "Sci-Fi"
+      ],
+      "creators": [
+        "Naoya Matsumoto",
+        "Atelier Colorful Koala"
+      ],
+      "status": "FINISHED",
+      "format": "MANGA",
+      "country": "JP",
+      "year": 2020,
+      "chapters": 129,
+      "volumes": 16,
+      "isAdult": false,
+      "metadataUrl": "https://anilist.co/manga/120760",
+      "coverSource": "https://s4.anilist.co/file/anilistcdn/media/manga/cover/medium/bx120760-MtXvMgujLBpe.jpg",
+      "cover": "/manga/covers/120760-5838a9ef04a6.jpg",
+      "hash": "7430cf23330fa8167bd73dfd40fddd116c30cd654f919cd2a76600d7fea4a55d",
+      "lastmod": "2026-10-10"
+    },
+    {
+      "id": 31706,
+      "path": "/manga/jojo-s-bizarre-adventure-part-7-steel-ball-run-31706/",
+      "title": "JoJo's Bizarre Adventure: Part 7–Steel Ball Run",
+      "aliases": [
+        "JoJo no Kimyou na Bouken: Steel Ball Run",
+        "ジョジョの奇妙な冒険 スティール・ボール・ラン",
+        "Dai 7 Bu Johnny Joestar",
+        "JoJo's Bizarre Adventure Part 7: Steel Ball Run",
+        "מרוץ כדור הפלדה",
+        "Le bizzarre avventure di JoJo: Steel Ball Run"
+      ],
+      "description": "Riders from around the world gather in the Wild West for the race of the century! Johnny Joestar, a former jockey paralyzed from the waist down, comes to spectate, and momentarily regains the ability to walk while watching a duel fought by Gyro Zeppeli. Desperate to learn more about this power, Johnny joins the race alongside Gyro and embarks on the most epic and bizarre race to ever cross the American frontier! (Source: VIZ Media)",
+      "genres": [
+        "Action",
+        "Adventure",
+        "Drama",
+        "Mystery",
+        "Supernatural"
+      ],
+      "creators": [
+        "Hirohiko Araki"
+      ],
+      "status": "FINISHED",
+      "format": "MANGA",
+      "country": "JP",
+      "year": 2004,
+      "chapters": 95,
+      "volumes": 24,
+      "isAdult": false,
+      "metadataUrl": "https://anilist.co/manga/31706",
+      "coverSource": "https://s4.anilist.co/file/anilistcdn/media/manga/cover/medium/bx31706-lRncu9VbcBB7.png",
+      "cover": "/manga/covers/31706-b4c339ee4f17.png",
+      "hash": "e055d128421e92b940f1a5c10aa4f1c25302da5c5df98bebad105323e941d697",
+      "lastmod": "2026-10-10"
+    },
+    {
+      "id": 87170,
+      "path": "/manga/fire-punch-87170/",
+      "title": "Fire Punch",
+      "aliases": [
+        "ファイアパンチ",
+        "파이어 펀치"
+      ],
+      "description": "Orphaned siblings Agni and Luna, like the Ice Witch who cursed their world, are two of the “blessed,” humans who hold special abilities. However, not all who are blessed are friendly, and after another of their kind attacks Agni and decimates the orphans' village, Agni fights to survive, vowing revenge. (Source: VIZ Media)",
+      "genres": [
+        "Action",
+        "Drama",
+        "Mystery",
+        "Psychological",
+        "Supernatural",
+        "Thriller"
+      ],
+      "creators": [
+        "Tatsuki Fujimoto"
+      ],
+      "status": "FINISHED",
+      "format": "MANGA",
+      "country": "JP",
+      "year": 2016,
+      "chapters": 83,
+      "volumes": 8,
+      "isAdult": false,
+      "metadataUrl": "https://anilist.co/manga/87170",
+      "coverSource": "https://s4.anilist.co/file/anilistcdn/media/manga/cover/medium/bx87170-nyuwcN7rU4pc.jpg",
+      "cover": "/manga/covers/87170-1afa9f653a72.jpg",
+      "hash": "6f45cb1dad513868523e3d433d913cfd46d02bb3d6c7c4a32c59455c812a0b98",
+      "lastmod": "2026-10-10"
+    },
+    {
+      "id": 85611,
+      "path": "/manga/tokyo-ghoul-re-85611/",
+      "title": "Tokyo Ghoul:re",
+      "aliases": [
+        "東京喰種-トーキョーグール-:re",
+        "Tokyo Gûl: RE",
+        "Tokijský ghúl: re",
+        "Токийский гуль: re",
+        "도쿄 구울:re"
+      ],
+      "description": "In Tokyo, an unchanging despair is lurking. Mysterious man-eating beings, ghouls, run rampant in Tokyo. Living hidden during everyday life, the existence of ghouls, whose true identities are shrouded in mystery, permanently terrorizes Tokyo's residents. At CCG, the sole institution that investigates and resolves cases related to ghouls, Haise Sasaki has been assigned a certain mission. While dealing with the unruly four problem children known as \"Quinx\", Haise's days of suffering begin...?! Note: Includes one extra chapter and the one-shot \"Tokyo Ghoul: Joker\".",
+      "genres": [
+        "Action",
+        "Drama",
+        "Horror",
+        "Mystery",
+        "Psychological",
+        "Supernatural"
+      ],
+      "creators": [
+        "Sui Ishida"
+      ],
+      "status": "FINISHED",
+      "format": "MANGA",
+      "country": "JP",
+      "year": 2014,
+      "chapters": 181,
+      "volumes": 16,
+      "isAdult": false,
+      "metadataUrl": "https://anilist.co/manga/85611",
+      "coverSource": "https://s4.anilist.co/file/anilistcdn/media/manga/cover/medium/bx85611-Asb0BNP23NsJ.png",
+      "cover": "/manga/covers/85611-356b9aa5256d.png",
+      "hash": "5952506309c13ffacc2f82f1f2bc65c84a3f09da2f8d5659e814bc7499dc9b13",
+      "lastmod": "2026-10-10"
+    },
+    {
+      "id": 65243,
+      "path": "/manga/haikyu-65243/",
+      "title": "Haikyu!!",
+      "aliases": [
+        "Haikyuu!!",
+        "ハイキュー！！",
+        "Ball High!!",
+        "HQ!!",
+        "High Kyuu!!",
+        "ไฮคิว!! คู่ตบฟ้าประทาน",
+        "Haikyu!! - Chàng khổng lồ tí hon",
+        "하이큐!!",
+        "排球少年!!"
+      ],
+      "description": "Shouyou Hinata is out to prove that in volleyball you don’t need to be tall to fly! After losing his first and last volleyball match against Tobio Kageyama, “the King of the Court,” Shouyou Hinata swears to become his rival after graduating middle school. But what happens when the guy he wants to defeat ends up being his teammate?! (Source: VIZ Media) Notes: - Winner of the 61st Shogakukan Manga Award in the Shounen Category in 2017. - Includes two extra chapters.",
+      "genres": [
+        "Comedy",
+        "Drama",
+        "Sports"
+      ],
+      "creators": [
+        "Haruichi Furudate",
+        "Erika Terriquez"
+      ],
+      "status": "FINISHED",
+      "format": "MANGA",
+      "country": "JP",
+      "year": 2012,
+      "chapters": 404,
+      "volumes": 45,
+      "isAdult": false,
+      "metadataUrl": "https://anilist.co/manga/65243",
+      "coverSource": "https://s4.anilist.co/file/anilistcdn/media/manga/cover/medium/bx65243-mR4MnJFmfaOF.png",
+      "cover": "/manga/covers/65243-959c72f68e3b.png",
+      "hash": "3639275ef8469c9d4c6350b40e4f8bfb5c151bb1fe13ba9ec538eb081e10cbc1",
+      "lastmod": "2026-10-10"
+    },
+    {
+      "id": 101583,
+      "path": "/manga/my-dress-up-darling-101583/",
+      "title": "My Dress-Up Darling",
+      "aliases": [
+        "Sono Bisque Doll wa Koi wo Suru",
+        "その着せ替え人形は恋をする",
+        "Sono Kisekae Ningyou wa Koi wo suru",
+        "Sexy Cosplay Doll",
+        "More Than a Doll",
+        "Projekt: Cosplay",
+        "หนุ่มเย็บผ้ากับสาวนักคอสเพลย์",
+        "更衣人偶坠入爱河",
+        "Minha Adorável Cosplayer",
+        "Ця порцелянова лялечка закохалася",
+        "戀上換裝娃娃",
+        "Láska ve střihu cosplaye",
+        "Moja lutka za oblačenje",
+        "Kisekoi",
+        "Oyuncak Bebek Sevgilim",
+        "그 비스크 돌은 사랑을 한다"
+      ],
+      "description": "Traumatized by a childhood incident with a friend who took exception to his love of traditional dolls, doll-artisan hopeful Gojou Wakana passes his days as a loner, finding solace in the home ec room at his high school. To Wakana, people like beautiful Kitagawa Marin, a trendy girl who's always surrounded by a throng of friends, is practically an alien from another world. But when cheerful Marin--never one to be shy--spots Wakana sewing away one day after school, she barges in with the aim of roping her quiet classmate into her secret hobby: cosplay! Will Wakana's wounded heart be able to handle the invasion from this sexy alien?! (Source: Square Enix) Note: Includes four extra chapters.",
+      "genres": [
+        "Comedy",
+        "Ecchi",
+        "Romance",
+        "Slice of Life"
+      ],
+      "creators": [
+        "Shinichi Fukuda"
+      ],
+      "status": "FINISHED",
+      "format": "MANGA",
+      "country": "JP",
+      "year": 2018,
+      "chapters": 119,
+      "volumes": 15,
+      "isAdult": false,
+      "metadataUrl": "https://anilist.co/manga/101583",
+      "coverSource": "https://s4.anilist.co/file/anilistcdn/media/manga/cover/medium/bx101583-VI1PT2QGGT8W.jpg",
+      "cover": "/manga/covers/101583-01533c68b4eb.jpg",
+      "hash": "735bdb4805e85c3a14397aadc3f5884f006dcbcf72f007353ac038545e887689",
+      "lastmod": "2026-10-10"
+    },
+    {
+      "id": 85143,
+      "path": "/manga/tower-of-god-85143/",
+      "title": "Tower of God",
+      "aliases": [
+        "Sinui Tap",
+        "신의 탑",
+        "Kami no Tou",
+        "A Torre de Deus",
+        "ทาวเวอร์ออฟก๊อด หอคอยเทพเจ้า",
+        "神之塔"
+      ],
+      "description": "What do you desire? Money and wealth? Honor and pride? Authority and power? Revenge? Or something that transcends them all? Whatever you desire—it's here. (Source: WEBTOON)",
+      "genres": [
+        "Action",
+        "Adventure",
+        "Drama",
+        "Fantasy",
+        "Mystery"
+      ],
+      "creators": [
+        "SIU"
+      ],
+      "status": "RELEASING",
+      "format": "MANGA",
+      "country": "KR",
+      "year": 2010,
+      "chapters": null,
+      "volumes": null,
+      "isAdult": false,
+      "metadataUrl": "https://anilist.co/manga/85143",
+      "coverSource": "https://s4.anilist.co/file/anilistcdn/media/manga/cover/medium/bx85143-23oup3ETbFJk.jpg",
+      "cover": "/manga/covers/85143-d450f8949551.jpg",
+      "hash": "8bcd7006db6e93aba7c14d100174c077d44e1e292fb7c77e92255890c776c682",
+      "lastmod": "2026-10-10"
+    },
+    {
+      "id": 30021,
+      "path": "/manga/death-note-30021/",
+      "title": "Death Note",
+      "aliases": [
+        "DEATH NOTE",
+        "デスノート",
+        "Ölüm Defteri",
+        "Death Note - Zápisník smrti",
+        "Beležnica smrti",
+        "Τετράδιο θανάτου",
+        "Death Note: Тетрадка на смъртта",
+        "死亡筆記本",
+        "데스노트"
+      ],
+      "description": "Light Yagami is an ace student with great prospects—and he’s bored out of his mind. But all that changes when he finds the Death Note, a notebook dropped by a rogue Shinigami death god. Any human whose name is written in the notebook dies, and Light has vowed to use the power of the Death Note to rid the world of evil. But will Light succeed in his noble goal, or will the Death Note turn him into the very thing he fights against? (Source: VIZ Media)",
+      "genres": [
+        "Drama",
+        "Mystery",
+        "Psychological",
+        "Supernatural",
+        "Thriller"
+      ],
+      "creators": [
+        "Takeshi Obata",
+        "Tsugumi Ooba",
+        "Gia Cam Luc",
+        "Éric Montésinos"
+      ],
+      "status": "FINISHED",
+      "format": "MANGA",
+      "country": "JP",
+      "year": 2003,
+      "chapters": 108,
+      "volumes": 12,
+      "isAdult": false,
+      "metadataUrl": "https://anilist.co/manga/30021",
+      "coverSource": "https://s4.anilist.co/file/anilistcdn/media/manga/cover/medium/bx30021-FE6kmrfpuKyb.jpg",
+      "cover": "/manga/covers/30021-23e285095f4f.jpg",
+      "hash": "2c619efd17e135e2f85aad445d9e23f087f631153bed98300fb868494929caf9",
+      "lastmod": "2026-10-10"
+    },
+    {
+      "id": 30011,
+      "path": "/manga/naruto-30011/",
+      "title": "Naruto",
+      "aliases": [
+        "NARUTO",
+        "NARUTO -ナルト-",
+        "נארוטו",
+        "Наруто",
+        "火影忍者",
+        "나루토",
+        "นินจาคาถา โอ้โฮเฮะ"
+      ],
+      "description": "Twelve years ago the Village Hidden in the Leaves was attacked by a fearsome threat. A nine-tailed fox spirit claimed the life of the village leader, the Hokage, and many others. Today, the village is at peace and a troublemaking kid named Naruto is struggling to graduate from Ninja Academy. His goal may be to become the next Hokage, but his true destiny will be much more complicated. The adventure begins now! (Source: VIZ Media)",
+      "genres": [
+        "Action",
+        "Adventure",
+        "Supernatural"
+      ],
+      "creators": [
+        "Masashi Kishimoto"
+      ],
+      "status": "FINISHED",
+      "format": "MANGA",
+      "country": "JP",
+      "year": 1999,
+      "chapters": 700,
+      "volumes": 72,
+      "isAdult": false,
+      "metadataUrl": "https://anilist.co/manga/30011",
+      "coverSource": "https://s4.anilist.co/file/anilistcdn/media/manga/cover/medium/nx30011-9yUF1dXWgDOx.jpg",
+      "cover": "/manga/covers/30011-f5fd21b2d876.jpg",
+      "hash": "f8ade6f6ed2424354e07c6521d73775f0d28afa13620ea55553fa7ff75fd7ee3",
+      "lastmod": "2026-10-10"
+    },
+    {
+      "id": 100994,
+      "path": "/manga/hell-s-paradise-jigokuraku-100994/",
+      "title": "Hell’s Paradise: Jigokuraku",
+      "aliases": [
+        "Jigokuraku",
+        "地獄楽",
+        "Hell's Paradise",
+        "Paradition",
+        "Heavenhell",
+        "Jigoku Raku",
+        "Piekielny Raj",
+        "지옥락",
+        "สุขาวดีอเวจี",
+        "地獄樂"
+      ],
+      "description": "Gabimaru the Hollow is one of the most vicious assassins ever to come out of the ninja village of Iwagakure. He’s ruthlessly efficient, but a betrayal results in him being handed a death sentence. He has only one hope—in order to earn his freedom, he must travel to a long-hidden island and recover an elixir that will make the shogun immortal. Failure is not an option. On this island, heaven and hell are just a hair’s breadth away. (Source: VIZ Media)",
+      "genres": [
+        "Action",
+        "Adventure",
+        "Mystery",
+        "Supernatural"
+      ],
+      "creators": [
+        "Yuuji Kaku"
+      ],
+      "status": "FINISHED",
+      "format": "MANGA",
+      "country": "JP",
+      "year": 2018,
+      "chapters": 127,
+      "volumes": 13,
+      "isAdult": false,
+      "metadataUrl": "https://anilist.co/manga/100994",
+      "coverSource": "https://s4.anilist.co/file/anilistcdn/media/manga/cover/medium/bx100994-f6CMjiQQNVeS.png",
+      "cover": "/manga/covers/100994-037a8702b042.png",
+      "hash": "7cc479f523fb50d01a4e75894810f5a54035e89cb16c76e773d0ce4b8930124e",
+      "lastmod": "2026-10-10"
+    },
+    {
+      "id": 85135,
+      "path": "/manga/a-silent-voice-85135/",
+      "title": "A Silent Voice",
+      "aliases": [
+        "Koe no Katachi",
+        "聲の形",
+        "The Shape of Voice",
+        "A Voz do Silêncio",
+        "A Forma da Voz",
+        "Kształt twojego głosu",
+        "Sessizliğin Sesi",
+        "声之形",
+        "Форма голоса",
+        "Němý hlas",
+        "รักไร้เสียง",
+        "Oblik glasa",
+        "목소리의 형태",
+        "Форма голосу",
+        "Silhuett av en stemme"
+      ],
+      "description": "Based on a one-shot that won the 80th Weekly Shounen Magazine Newbie Best Mangaka Award. Shouya is a bully. When Shouko, a girl who can't hear, enters his elementary school class, she becomes their favorite target, and Shouya and his friends goad each other into devising new tortures for her. But the children's cruelty goes too far. Shouko is forced to leave the school, and Shouya ends up shouldering all the blame. Six years later, the two meet again. Can Shouya make up for his past mistakes, or is it too late? (Source: Kodansha USA) Note: Includes two extra chapters.",
+      "genres": [
+        "Drama",
+        "Romance",
+        "Slice of Life"
+      ],
+      "creators": [
+        "Yoshitoki Ooima",
+        "Hinoko"
+      ],
+      "status": "FINISHED",
+      "format": "MANGA",
+      "country": "JP",
+      "year": 2013,
+      "chapters": 64,
+      "volumes": 7,
+      "isAdult": false,
+      "metadataUrl": "https://anilist.co/manga/85135",
+      "coverSource": "https://s4.anilist.co/file/anilistcdn/media/manga/cover/medium/bx85135-11OOnyaqV71k.png",
+      "cover": "/manga/covers/85135-1ea85ab1a642.png",
+      "hash": "dc18c989736ddbd00d5d7a03a85a0052dd7d8de170d0083d8fc94ab63d0c40f0",
+      "lastmod": "2026-10-10"
+    },
+    {
+      "id": 125828,
+      "path": "/manga/sakamoto-days-125828/",
+      "title": "Sakamoto Days",
+      "aliases": [
+        "SAKAMOTO DAYS",
+        "サカモト デイズ",
+        "Дни Сакамото",
+        "SAKAMOTO DAYS 坂本日常",
+        "사카모토 데이즈"
+      ],
+      "description": "Taro Sakamoto was the ultimate assassin, feared by villains and admired by hitmen. But one day...he fell in love! Retirement, marriage, fatherhood and then... Sakamoto gained weight! The chubby guy who runs the neighborhood store is actually a former legendary hitman! Can he protect his family from danger? Get ready to experience a new kind of action comedy series! (Source: MANGA Plus)",
+      "genres": [
+        "Action",
+        "Comedy"
+      ],
+      "creators": [
+        "Yuuto Suzuki"
+      ],
+      "status": "RELEASING",
+      "format": "MANGA",
+      "country": "JP",
+      "year": 2020,
+      "chapters": null,
+      "volumes": null,
+      "isAdult": false,
+      "metadataUrl": "https://anilist.co/manga/125828",
+      "coverSource": "https://s4.anilist.co/file/anilistcdn/media/manga/cover/medium/bx125828-p78Z8SflkfmO.jpg",
+      "cover": "/manga/covers/125828-ec1494cbb2e3.jpg",
+      "hash": "5b800a8560bd88e81fc034a3fff5d9461347b9f59f532c308571da9d7d0fa9d8",
+      "lastmod": "2026-10-10"
+    }
+  ]
+}

@@ -87,6 +87,11 @@ def patch(text,enforce=False):
     redir @web_privacy https://nyora.xyz/privacy 301
     @web_debug path /_*.html
     respond @web_debug 404''')
+    # Public series HTML and dictionaries revalidate with the daily deployment.
+    # Content-addressed covers are safe to cache for a year.
+    block=block.replace('@app_document path / /index.html\n','@app_document path / /index.html /manga/ /manga/*/ /manga/*/index.html\n')
+    block=block.replace('@nocache path /sw.js /discover-feed.json\n','@nocache path /sw.js /discover-feed.json /sitemap.xml /manga/*.json /catalog/*\n')
+    block=block.replace('@immutable path /chunk-*.js /api-*.js /zip-*.js\n','@immutable path /chunk-*.js /api-*.js /zip-*.js /manga/covers/*\n')
     text=text[:a]+block+text[b:]
     assert re.findall(r'Content-Security-Policy .*',text)==original_csp,'CSP must remain unchanged'
     return text

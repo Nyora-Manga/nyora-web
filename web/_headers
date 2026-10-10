@@ -42,3 +42,13 @@
 /vendor/ort/*
   Cross-Origin-Embedder-Policy: credentialless
   Cross-Origin-Resource-Policy: same-origin
+
+# Public series pages and search data follow the daily catalogue release.
+/manga/*
+  Cache-Control: no-cache, no-transform
+/catalog/*
+  Cache-Control: no-cache
+/sitemap.xml
+  Cache-Control: no-cache
+/manga/covers/*
+  Cache-Control: public, max-age=31536000, immutable
