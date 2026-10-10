@@ -15,7 +15,8 @@
     "check:helper": "node scripts/check-helper.mjs",
     "test:desktop": "node tests/desktop-ui.browser.mjs",
     "refresh:series": "node scripts/refresh-series.mjs",
-    "test:catalogue": "node tests/series.browser.mjs"
+    "test:catalogue": "node tests/series.browser.mjs",
+    "test:mobile": "node tests/mobile-ui.browser.mjs"
   },
   "devDependencies": {
     "esbuild": "^0.24.0",

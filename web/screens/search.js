@@ -133,9 +133,18 @@ export function render(view, params) {
   let lang = getLangPref();
 
   const title = el('h1', { class: 'page-title', style: { marginBottom: '8px' } },
-    query ? `Results for “${query}”` : 'Global Search');
-  // No in-page search field — the global top-bar search (#searchInput) is the
-  // single entry; it's prefilled with the active query below so you refine there.
+    query ? `Results for “${query}”` : 'Search manga');
+  // The desktop header has a search field; phones need a visible in-page one.
+  let mobileSearch;
+  if (matchMedia('(max-width:760px)').matches) {
+    const input = el('input', { type:'search', value:query, placeholder:'Search manga',
+      'aria-label':'Search manga', enterkeyhint:'search', autocomplete:'off' });
+    mobileSearch = el('form', { class:'search-page-header', role:'search', onSubmit:event=>{
+      event.preventDefault();
+      input.blur();
+      router.navigate('search', input.value.trim() ? {q:input.value.trim()} : {});
+    } }, el('div', {class:'search-field-v2'}, input, btn('Search', {type:'submit',variant:'accent'})));
+  }
 
   // Language filter row — a Material dropdown, rebuilt once sources load.
   const langHost = el('span', { class: 'search-lang-host' });
@@ -153,14 +162,16 @@ export function render(view, params) {
   const status = el('div', { class: 'search-status', style: { marginBottom: '24px' } });
   const results = el('div', { class: 'search-results' });
 
-  view.append(title, filters, status, results);
+  view.append(title);
+  if (mobileSearch) view.append(mobileSearch);
+  view.append(filters, status, results);
   // Drive the global top-bar search: reflect the active query there so it reads
   // as "the" search field, and focus it (caret at end) for quick refining.
   requestAnimationFrame(() => {
     const top = document.getElementById('searchInput');
     if (!top) return;
     top.value = query;
-    if (!query) {
+    if (!query && !mobileSearch) {
       top.focus({ preventScroll: true });
       try { top.setSelectionRange(top.value.length, top.value.length); } catch { /* ignore */ }
     }
@@ -344,7 +355,7 @@ export function render(view, params) {
   }
 
   function renderEmpty() {
-    title.textContent = 'Global Search';
+    title.textContent = 'Search manga';
     status.replaceChildren();
     const recent = getRecent();
     const blocks = [];

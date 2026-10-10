@@ -75,7 +75,7 @@ const metas = {
 const NAV_GROUPS = [
   { label: 'Library', items: [
     { key: 'history', label: 'History', icon: 'history' },
-    { key: 'library', label: 'Favourites', icon: 'heart' },
+    { key: 'library', label: 'Library', icon: 'heart' },
     { key: 'local', label: 'Local', icon: 'folder' },
     { key: 'bookmarks', label: 'Bookmarks', icon: 'bookmark' },
     { key: 'downloads', label: 'Downloads', icon: 'download' },
@@ -85,7 +85,7 @@ const NAV_GROUPS = [
     // The old second "Discover" (suggestions.js, MangaBaka grid) was removed from the nav
     // to avoid two Discover entries; it stays as the "Show all" drill-down only.
     { key: 'discover', label: 'Discover', icon: 'home' },
-    { key: 'explore', label: 'Explore', icon: 'compass' },
+    { key: 'explore', label: 'Sources', icon: 'compass' },
     { key: 'updates', label: 'Updates', icon: 'bell' },
     { key: 'browser', label: 'Browser', icon: 'globe' },
   ] },
@@ -350,39 +350,29 @@ function buildMobileSearchPanel() {
   });
 }
 
-// Mobile bottom tab bar (app-like), styled as a floating rounded pill to match
-// the android app. Four primary destinations — Discover / Library / Explore /
-// History — with a detached circular "continue reading" reader FAB to the
-// right. The rest of the destinations live in the drawer. Shown only at the
-// phone breakpoint (CSS-gated).
-const TABBAR_KEYS = ['discover', 'library', 'explore', 'history'];
-// Bottom-nav glyphs mirroring the nyora-android design (chart / bars / compass /
-// clock), independent of the sidebar icons.
-const TABBAR_ICONS = { discover: 'trending', library: 'bars', explore: 'compass', history: 'history' };
+// Shared desktop destinations, arranged for one-handed phone navigation.
+// Resume reading remains available in Library and the navigation drawer.
+const TABBAR_KEYS = ['library', 'discover', 'explore', 'updates', 'settings'];
+const TABBAR_ICONS = { library:'heart', discover:'home', explore:'compass', updates:'bell', settings:'settings' };
+const TABBAR_LABELS = { library:'Library', discover:'Discover', explore:'Sources', updates:'Updates', settings:'Settings' };
 function buildTabbar() {
   const bar = $('#tabbar');
   if (!bar) return;
+  bar.setAttribute('aria-label', 'Main navigation');
   const pill = el('div', { class: 'tabbar-pill' },
     ...TABBAR_KEYS.filter((k) => metas[k]).map((key) =>
       el('a', { 'data-tab': key, href: `#/${key}`, onClick: () => { document.body.classList.remove('nav-open'); } },
         icon(TABBAR_ICONS[key] || metas[key].icon),
-        el('span', null, metas[key].title),
+        el('span', null, TABBAR_LABELS[key] || metas[key].title),
       ),
     ),
   );
-  const fab = el('button', {
-    id: 'readerFab',
-    class: 'tabbar-fab',
-    type: 'button',
-    'aria-label': 'Continue reading',
-    title: 'Continue reading',
-    onClick: () => { document.body.classList.remove('nav-open'); continueReading(); },
-  }, icon('read'));
-  bar.replaceChildren(pill, fab);
+  bar.replaceChildren(pill);
 }
 function syncTabbar(name) {
   for (const a of document.querySelectorAll('#tabbar [data-tab]')) {
-    const on = a.getAttribute('data-tab') === name;
+    const tab = a.getAttribute('data-tab');
+    const on = tab === name || (tab === 'library' && ['history', 'bookmarks', 'stats', 'downloads', 'local'].includes(name));
     a.classList.toggle('active', on);
     if (on) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current');
   }

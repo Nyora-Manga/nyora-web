@@ -4,7 +4,8 @@ import { mountDesktopCommands } from './desktop-palette.js';
 import { browserLibrary, browserFiles } from './browser-services.js';
 import { toast } from '../core/ui.js';
 
-// Use the Electron shell verbatim at desktop widths. Rebuild the mobile drawer
+// Share the reading-room theme at every width; mount the Electron shell on desktop.
+// Rebuild the mobile drawer
 // when crossing the breakpoint so neither layout leaves dead or duplicate links.
 export function mountBrowserDesktop({ router, store, buildSidebar, syncNav, render }) {
   const media = matchMedia('(min-width:761px)');
@@ -18,7 +19,7 @@ export function mountBrowserDesktop({ router, store, buildSidebar, syncNav, rend
       document.documentElement.dataset.nyoraPlatform = 'desktop';
       unmountCommands = mountDesktopCommands({ router, services: browserLibrary, files: browserFiles, toast });
       unmountShell = mountDesktopShell({ router, store });
-    } else delete document.documentElement.dataset.nyoraPlatform;
+    } else document.documentElement.dataset.nyoraPlatform = 'mobile';
     syncNav(router.current().name);
     if (event) render(router.current());
   }

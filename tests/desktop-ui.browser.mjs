@@ -109,7 +109,7 @@ try {
   await page.getByRole('button',{name:'Collapse sidebar',exact:true}).click();
   assert.equal(await page.getByRole('button',{name:'Expand sidebar',exact:true}).getAttribute('aria-expanded'),'false');
   await page.setViewportSize({width:390,height:844});
-  await page.waitForFunction(()=>!document.documentElement.dataset.nyoraPlatform);
+  await page.waitForFunction(()=>document.documentElement.dataset.nyoraPlatform === 'mobile');
   assert.equal(await page.locator('.desktop-context').count(),0);
   assert.equal(await page.locator('.reading-settings-layout').count(),0);
   assert(await page.locator('#tabbar').isVisible());

@@ -89,6 +89,11 @@ jobs:
           CHROMIUM_CHANNEL: chromium
         run: npm run test:desktop
 
+      - name: Check mobile UI and touch-sized controls
+        env:
+          CHROMIUM_CHANNEL: chromium
+        run: npm run test:mobile
+
       - name: Check catalogue search and crawlable series pages
         env:
           CHROMIUM_CHANNEL: chromium
