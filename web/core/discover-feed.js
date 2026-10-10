@@ -39,11 +39,12 @@ export function discoverQuery() {
   }`;
 }
 
-export async function fetchFromAniList() {
+export async function fetchFromAniList({ signal } = {}) {
   const res = await fetch(ANILIST_API, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
     body: JSON.stringify({ query: discoverQuery() }),
+    ...(signal ? { signal } : {}),
   });
   if (!res.ok) throw new Error(`AniList HTTP ${res.status}`);
   const json = await res.json();

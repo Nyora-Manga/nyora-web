@@ -26,7 +26,7 @@ import { fetchFromAniList, feedNonEmpty, FEED_KEYS } from '../web/core/discover-
 const OUT = 'dist/discover-feed.json';
 
 try {
-  const feed = await fetchFromAniList();
+  const feed = await fetchFromAniList({ signal: AbortSignal.timeout(15_000) });
   if (!feedNonEmpty(feed)) throw new Error('AniList returned an empty trending list');
 
   // Trim to what the rails actually show. The full 30-per-rail response is
