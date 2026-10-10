@@ -27,3 +27,19 @@ test('canonical reader URLs never trigger domain migration', async () => {
   assert.equal(redirected, false);
   assert.equal(location.hash, '#/reader?chapterUrl=test');
 });
+
+test('removed and nonexistent documents never fall back to the cached app shell offline', async () => {
+  const handlers={};let shellReads=0;
+  vm.runInNewContext(script,{
+    self:{location:new URL('https://web.nyora.xyz'),addEventListener:(type,fn)=>handlers[type]=fn},
+    URL,Request,Response,Headers,
+    fetch:async()=>{throw Error('offline');},
+    caches:{match:async()=>{shellReads++;return new Response('app shell');}},
+  });
+  for(const path of ['/_ch.html','/_check.html','/_d.html','/_e.html','/_f.html','/_s.html','/_v.html','/privacy','/dmca','/about']){
+    let response;
+    handlers.fetch({request:{method:'GET',mode:'navigate',url:'https://web.nyora.xyz'+path},respondWith:p=>response=p});
+    assert.equal((await response).status,404,path);
+  }
+  assert.equal(shellReads,0);
+});

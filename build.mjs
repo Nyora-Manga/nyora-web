@@ -11,6 +11,7 @@
 import { build } from 'esbuild';
 import { rm, cp, readFile, writeFile, readdir } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
+import { execFileSync } from 'node:child_process';
 
 const SRC = 'web';
 const OUT = 'dist';
@@ -28,7 +29,15 @@ if (!(await readFile(ORT_ENTRY).catch(() => null))) {
 //    icons, manifest, _redirects, sources.json, …). The source .js modules are
 //    copied too but go unused — the bundle below inlines them.
 await rm(OUT, { recursive: true, force: true });
-await cp(SRC, OUT, { recursive: true });
+await cp(SRC, OUT, { recursive: true, filter: path => !/^_[^/]*\.html$/.test(path.split('/').at(-1)) });
+
+// A deployment advertises its release commit date, never a stale hand-set date.
+const sitemap = await readFile(`${OUT}/sitemap.xml`, 'utf8').catch(() => null);
+if (sitemap) {
+  const releaseDate = process.env.NYORA_RELEASE_DATE || execFileSync('git', ['show', '-s', '--format=%cs', 'HEAD'], {encoding:'utf8'}).trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(releaseDate)) throw new Error('Invalid release date');
+  await writeFile(`${OUT}/sitemap.xml`, sitemap.replace(/<lastmod>.*?<\/lastmod>/g, `<lastmod>${releaseDate}</lastmod>`));
+}
 
 // 2. The AI workers are loaded BY URL at runtime (`new Worker('/core/
 //     translate/tl-worker.js')`), so they are not part of the app graph and the

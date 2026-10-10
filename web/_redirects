@@ -1,5 +1,3 @@
-# Nyora Web is a 100% client-side SPA — no backend, no proxies.
-# Parsing runs in-browser; the only external services are the Cloudflare
-# CORS/image worker (cross-origin) and AniList's CORS-enabled GraphQL API.
-# SPA fallback: serve index.html for any path that isn't a real file.
-/*    /index.html    200
+# Hash routes use the root document. Unknown paths must remain real 404s.
+/privacy https://nyora.xyz/privacy 301
+/privacy/ https://nyora.xyz/privacy 301

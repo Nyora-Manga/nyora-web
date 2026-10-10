@@ -22,7 +22,7 @@ async function serve(root) {
   await new Promise(r=>server.listen(0,'127.0.0.1',r));
   return {server,url:'http://127.0.0.1:'+server.address().port};
 }
-const sources=Array.from({length:60},(_,i)=>({id:'data:fixture'+i,name:'Fixture '+String(i).padStart(2,'0'),lang:'en',isInstalled:true}));
+const sources=Array.from({length:60},(_,i)=>({id:'data:fixture'+i,name:'Fixture '+String(i).padStart(2,'0'),lang:'en',isInstalled:true,isNsfw:i===59}));
 const manga={id:'fixture-manga',title:'Fixture manga',url:'https://example.org/manga',source:{name:sources[0].id},chapters:Array.from({length:30},(_,i)=>({id:'chapter-'+i,url:'https://example.org/chapter/'+i,title:'Chapter '+i,number:i}))};
 const host=await serve(resolve(project,'dist'));
 const browser=await chromium.launch({headless:true,channel:process.env.CHROMIUM_CHANNEL||'chrome'});
@@ -35,6 +35,7 @@ try {
   const filters={filters:[{name:'Status',values:['ONGOING','FINISHED']},{name:'Sort',values:['POPULARITY','UPDATED']}],tags:[{key:'action',title:'Action'},{key:'drama',title:'Drama'}],tagsExclusion:true,searchWithFilters:true};
   await page.route('https://**/*', async route=>{
     const url=new URL(route.request().url());
+    if(url.pathname === '/app/session') return route.fulfill({json:{token:'test-ticket',expiresIn:300}});
     if(url.pathname.includes('/sources/catalog'))return route.fulfill({json:{entries:sources}});
     if(url.pathname.includes('/sources/filters'))return route.fulfill({json:filters});
     if(url.pathname.includes('/manga/details'))return route.fulfill({json:{manga,chapters:manga.chapters}});
@@ -78,6 +79,7 @@ try {
   await page.screenshot({path:resolve(evidence,'web-search-dialog.png')});
   await page.keyboard.press('Escape');await page.locator('.desktop-command-dialog').waitFor({state:'detached'});
   await goto('explore');await page.locator('.source-tile').first().waitFor();
+  assert.equal(await page.getByText('Fixture 59',{exact:true}).count(),0,'Adult source stays hidden with default preferences');
   const toolbar=page.locator('.reading-source-toolbar');const toolbarBefore=await toolbar.boundingBox();
   await page.locator('.explore-sources-body').evaluate(el=>el.scrollTop=1000);
   assert.deepEqual(await toolbar.boundingBox(),toolbarBefore,'Sources filters remain pinned while results scroll');

@@ -40,7 +40,7 @@ try {
   page.on('pageerror', e => errors.push(e.message));
   page.on('request', r => { if (/api\.nyora\.xyz\/(manga|image|sources)/.test(r.url())) helperReads.push(r.url()); });
   // Startup catalogue migration is separate from reading local pages.
-  await page.route('https://api.nyora.xyz/**', route => route.fulfill({ json: {
+  await page.route('https://api.nyora.xyz/**', route => route.fulfill({ json: new URL(route.request().url()).pathname === '/app/session' ? {token:'test-ticket',expiresIn:300} : {
     entries: [{ id: 'data:fixture', name: 'Fixture', lang: 'en' }],
   } }));
   await page.route('**/core/translate/tl-worker.js', route => route.fulfill({ contentType: 'text/javascript', body: `

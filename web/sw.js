@@ -190,7 +190,13 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // App shell navigations -> shell cache, fall back to index for SPA routes.
+  // Only real app documents get an offline shell; hash routes stay on /.
+  if (request.mode === 'navigate' && !['/', '/index.html', '/oauth.html'].includes(url.pathname)) {
+    event.respondWith(fetch(request).catch(() => new Response('Not found', {status:404,headers:{'Content-Type':'text/plain'}})));
+    return;
+  }
+
+  // App shell navigations -> shell cache, fall back to index for hash routes.
   if (request.mode === 'navigate') {
     event.respondWith(
       coi(staleWhileRevalidate(request, SHELL).catch(() => caches.match('/index.html'))),

@@ -30,6 +30,9 @@ jobs:
       - name: Install dependencies
         run: npm ci --no-audit --no-fund
 
+      - name: Security gateway regression tests
+        run: python3 -m unittest discover -s ops/security -v
+
       - name: Source migration regression tests
         run: npm test
 
@@ -106,7 +109,6 @@ jobs:
         run: |
           rsync -az --delete \
             --exclude='env.js.bak*' \
-            --exclude='_*.html' \
             -e "ssh -i ~/.ssh/id_ed25519 -o IdentitiesOnly=yes" \
             dist/ "$SSH_USER@$HOST:/var/www/nyora-web/"
 

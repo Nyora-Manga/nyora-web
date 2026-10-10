@@ -1,3 +1,4 @@
+import { catalogueFetch } from './app-session.js';
 // REST client for the data-driven Nyora helper. Public content is read-only;
 // personal library and source preferences belong to this browser. Parser failures
 // surface to the caller; the browser does not execute source parsers.
@@ -164,7 +165,9 @@ async function helperAttempt(base, path, init, outer) {
   const relay = () => ctrl.abort();
   if (outer) outer.addEventListener('abort', relay, { once: true });
   try {
-    const res = await fetch(base + helperPath(path), { ...init, signal: ctrl.signal });
+    const res = String(path).split('?')[0] === '/sources/catalog'
+      ? await catalogueFetch(base, helperPath(path), { ...init, signal: ctrl.signal })
+      : await fetch(base + helperPath(path), { ...init, signal: ctrl.signal });
     if (HELPER_FAILOVER_STATUS.has(res.status)) {
       const nodeFault = HELPER_NODE_FAULT_STATUS.has(res.status);
       // A source-level failure still proves the node is up and answering.

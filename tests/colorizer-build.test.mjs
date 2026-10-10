@@ -26,6 +26,8 @@ test('a colorizer worker update versions its request and updates the app and ser
       'web/vendor/ort/ort.min.mjs': '// Build prerequisite; inference is not run by this test.',
       'web/index.html': '<script src="/boot/migrate.js"></script><script src="/boot/theme.js"></script><script src="/app.js?v=old"></script><link href="/styles.css?v=old">',
       'web/styles.css': 'body{}',
+      'web/_check.html': 'private debug page',
+      'web/sitemap.xml': '<url><lastmod>2000-01-01</lastmod></url>',
       'web/desktop.css': 'body{}',
       'web/sw.js': "const VERSION = 'old';",
     };
@@ -33,22 +35,24 @@ test('a colorizer worker update versions its request and updates the app and ser
     const builds = [];
     for (const revision of ['one', 'two']) {
       await writeFile(join(dir, 'web/core/colorize/worker.js'), `self.postMessage('${revision}');`);
-      await exec(process.execPath, ['build.mjs'], { cwd: dir });
+      await exec(process.execPath, ['build.mjs'], { cwd: dir, env:{...process.env,NYORA_RELEASE_DATE:'2026-10-10'} });
       builds.push({
         app: await readFile(join(dir, 'dist/app.js'), 'utf8'),
         html: await readFile(join(dir, 'dist/index.html'), 'utf8'),
         sw: await readFile(join(dir, 'dist/sw.js'), 'utf8'),
       });
     }
+    await assert.rejects(readFile(join(dir, 'dist/_check.html')), {code:'ENOENT'});
+    assert.match(await readFile(join(dir,'dist/sitemap.xml'),'utf8'), /<lastmod>2026-10-10<\/lastmod>/);
     assert.notEqual(builds[0].app, builds[1].app, 'Existing clients must request the updated worker');
     assert.notEqual(builds[0].html, builds[1].html, 'App URL must change with its worker');
     assert.notEqual(builds[0].sw, builds[1].sw, 'Service worker must update with its worker');
     await writeFile(join(dir, 'web/sw.js'), "const VERSION = 'old'; // SW-only repair");
-    await exec(process.execPath, ['build.mjs'], { cwd: dir });
+    await exec(process.execPath, ['build.mjs'], { cwd: dir, env:{...process.env,NYORA_RELEASE_DATE:'2026-10-10'} });
     assert.notEqual(await readFile(join(dir, 'dist/index.html'), 'utf8'), builds[1].html, 'SW-only updates must version the shell');
     const beforeBoot = await readFile(join(dir, 'dist/index.html'), 'utf8');
     await writeFile(join(dir, 'web/boot/theme.js'), '/* theme repaired */');
-    await exec(process.execPath, ['build.mjs'], { cwd: dir });
+    await exec(process.execPath, ['build.mjs'], { cwd: dir, env:{...process.env,NYORA_RELEASE_DATE:'2026-10-10'} });
     const afterBoot = await readFile(join(dir, 'dist/index.html'), 'utf8');
     assert.notEqual(afterBoot.match(/theme.js\?v=([a-f0-9]+)/)[1], beforeBoot.match(/theme.js\?v=([a-f0-9]+)/)[1], 'Standalone startup scripts must bust the browser cache');
     assert.notEqual(afterBoot.match(/app.js\?v=([a-f0-9]+)/)[1], beforeBoot.match(/app.js\?v=([a-f0-9]+)/)[1], 'Boot-only updates must version the shell');

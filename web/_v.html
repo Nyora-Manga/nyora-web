@@ -1,9 +1,0 @@
-<!doctype html><meta charset=utf8><pre id=o style="font:13px monospace;color:#0f0;background:#000;padding:14px"></pre>
-<script type="module">
-import api from '/core/api.js';
-const O=document.getElementById('o'),out=s=>O.textContent+=s+"\n";
-try{const d=await api.details('ASURASCANS_US','/comics/nano-machine-89829cb7');
-out('chapters: '+(d.chapters||[]).length);
-for(const c of (d.chapters||[]).slice(0,3)) out('  "'+c.title+'"  #'+c.number+'  date='+(c.uploadDate?new Date(c.uploadDate).toISOString().slice(0,10):'none'));
-}catch(e){out('ERR '+(e.message||e));}
-</script>

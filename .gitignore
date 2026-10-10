@@ -14,3 +14,6 @@ web/vendor/ort/
 
 # Browser regression evidence
 test-results/
+
+__pycache__/
+*.pyc

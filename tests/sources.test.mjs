@@ -24,6 +24,7 @@ beforeEach(async () => {
   globalThis.fetch = async (url, init = {}) => {
     const u = new URL(url, 'https://reader.test');
     const body = init.body ? JSON.parse(init.body) : null;
+    if (u.pathname === '/app/session') return Response.json({token:'test-ticket',expiresIn:300});
     requests.push({ url: u, method: init.method || 'GET', body, cache: init.cache });
     let data = u.pathname === '/sources/catalog' ? { entries: catalogue } : { entries: [], filters: [{ name: 'Genres' }] };
     if (body?.action === 'select') data = { data: remote[body.table] || [] };

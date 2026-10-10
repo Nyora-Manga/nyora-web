@@ -1,0 +1,22 @@
+[Unit]
+Description=Nyora catalogue app-ticket gateway
+After=network.target nyora-parser.service
+
+[Service]
+User=ubuntu
+WorkingDirectory=/opt/nyora-catalog
+EnvironmentFile=/etc/nyora-catalog.env
+ExecStart=/usr/bin/python3 /opt/nyora-catalog/catalog_gateway.py
+StateDirectory=nyora-catalog
+StateDirectoryMode=0700
+UMask=0077
+Restart=on-failure
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+MemoryMax=192M
+TasksMax=64
+
+[Install]
+WantedBy=multi-user.target

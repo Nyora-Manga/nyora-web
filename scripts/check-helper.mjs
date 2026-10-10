@@ -2,7 +2,15 @@
 import { sourceId } from '../web/core/source-identity.js';
 const base = String(process.env.NYORA_HELPER_URL || 'https://api.nyora.xyz').replace(/\/+$/, '');
 try {
-  const response = await fetch(`${base}/sources/catalog?format=data-v1`, { signal: AbortSignal.timeout(20_000), headers: { Accept: 'application/json', Origin: 'https://web.nyora.xyz' } });
+  const headers = { Accept: 'application/json', Origin: 'https://web.nyora.xyz' };
+  const session = await fetch(`${base}/app/session`, { method:'POST', signal:AbortSignal.timeout(20_000), headers });
+  let response = session;
+  if (session.ok) {
+    const ticket = await session.json();
+    if (!ticket.token) throw new Error('session did not issue a catalogue ticket');
+    headers.Authorization = 'Bearer '+ticket.token;
+    response = await fetch(`${base}/sources/catalog?format=data-v1`, {signal:AbortSignal.timeout(20_000),headers});
+  }
   if (!response.ok) {
     if (response.status === 403 && process.env.ALLOW_HELPER_CI_CHALLENGE === 'true') {
       console.warn('GitHub-hosted runner is blocked by the helper edge challenge. The helper catalogue was verified from an unchallenged network before this deployment.');
