@@ -10,8 +10,15 @@ const browser = await chromium.launch({ headless: true,
   ...(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {}) });
 const base = process.env.NYORA_TEST_URL || 'http://127.0.0.1:8899';
 try {
-  const context = await browser.newContext({ serviceWorkers: 'block' });
+  const phone = process.env.AI_MOBILE === '1';
+  const context = await browser.newContext({ serviceWorkers: 'block', hasTouch: phone });
   await context.addInitScript(({ archiveBytes }) => {
+    const NativeWorker = window.Worker;
+    window.__aiWorkers = new Set();
+    window.Worker = class extends NativeWorker {
+      constructor(...args) { super(...args); window.__aiWorkers.add(this); }
+      terminate() { window.__aiWorkers.delete(this); super.terminate(); }
+    };
     localStorage.setItem('nyora.web.onboarded.v1', '1');
     localStorage.setItem('nyora.changelog.seen', '2.6.0');
     const plain = new URL(location.href).searchParams.has('plain-reader');
@@ -43,7 +50,7 @@ try {
   await page.route('https://api.nyora.xyz/**', route => route.fulfill({ json: new URL(route.request().url()).pathname === '/app/session' ? {token:'test-ticket',expiresIn:300} : {
     entries: [{ id: 'data:fixture', name: 'Fixture', lang: 'en' }],
   } }));
-  await page.route('**/core/translate/tl-worker.js', route => route.fulfill({ contentType: 'text/javascript', body: `
+  await page.route('**/core/translate/tl-worker.js*', route => route.fulfill({ contentType: 'text/javascript', body: `
     onmessage = ({data:m}) => {
       if (m.type === 'init') postMessage({type:'ready'});
       if (m.type === 'page') {
@@ -77,10 +84,24 @@ try {
   await page.getByRole('dialog').waitFor({ state: 'detached' });
   await page.waitForFunction(() => document.querySelector('img.reader-page')?.__colorized === true);
   assert.notEqual(await page.locator('img.reader-page').first().getAttribute('src'), original);
+  if (phone) {
+    assert.equal(await page.evaluate(() => window.__aiWorkers.size), 1, 'Phone never keeps both model workers resident');
+    assert.equal(await page.locator('.tl-overlay').count(), 0);
+    if (await page.locator('.reader-view.controls-hidden').count()) await page.locator('img.reader-page').first().click({position:{x:250,y:250}});
+    await page.locator('.reader-bar.top').getByRole('button', { name: 'Settings', exact: true }).click();
+    await page.getByText('Translate pages (beta)', { exact: true }).locator('..').locator('.switch').click();
+    assert.equal(await page.locator('[data-ai-toggle="colorize"]').isChecked(), false);
+    await page.getByRole('dialog').getByRole('button', { name: 'Done', exact: true }).click();
+    await page.getByRole('dialog').waitFor({state:'detached'});
+    await page.locator('.tl-block').filter({ hasText: 'I read books.' }).first().waitFor();
+    assert.equal(await page.evaluate(() => window.__aiWorkers.size), 1);
+    assert.equal(await page.locator('img.reader-page').first().getAttribute('src'), original);
+  }
   if (await page.locator('.reader-view.controls-hidden').count()) await page.locator('img.reader-page').first().click({ position: { x: 250, y: 250 } });
   await page.locator('.reader-bar.top').getByRole('button', { name: 'Back to files', exact: true }).click();
   await page.locator('.local-body .row-item').filter({ hasText: 'Local test book' }).waitFor();
   assert.equal(await page.evaluate(() => document.body.classList.contains('reader-active')), false);
+  assert.equal(await page.evaluate(() => window.__aiWorkers.size), 0, 'Leaving the reader terminates both AI workers');
   assert.equal(await page.evaluate(async url => { try { await fetch(url); return true; } catch { return false; } }, original), false);
   await page.locator('.local-body .row-item').filter({ hasText: 'Local test book' }).getByRole('button', { name: 'Read', exact: true }).click();
   await page.locator('.reader-view').waitFor();
@@ -113,6 +134,13 @@ try {
   }, archiveBytes);
   await page.getByRole('button', { name: 'Read offline', exact: true }).click();
   await page.waitForFunction(() => document.querySelector('img.reader-page')?.naturalWidth === 1);
+  assert.equal(await page.locator('.tl-block').count(), 0, 'Reload recovery does not restart interrupted AI');
+  assert.equal(await page.evaluate(() => window.__aiWorkers.size), 0);
+  await page.locator('.reader-bar.top').getByRole('button', { name: 'Settings', exact: true }).click();
+  await page.getByText('Translate pages (beta)', { exact: true }).locator('..').locator('.switch').click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Done', exact: true }).click();
+  await page.getByRole('dialog').waitFor({state:'detached'});
+  if (await page.locator('.reader-view.controls-hidden').count()) await page.locator('img.reader-page').first().click();
   await page.locator('.tl-block').filter({ hasText: 'I read books.' }).first().waitFor();
   const downloadedUrl = await page.locator('img.reader-page').getAttribute('src');
   await page.locator('.reader-bar.top').getByRole('button', { name: 'Back to downloads', exact: true }).click();

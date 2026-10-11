@@ -120,6 +120,7 @@ const post = (m) => self.postMessage(m);
 self.onmessage = (ev) => {
   const m = ev.data || {};
   if (m.type === 'init') {
+    MANGA_OCR_BATCH = m.constrained === false ? 8 : 2;
     ensureInit()
       .then(() => post({ type: 'ready' }))
       .catch((e) => post({ type: 'init-error', error: String((e && e.message) || e) }));
@@ -127,9 +128,34 @@ self.onmessage = (ev) => {
     queue = queue
       .then(() => ensureInit())
       .then(() => handlePage(m.id, m.bitmap, m.lang || 'ja'))
-      .catch((e) => post({ type: 'page-error', id: m.id, error: String((e && e.message) || e) }));
+      .catch((e) => post({ type: 'page-error', id: m.id, error: String((e && e.message) || e), fatal: isMemoryFailure(e) }))
+      .finally(() => { try { m.bitmap.close(); } catch { /* already closed */ } });
   }
 };
+
+function releaseCanvas(canvas) {
+  if (canvas) { canvas.width = 1; canvas.height = 1; }
+}
+
+function isMemoryFailure(error) {
+  return /out of memory|memory access|allocation|device lost|gpu device|buffer map|session.*invalid/i.test(String(error?.message || error));
+}
+
+// Return CPU-owned data and release every ORT allocation on success AND error.
+// The decoder's hidden-state input is shared across steps; its owner disposes it.
+async function runOwned(session, feeds, retained = [], consume) {
+  let outputs;
+  try {
+    outputs = await session.run(feeds);
+    if (consume) return consume(outputs);
+    return Object.fromEntries(Object.entries(outputs).map(([key, tensor]) =>
+      [key, { dims: [...tensor.dims], data: tensor.data.slice() }]));
+  } finally {
+    for (const tensor of new Set([...Object.values(feeds), ...Object.values(outputs || {})])) {
+      if (!retained.includes(tensor)) tensor.dispose();
+    }
+  }
+}
 
 function ensureInit() {
   if (!initPromise) initPromise = init().catch((e) => { initPromise = null; throw e; });
@@ -245,14 +271,17 @@ async function fetchWithProgress(url, label, sizeHint) {
   const reader = res.body.getReader();
   const chunks = [];
   let got = 0;
+  let lastPct = -1;
   for (;;) {
     const { done, value } = await reader.read();
     if (done) break;
     chunks.push(value);
     got += value.length;
-    if (total) post({ type: 'progress', label: `Downloading ${label}`, pct: Math.min(100, Math.round((got / total) * 100)) });
+    const pct = total ? Math.min(100, Math.round((got / total) * 100)) : 0;
+    if (pct !== lastPct) { lastPct = pct; post({ type: 'progress', label: `Downloading ${label}`, pct }); }
   }
   const blob = new Blob(chunks);
+  chunks.length = 0;
   const buf = await blob.arrayBuffer();
   if (cache) await cache.put(url, new Response(blob)).catch(() => { /* best-effort */ });
   return buf;
@@ -293,8 +322,9 @@ async function detectTile(src, rect) {
     input[i + plane] = data[p + 1] / 255;
     input[i + 2 * plane] = data[p + 2] / 255;
   }
+  releaseCanvas(cv);
   const feeds = { [detector.inputNames[0]]: new ort.Tensor('float32', input, [1, 3, size, size]) };
-  const out = await detector.run(feeds);
+  const out = await runOwned(detector, feeds);
   const t = out[detector.outputNames[0]];
   const boxes = [];
   if (t && t.dims.length === 3 && t.dims[2] >= 6) {
@@ -416,6 +446,7 @@ function mangaOcrPreprocess(crop) {
     input[i + plane] = data[p + 1] / 127.5 - 1;
     input[i + 2 * plane] = data[p + 2] / 127.5 - 1;
   }
+  releaseCanvas(cv);
   return new ort.Tensor('float32', input, [1, 3, MANGA_OCR_SIZE, MANGA_OCR_SIZE]);
 }
 
@@ -423,7 +454,9 @@ function mangaOcrPreprocess(crop) {
 // dominant cost (no KV cache in this export, one decoder.run per token), so
 // batching N bubbles turns ~N × seq_len sequential runs into ~max_seq_len
 // batched ones. Finished rows are padded with [PAD] and masked out.
-const MANGA_OCR_BATCH = 8; // bounds logits memory: 8 × len × 6144 floats/step
+// Main-thread capability checks are passed in init; WorkerNavigator may omit
+// touch and memory information. Default to the phone budget.
+let MANGA_OCR_BATCH = 2;
 
 // Returns one { text, conf } per crop. `conf` is the mean log-probability the
 // decoder assigned to the tokens it chose — see the decode loop.
@@ -436,6 +469,7 @@ async function mangaOcrBatch(eng, crops, onOneDone) {
     // throw mid-batch must not sink the whole page. On failure the chunk's
     // entries stay '' (pre-filled) and the partially-decoded array is still
     // returned; balance the progress ticks so the bar still reaches total.
+    let hidden = null;
     let fired = 0;
     const fire = () => { fired++; if (onOneDone) onOneDone(); };
     try {
@@ -444,7 +478,7 @@ async function mangaOcrBatch(eng, crops, onOneDone) {
       let C = 0;
       const encoded = [];
       for (const crop of chunk) {
-        const enc = await eng.encoder.run({ [eng.encoder.inputNames[0]]: mangaOcrPreprocess(crop) });
+        const enc = await runOwned(eng.encoder, { [eng.encoder.inputNames[0]]: mangaOcrPreprocess(crop) });
         const h = enc[eng.encoder.outputNames[0]];
         T = h.dims[1];
         C = h.dims[2];
@@ -452,7 +486,7 @@ async function mangaOcrBatch(eng, crops, onOneDone) {
       }
       const hid = new Float32Array(n * T * C);
       encoded.forEach((d, i) => hid.set(d, i * T * C));
-      const hidden = new ort.Tensor('float32', hid, [n, T, C]);
+      hidden = new ort.Tensor('float32', hid, [n, T, C]);
 
       const seqs = Array.from({ length: n }, () => [MANGA_OCR_START]);
       const finished = new Array(n).fill(false);
@@ -464,16 +498,28 @@ async function mangaOcrBatch(eng, crops, onOneDone) {
         for (let i = 0; i < n; i++) {
           for (let j = 0; j < len; j++) ids[i * len + j] = seqs[i][j];
         }
-        const out = await eng.decoder.run({
+        const out = await runOwned(eng.decoder, {
           input_ids: new ort.Tensor('int64', ids, [n, len]),
           encoder_hidden_states: hidden,
+        }, [hidden], (outputs) => {
+          // Greedy decoding only reads the newest token. Copying every prior
+          // token's logits each step wastes hundreds of MB per desktop batch.
+          const name = eng.decoder.outputNames[0];
+          const logits = outputs[name];
+          const V = logits.dims[2];
+          const latest = new Float32Array(n * V);
+          for (let i = 0; i < n; i++) {
+            const offset = (i * len + len - 1) * V;
+            latest.set(logits.data.subarray(offset, offset + V), i * V);
+          }
+          return { [name]: { dims: [n, 1, V], data: latest } };
         });
-        const logits = out[eng.decoder.outputNames[0]]; // [n, len, vocab]
+        const logits = out[eng.decoder.outputNames[0]]; // [n, 1, vocab], newest token only
         const V = logits.dims[2];
         const d = logits.data;
         for (let i = 0; i < n; i++) {
           if (finished[i]) { seqs[i].push(0n); continue; } // [PAD] filler
-          const off = (i * len + (len - 1)) * V;
+          const off = i * V;
           let best = 0;
           let bestV = -Infinity;
           for (let v = 0; v < V; v++) {
@@ -517,8 +563,11 @@ async function mangaOcrBatch(eng, crops, onOneDone) {
         const conf = tokens[i] ? logProb[i] / tokens[i] : -Infinity;
         texts[base + i] = { text: mangaOcrPostprocess(text), conf };
       }
-    } catch { /* one bad chunk must not sink the page — keep the rest */
+    } catch (error) {
+      if (isMemoryFailure(error)) throw error;
       while (fired < n) fire();
+    } finally {
+      hidden?.dispose();
     }
   }
   return texts;
@@ -608,7 +657,8 @@ async function detTextLines(eng, crop) {
     input[i + plane] = (d[p + 1] / 255 - 0.456) / 0.224;
     input[i + 2 * plane] = (d[p] / 255 - 0.406) / 0.225;
   }
-  const out = await eng.lineDet.run({ [eng.lineDet.inputNames[0]]: new ort.Tensor('float32', input, [1, 3, H, W]) });
+  releaseCanvas(cv);
+  const out = await runOwned(eng.lineDet, { [eng.lineDet.inputNames[0]]: new ort.Tensor('float32', input, [1, 3, H, W]) });
   const prob = out[eng.lineDet.outputNames[0]].data; // [1,1,H,W]
   const bin = new Uint8Array(plane);
   for (let i = 0; i < plane; i++) bin[i] = prob[i] > DET_BIN ? 1 : 0;
@@ -699,7 +749,8 @@ async function paddleRecLine(eng, crop, rect) {
     input[i + plane] = data[p + 1] / 127.5 - 1;
     input[i + 2 * plane] = data[p] / 127.5 - 1;
   }
-  const out = await eng.rec.run({ [eng.rec.inputNames[0]]: new ort.Tensor('float32', input, [1, 3, PADDLE_H, w]) });
+  releaseCanvas(cv);
+  const out = await runOwned(eng.rec, { [eng.rec.inputNames[0]]: new ort.Tensor('float32', input, [1, 3, PADDLE_H, w]) });
   const t = out[eng.rec.outputNames[0]]; // [1, T, C] (softmaxed)
   const T = t.dims[1];
   const C = t.dims[2];
@@ -751,104 +802,123 @@ function sampleBg(ctx, x, y, w, h) {
 }
 
 async function handlePage(id, bitmap, lang) {
-  const eng = await ensureEngine(lang);
-  const W = bitmap.width;
-  const H = bitmap.height;
-  const src = new OffscreenCanvas(W, H);
-  const sctx = src.getContext('2d', { willReadFrequently: true });
-  sctx.drawImage(bitmap, 0, 0);
-  bitmap.close();
-
-  let boxes = [];
-  for (const rect of tileRects(W, H)) boxes = boxes.concat(await detectTile(src, rect));
-  boxes = dedupe(boxes);
-
-  // Resolve final crop rects up front so the page's pending boxes (and the
-  // progress total) can be reported before the slow OCR loop starts.
-  const rects = [];
-  for (let b of boxes) {
-    try { b = refineWideBox(sctx, b, W); } catch { /* keep the raw box */ }
-    // Generous padding — detector boxes hug the glyphs, and an overlay that
-    // stops mid-letter leaves the original text peeking out at the edges.
-    // Wide free-text lines get extra horizontal slack.
-    const pad = Math.round(Math.min(28, Math.max(6, Math.min(b.w, b.h) * 0.12)));
-    const padX = pad + Math.round(b.w * 0.03);
-    const x = Math.max(0, b.x - padX);
-    const y = Math.max(0, b.y - pad);
-    const w = Math.min(W - x, b.w + padX * 2);
-    const h = Math.min(H - y, b.h + pad * 2);
-    if (w < 14 || h < 14) continue;
-    rects.push({ x, y, w, h, bg: sampleBg(sctx, x, y, w, h) });
-  }
-  post({ type: 'page-progress', id, done: 0, total: rects.length, boxes: rects });
-
-  const cropOf = (r) => {
-    const crop = new OffscreenCanvas(r.w, r.h);
-    crop.getContext('2d', { willReadFrequently: true }).drawImage(src, r.x, r.y, r.w, r.h, 0, 0, r.w, r.h);
-    return crop;
-  };
-  const junk = /^[\s.。‥…・･·。、,*×+~〜ー—\-!?！？'"“”]*$/; // SFX dots, dashes, ellipses
-
-  // Scanlation-site watermarks. Raw pages are stamped with the rip site's
-  // branding — "DL-Raw.Se", "RawLazy.Si", "OKT", "pip Here" — and the detector
-  // finds them exactly like speech, so they get translated and painted over the
-  // art. They give themselves away by SCRIPT: dialogue on a Japanese, Korean or
-  // Chinese page is kana/hangul/hanzi, so a block that is mostly Latin letters
-  // is branding, not speech.
-  //
-  // Measured: catches 6 of 6 pure-Latin watermarks on the Korean corpus, with
-  // ZERO of 333 Japanese blocks above the threshold — the two populations do
-  // not overlap at all. (A mixed-script watermark like "OKTOON 국내에서…" sits
-  // at 0.33 and still gets through; this rule is deliberately the safe half.)
-  const isWatermark = (t) => {
-    const letters = String(t).replace(/[\s\d.,!?…、。！？·:;\-'"()[\]{}$\\/~%&*+=]/gu, '');
-    if (letters.length < 2) return false;
-    const latin = (letters.match(/[A-Za-z]/g) || []).length;
-    return latin / letters.length >= 0.6;
-  };
-
-  // Characters that never occur in lettered dialogue. When the recogniser emits
-  // one it has read artwork as text — 「$\{ 그선약」 came from a Korean page with
-  // no writing in that region at all. Deliberately narrow: ASCII symbols only,
-  // so the full-width 〜 and ・ that DO appear in Japanese are untouched.
-  // Measured: catches the one garbage block on the Korean corpus and fires on
-  // 0 of 333 Japanese blocks and 0 of 120 held-out blocks.
-  const ALIEN = /[$\\{}|@#^_`~<>=]/;
-  const isGarbled = (t) => ALIEN.test(String(t));
-  const blocks = [];
-  let done = 0;
-  const tick = () => { done++; post({ type: 'page-progress', id, done, total: rects.length, boxes: rects }); };
-
-  if (eng.kind === 'manga') {
-    let texts = [];
-    try {
-      texts = await mangaOcrBatch(eng, rects.map(cropOf), tick);
-    } catch { /* fall through with whatever decoded */ }
-    rects.forEach((r, i) => {
-      const { text, conf } = texts[i] || {};
-      if (!text || junk.test(text) || isWatermark(text) || isGarbled(text)) return;
-      // Silence beats confident nonsense: an unreadable region is better left
-      // showing the original art than covered with an invented line.
-      //
-      // JAPANESE ONLY, on purpose. This branch is the manga-ocr engine; zh/en/ko
-      // go through PP-OCR below, which is a CTC recogniser with no comparable
-      // per-read score, and the -0.40 figure was calibrated against manga-ocr's
-      // log-probabilities on a Japanese corpus — it would mean nothing there.
-      // Those languages are getting their own pipeline; when they do, they need
-      // their own quality gate and their own calibration, not this number.
-      if (conf < MANGA_OCR_MIN_CONF) return;
-      blocks.push({ ...r, text, conf });
-    });
-  } else {
-    const joiner = (PADDLE[lang] && PADDLE[lang].joiner) || ' ';
-    for (const r of rects) {
-      let text = '';
-      try {
-        text = await paddleOcrCrop(eng, cropOf(r), joiner);
-      } catch { /* one bad crop must not sink the page */ }
-      tick();
-      if (text && !junk.test(text) && !isWatermark(text) && !isGarbled(text)) blocks.push({ ...r, text });
+  let src;
+  const crops = new Set();
+  try {
+    const W = bitmap.width;
+    const H = bitmap.height;
+    if (W * H > 8_000_000 || Math.max(W, H) > 16384) {
+      throw new Error('This page is too large for on-device translation. The original is still available.');
     }
+    const eng = await ensureEngine(lang);
+    src = new OffscreenCanvas(W, H);
+    const sctx = src.getContext('2d', { willReadFrequently: true });
+    sctx.drawImage(bitmap, 0, 0);
+    bitmap.close();
+
+    let boxes = [];
+    for (const rect of tileRects(W, H)) boxes = boxes.concat(await detectTile(src, rect));
+    boxes = dedupe(boxes);
+
+    // Resolve final crop rects up front so the page's pending boxes (and the
+    // progress total) can be reported before the slow OCR loop starts.
+    const rects = [];
+    for (let b of boxes) {
+      try { b = refineWideBox(sctx, b, W); } catch { /* keep the raw box */ }
+      // Generous padding — detector boxes hug the glyphs, and an overlay that
+      // stops mid-letter leaves the original text peeking out at the edges.
+      // Wide free-text lines get extra horizontal slack.
+      const pad = Math.round(Math.min(28, Math.max(6, Math.min(b.w, b.h) * 0.12)));
+      const padX = pad + Math.round(b.w * 0.03);
+      const x = Math.max(0, b.x - padX);
+      const y = Math.max(0, b.y - pad);
+      const w = Math.min(W - x, b.w + padX * 2);
+      const h = Math.min(H - y, b.h + pad * 2);
+      if (w < 14 || h < 14) continue;
+      rects.push({ x, y, w, h, bg: sampleBg(sctx, x, y, w, h) });
+    }
+    post({ type: 'page-progress', id, done: 0, total: rects.length, boxes: rects });
+
+    const cropOf = (r) => {
+      const crop = new OffscreenCanvas(r.w, r.h);
+      crop.getContext('2d', { willReadFrequently: true }).drawImage(src, r.x, r.y, r.w, r.h, 0, 0, r.w, r.h);
+      crops.add(crop);
+      return crop;
+    };
+    const junk = /^[\s.。‥…・･·。、,*×+~〜ー—\-!?！？'"“”]*$/; // SFX dots, dashes, ellipses
+
+    // Scanlation-site watermarks. Raw pages are stamped with the rip site's
+    // branding — "DL-Raw.Se", "RawLazy.Si", "OKT", "pip Here" — and the detector
+    // finds them exactly like speech, so they get translated and painted over the
+    // art. They give themselves away by SCRIPT: dialogue on a Japanese, Korean or
+    // Chinese page is kana/hangul/hanzi, so a block that is mostly Latin letters
+    // is branding, not speech.
+    //
+    // Measured: catches 6 of 6 pure-Latin watermarks on the Korean corpus, with
+    // ZERO of 333 Japanese blocks above the threshold — the two populations do
+    // not overlap at all. (A mixed-script watermark like "OKTOON 국내에서…" sits
+    // at 0.33 and still gets through; this rule is deliberately the safe half.)
+    const isWatermark = (t) => {
+      const letters = String(t).replace(/[\s\d.,!?…、。！？·:;\-'"()[\]{}$\\/~%&*+=]/gu, '');
+      if (letters.length < 2) return false;
+      const latin = (letters.match(/[A-Za-z]/g) || []).length;
+      return latin / letters.length >= 0.6;
+    };
+
+    // Characters that never occur in lettered dialogue. When the recogniser emits
+    // one it has read artwork as text — 「$\{ 그선약」 came from a Korean page with
+    // no writing in that region at all. Deliberately narrow: ASCII symbols only,
+    // so the full-width 〜 and ・ that DO appear in Japanese are untouched.
+    // Measured: catches the one garbage block on the Korean corpus and fires on
+    // 0 of 333 Japanese blocks and 0 of 120 held-out blocks.
+    const ALIEN = /[$\\{}|@#^_`~<>=]/;
+    const isGarbled = (t) => ALIEN.test(String(t));
+    const blocks = [];
+    let done = 0;
+    const tick = () => { done++; post({ type: 'page-progress', id, done, total: rects.length, boxes: rects }); };
+
+    if (eng.kind === 'manga') {
+      let texts = [];
+      try {
+        // Allocate only one OCR batch of crops at a time, not an entire strip.
+        for (let start = 0; start < rects.length; start += MANGA_OCR_BATCH) {
+          const chunk = rects.slice(start, start + MANGA_OCR_BATCH).map(cropOf);
+          texts.push(...await mangaOcrBatch(eng, chunk, tick));
+          for (const crop of chunk) { releaseCanvas(crop); crops.delete(crop); }
+        }
+      } catch (error) { if (isMemoryFailure(error)) throw error; }
+      rects.forEach((r, i) => {
+        const { text, conf } = texts[i] || {};
+        if (!text || junk.test(text) || isWatermark(text) || isGarbled(text)) return;
+        // Silence beats confident nonsense: an unreadable region is better left
+        // showing the original art than covered with an invented line.
+        //
+        // JAPANESE ONLY, on purpose. This branch is the manga-ocr engine; zh/en/ko
+        // go through PP-OCR below, which is a CTC recogniser with no comparable
+        // per-read score, and the -0.40 figure was calibrated against manga-ocr's
+        // log-probabilities on a Japanese corpus — it would mean nothing there.
+        // Those languages are getting their own pipeline; when they do, they need
+        // their own quality gate and their own calibration, not this number.
+        if (conf < MANGA_OCR_MIN_CONF) return;
+        blocks.push({ ...r, text, conf });
+      });
+    } else {
+      const joiner = (PADDLE[lang] && PADDLE[lang].joiner) || ' ';
+      for (const r of rects) {
+        let text = '';
+        const crop = cropOf(r);
+        try {
+          text = await paddleOcrCrop(eng, crop, joiner);
+        } catch (error) { if (isMemoryFailure(error)) throw error; }
+        finally { releaseCanvas(crop); crops.delete(crop); }
+        tick();
+        if (text && !junk.test(text) && !isWatermark(text) && !isGarbled(text)) blocks.push({ ...r, text });
+      }
+    }
+    post({ type: 'page-result', id, blocks });
+  } finally {
+    bitmap.close();
+    for (const crop of crops) releaseCanvas(crop);
+    releaseCanvas(src);
   }
-  post({ type: 'page-result', id, blocks });
 }

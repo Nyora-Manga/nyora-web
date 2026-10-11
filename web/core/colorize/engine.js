@@ -38,6 +38,8 @@ const queuedPages = new Map();
 let pageQueueRunning = false;
 let pageQueueTimer = null;
 let pageSequence = 0;
+let generation = 0;
+let fetchController = new AbortController();
 
 // Blob URLs are much smaller than raw RGBA pages, but keeping an entire webtoon
 // chapter alive still grows without bound. Use a small LRU on low-memory/mobile
@@ -99,20 +101,17 @@ function startWorker() {
     try { worker = new Worker(WORKER_PATH, { type: 'module' }); } catch (e) { fail(e); return; }
     worker.onerror = (e) => {
       const err = new Error((e && e.message) || 'colorize worker failed');
-      // A crash BEFORE ready rejects init. A crash AFTER ready (an OOM on a big
-      // page is the realistic case) used to hit `if (settled) return` and be
-      // swallowed whole: the worker was left running, readyPromise stayed
-      // resolved, and every in-flight runPage promise hung forever — so
-      // colorize died silently with no toast and no retry. Tear down properly
-      // and reject the in-flight work so the next page can rebuild the worker.
+      // Reject in-flight work after a crash so the reader can pause safely.
       if (!settled) { fail(err); return; }
-      // A crash after ready is almost always the page that was in flight
-      // exhausting memory. Marking it fatal is what lets colorizePage rebuild
-      // the worker and retry that page once, instead of surfacing a dead-end
-      // "Colorize failed" for a page that usually succeeds on a fresh session.
       err.colorizerFatal = true;
       readyPromise = null;
       discardWorker(err);
+    };
+    worker.onmessageerror = () => {
+      const error = new Error('Colorizer worker response could not be read');
+      if (!settled) { fail(error); return; }
+      readyPromise = null;
+      discardWorker(error);
     };
     worker.onmessage = (ev) => {
       const m = ev.data || {};
@@ -151,14 +150,14 @@ function startWorker() {
           if (error.colorizerFatal) {
             readyPromise = null;
             discardWorker(error);
-            status('Recovering colorizer…');
+            status('Colorizer paused');
           }
         }
       }
     };
     status('Preparing colorizer…');
     try { navigator.storage && navigator.storage.persist && navigator.storage.persist(); } catch { /* ignore */ }
-    worker.postMessage({ type: 'init' });
+    worker.postMessage({ type: 'init', constrained: navigator.maxTouchPoints > 0 || (Number(navigator.deviceMemory) || 4) <= 4 });
   });
 }
 
@@ -192,14 +191,15 @@ async function ensureWorkerModelResident() {
   });
 }
 
-async function fetchBitmap(url, headers) {
+async function fetchBitmap(url, headers, signal) {
   const abs = url.startsWith('//') ? 'https:' + url : url;
   let blob = null;
   if (/^https?:/i.test(abs) && !abs.includes('/image?u=')) {
-    try { const r = await fetch(abs, { mode: 'cors', referrerPolicy: 'no-referrer' }); if (r.ok) blob = await r.blob(); }
+    try { const r = await fetch(abs, { mode: 'cors', referrerPolicy: 'no-referrer', signal }); if (r.ok) blob = await r.blob(); }
     catch { /* proxy below */ }
   }
-  if (!blob) { const r = await fetch(api.imageUrl(abs, headers)); if (!r.ok) throw new Error(`page not readable (${r.status})`); blob = await r.blob(); }
+  if (!blob) { signal.throwIfAborted(); const r = await fetch(api.imageUrl(abs, headers), { signal }); if (!r.ok) throw new Error(`page not readable (${r.status})`); blob = await r.blob(); }
+  signal.throwIfAborted();
   return createImageBitmap(blob);
 }
 
@@ -267,9 +267,14 @@ async function pumpPageQueue() {
   const job = nextPageJob();
   queuedPages.delete(job.url);
   pageQueueRunning = true;
+  const signal = fetchController.signal;
   try {
+    signal.throwIfAborted();
     await ensureWorkerModelResident();
-    job.resolve(await runPage(await fetchBitmap(job.url, job.headers)));
+    signal.throwIfAborted();
+    const bitmap = await fetchBitmap(job.url, job.headers, signal);
+    if (signal.aborted) { bitmap.close(); signal.throwIfAborted(); }
+    job.resolve(await runPage(bitmap));
   } catch (error) {
     job.reject(error);
   } finally {
@@ -358,16 +363,11 @@ export async function colorizePage(url, headers, { priority = 0, measure } = {})
 
   entry = { promise: null, url: null, priority };
   entry.promise = (async () => {
-    let res;
-    try {
-      res = await enqueuePage(url, headers, entry.priority, measure);
-    } catch (error) {
-      if (!error || error.colorizerFatal !== true) throw error;
-      // Device loss / inference-memory failures poison the current ORT session.
-      // The message handler has already torn it down; rebuild from the cached
-      // model and retry this page exactly once.
-      res = await enqueuePage(url, headers, entry.priority, measure);
-    }
+    const runGeneration = generation;
+    // Never immediately replay the same memory-heavy page after device loss.
+    // Let the reader pause the feature and leave the original image readable.
+    const res = await enqueuePage(url, headers, entry.priority, measure);
+    if (runGeneration !== generation) throw new DOMException('Colorizer stopped', 'AbortError');
     if (!(res.blob instanceof Blob) || !res.blob.size) {
       throw new Error('colorizer returned an empty page');
     }
@@ -384,7 +384,10 @@ export async function colorizePage(url, headers, { priority = 0, measure } = {})
 }
 
 export function clearColorizeCache() {
-  const stopped = new Error('colorizer stopped');
+  generation++;
+  fetchController.abort();
+  fetchController = new AbortController();
+  const stopped = new DOMException('Colorizer stopped', 'AbortError');
   // The hooks close over the reader that is going away; the pages it owned are
   // being revoked wholesale here, so it must not be told about them one by one.
   setColorizeRetention();

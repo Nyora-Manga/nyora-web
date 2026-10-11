@@ -9,17 +9,20 @@ import { execFile } from 'node:child_process';
 const exec = promisify(execFile);
 const root = fileURLToPath(new URL('../', import.meta.url));
 
-test('a colorizer worker update versions its request and updates the app and service worker', async () => {
+test('AI worker updates version their requests and update the app and service worker', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'nyora-colorizer-build-'));
   try {
     for (const path of ['web/boot', 'web/core/colorize', 'web/core/translate', 'web/vendor/ort']) await mkdir(join(dir, path), { recursive: true });
     await cp(join(root, 'build.mjs'), join(dir, 'build.mjs'));
     await symlink(join(root, 'node_modules'), join(dir, 'node_modules'), 'dir');
     await cp(join(root, 'web/core/colorize/engine.js'), join(dir, 'web/core/colorize/engine.js'));
+    await cp(join(root, 'web/core/translate/engine.js'), join(dir, 'web/core/translate/engine.js'));
     const files = {
       'web/boot/migrate.js': '/* migration */',
       'web/boot/theme.js': '/* theme */',
-      'web/app.js': "import {colorizePage} from './core/colorize/engine.js'; globalThis.colorizePage=colorizePage;",
+      'web/app.js': "import {colorizePage} from './core/colorize/engine.js'; globalThis.colorizePage=colorizePage; import {translatePage} from './core/translate/engine.js'; globalThis.translatePage=translatePage;",
+      'web/core/store.js': 'export const store={get:()=>({})};',
+      'web/core/translate/mt.js': 'export const translateBatch=async()=>[],refineBatch=async()=>[];',
       'web/core/api.js': 'export const api={imageUrl:u=>u};',
       'web/core/colorize/model.js': 'export const colorizeModelCached=async()=>true,loadColorizeModel=async()=>{};',
       'web/core/translate/tl-worker.js': 'self.onmessage=()=>{};',
@@ -47,6 +50,10 @@ test('a colorizer worker update versions its request and updates the app and ser
     assert.notEqual(builds[0].app, builds[1].app, 'Existing clients must request the updated worker');
     assert.notEqual(builds[0].html, builds[1].html, 'App URL must change with its worker');
     assert.notEqual(builds[0].sw, builds[1].sw, 'Service worker must update with its worker');
+    await writeFile(join(dir, 'web/core/translate/tl-worker.js'), "self.postMessage('translator repaired');");
+    await exec(process.execPath, ['build.mjs'], { cwd: dir, env:{...process.env,NYORA_RELEASE_DATE:'2026-10-10'} });
+    const updatedTranslator = await readFile(join(dir, 'dist/app.js'), 'utf8');
+    assert.notEqual(updatedTranslator.match(/tl-worker\.js\?v=([a-f0-9]+)/)[1], builds[1].app.match(/tl-worker\.js\?v=([a-f0-9]+)/)[1]);
     await writeFile(join(dir, 'web/sw.js'), "const VERSION = 'old'; // SW-only repair");
     await exec(process.execPath, ['build.mjs'], { cwd: dir, env:{...process.env,NYORA_RELEASE_DATE:'2026-10-10'} });
     assert.notEqual(await readFile(join(dir, 'dist/index.html'), 'utf8'), builds[1].html, 'SW-only updates must version the shell');

@@ -378,23 +378,17 @@ function syncTabbar(name) {
   }
 }
 
-// PWA: register the service worker (no-op in dev/insecure contexts).
-// updateViaCache:'none' forces the browser to revalidate sw.js on every check,
-// and an auto-reload on controllerchange means new deploys take effect on the
-// next load instead of getting stuck behind a stale cached build.
+// Update cached assets without discarding an active reader or local file handles.
+// The new app is loaded on the user's next normal navigation/reload.
 function registerSW() {
   if (!('serviceWorker' in navigator)) return;
-  // Local development uses the service worker too: sw.js serves same-origin
-  // code network-first on localhost (edits are never stale) while still
-  // injecting the COOP/COEP headers the translator needs for wasm threads.
-  // Do NOT tear it down / clear caches here — the old localhost teardown wiped
-  // 'nyora-tl-models' on every reload, re-downloading ~125 MB of AI models.
-  // If this page is already controlled by a SW, a controllerchange means a NEW
-  // worker took over (an update) — reload once so the fresh app/assets are used.
   const wasControlled = !!navigator.serviceWorker.controller;
-  let reloaded = false;
+  let notified = false;
   navigator.serviceWorker.addEventListener('controllerchange', () => {
-    if (wasControlled && !reloaded) { reloaded = true; location.reload(); }
+    if (wasControlled && !notified) {
+      notified = true;
+      toast('Nyora updated. Reload when you’re ready.');
+    }
   });
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' })

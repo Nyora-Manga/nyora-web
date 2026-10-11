@@ -17,11 +17,37 @@ import { api } from '../api.js';
 import { store } from '../store.js';
 import { translateBatch, refineBatch } from './mt.js';
 
-const WORKER_PATH = '/core/translate/tl-worker.js';
+const WORKER_PATH = typeof __NYORA_TRANSLATOR_WORKER_URL__ !== 'undefined'
+  ? __NYORA_TRANSLATOR_WORKER_URL__ : '/core/translate/tl-worker.js';
 
 let worker = null;
 let readyPromise = null;
 let nextId = 1;
+let stopWorker = null;
+let generation = 0;
+let ocrQueue = Promise.resolve();
+let fetchController = new AbortController();
+const CACHE_LIMIT = 24;
+
+function remember(cache, key, value) {
+  cache.set(key, value);
+  while (cache.size > CACHE_LIMIT) cache.delete(cache.keys().next().value);
+}
+
+export function clearTranslator() {
+  generation++;
+  fetchController.abort();
+  fetchController = new AbortController();
+  if (stopWorker) stopWorker(new DOMException('Translation stopped', 'AbortError'));
+  stopWorker = null;
+  readyPromise = null;
+  ocrCache.clear();
+  mtCache.clear();
+  refineCache.clear();
+  seriesCache.clear();
+  lastStatusKey = '';
+  refineFailToasted = false;
+}
 const pending = new Map();   // id → {resolve, reject}
 const ocrCache = new Map();     // pageUrl → Promise<blocks>
 const mtCache = new Map();      // pageUrl|target → Promise<texts>
@@ -261,11 +287,13 @@ function ensureWorker() {
       pending.clear();
       if (!settled) { settled = true; reject(err); }
     };
+    stopWorker = teardown;
     try {
       worker = new Worker(WORKER_PATH, { type: 'module' });
     } catch (e) { teardown(e); return; }
     // ALWAYS tears down, even after 'ready': an un-terminated worker with the
     // pending map left unresolved would hang every page on the pill forever.
+    worker.onmessageerror = () => teardown(new Error('Translation worker response could not be read'));
     worker.onerror = (e) => teardown(new Error((e && e.message) || 'translation worker failed'));
     worker.onmessage = (ev) => {
       const m = ev.data || {};
@@ -285,21 +313,27 @@ function ensureWorker() {
         if (!p) return;
         pending.delete(m.id);
         if (m.type === 'page-result') p.resolve(m.blocks);
-        else p.reject(new Error(m.error));
+        else {
+          const error = new Error(m.error);
+          p.reject(error);
+          if (m.fatal) teardown(error);
+        }
       }
     };
     status('Preparing on-device translator (models download on first use)');
     // Ask the browser to protect our storage (the model cache is ~125 MB) from
     // quota eviction. Best-effort; browsers may silently decline.
     try { navigator.storage && navigator.storage.persist && navigator.storage.persist(); } catch { /* ignore */ }
-    worker.postMessage({ type: 'init' });
+    worker.postMessage({ type: 'init', constrained: navigator.maxTouchPoints > 0 || (Number(navigator.deviceMemory) || 4) <= 4 });
   });
-  return readyPromise;
+  const attempt = readyPromise;
+  attempt.catch(() => { if (readyPromise === attempt) readyPromise = null; });
+  return attempt;
 }
 
 // A readable bitmap of the page: the raw CDN first (works when the CDN sends
 // CORS headers), else the helper /image proxy, which always does.
-async function fetchBitmap(url, headers) {
+async function fetchBitmap(url, headers, signal) {
   const abs = url.startsWith('//') ? 'https:' + url : url;
   let blob = null;
   // Helper-loopback proxy URLs (http://127.0.0.1:8788/image?u=…) never resolve
@@ -307,15 +341,17 @@ async function fetchBitmap(url, headers) {
   // so skip the doomed direct attempt.
   if (/^https?:/i.test(abs) && !abs.includes('/image?u=')) {
     try {
-      const r = await fetch(abs, { mode: 'cors', referrerPolicy: 'no-referrer' });
+      const r = await fetch(abs, { mode: 'cors', referrerPolicy: 'no-referrer', signal });
       if (r.ok) blob = await r.blob();
     } catch { /* CORS-blocked — proxy below */ }
   }
   if (!blob) {
-    const r = await fetch(api.imageUrl(abs, headers));
+    signal.throwIfAborted();
+    const r = await fetch(api.imageUrl(abs, headers), { signal });
     if (!r.ok) throw new Error(`page image not readable (${r.status})`);
     blob = await r.blob();
   }
+  signal.throwIfAborted();
   return createImageBitmap(blob);
 }
 
@@ -323,7 +359,14 @@ function runPage(bitmap, lang, onProgress) {
   return new Promise((resolve, reject) => {
     const id = nextId++;
     pending.set(id, { resolve, reject, onProgress });
-    worker.postMessage({ type: 'page', id, bitmap, lang }, [bitmap]);
+    try {
+      if (!worker) throw new DOMException('Translation stopped', 'AbortError');
+      worker.postMessage({ type: 'page', id, bitmap, lang }, [bitmap]);
+    } catch (error) {
+      pending.delete(id);
+      bitmap.close();
+      reject(error);
+    }
   });
 }
 
@@ -331,30 +374,49 @@ function runPage(bitmap, lang, onProgress) {
 // it picks the OCR engine in the worker and the MT source language. onUpdate
 // streams Android's state machine: detected boxes with OCR progress counts,
 // then a 'translate' stage, then the final translated texts (progress:null).
-export async function translatePage({ url, headers, target, source = 'ja', title, onUpdate }) {
-  await ensureWorker();
+export async function translatePage({ url, headers, target, source = 'ja', title, onUpdate, shouldProcess }) {
+  const runGeneration = generation;
+  const signal = fetchController.signal;
+  const checkActive = () => {
+    signal.throwIfAborted();
+    if (generation !== runGeneration) throw new DOMException('Translation stopped', 'AbortError');
+  };
+  const update = (value) => { checkActive(); if (onUpdate) onUpdate(value); };
 
   const ocrKey = `${url}|${source}`;
   let blocksP = ocrCache.get(ocrKey);
   if (!blocksP) {
-    blocksP = fetchBitmap(url, headers).then((bmp) => runPage(bmp, source, (m) => {
-      if (onUpdate) {
-        onUpdate({
-          blocks: m.boxes || [],
-          texts: null,
-          progress: { stage: 'ocr', done: m.done, total: m.total },
-        });
-      }
-    }));
-    ocrCache.set(ocrKey, blocksP);
-    blocksP.catch(() => ocrCache.delete(ocrKey));
+    // Queue BEFORE decoding: a worker-side queue alone retains every bitmap
+    // posted while OCR is busy. Fast scrolling used to fill that queue with pages.
+    blocksP = ocrQueue.then(async () => {
+      checkActive();
+      if (shouldProcess && !shouldProcess()) throw new DOMException('Page left the viewport', 'AbortError');
+      await ensureWorker();
+      checkActive();
+      if (shouldProcess && !shouldProcess()) throw new DOMException('Page left the viewport', 'AbortError');
+      const bmp = await fetchBitmap(url, headers, signal);
+      try { checkActive(); } catch (error) { bmp.close(); throw error; }
+      return runPage(bmp, source, (m) => {
+        if (onUpdate && generation === runGeneration) {
+          update({
+            blocks: m.boxes || [],
+            texts: null,
+            progress: { stage: 'ocr', done: m.done, total: m.total },
+          });
+        }
+      });
+    });
+    ocrQueue = blocksP.catch(() => {});
+    remember(ocrCache, ocrKey, blocksP);
+    blocksP.catch(() => { if (ocrCache.get(ocrKey) === blocksP) ocrCache.delete(ocrKey); });
   }
   const blocks = await blocksP;
+  checkActive();
   if (!blocks.length) {
-    if (onUpdate) onUpdate({ blocks, texts: [], progress: null });
+    update({ blocks, texts: [], progress: null });
     return { blocks, texts: [] };
   }
-  if (onUpdate) onUpdate({ blocks, texts: null, progress: { stage: 'translate' } });
+  update({ blocks, texts: null, progress: { stage: 'translate' } });
 
   // Character-name glossary (the "Fetch series context" pref). Resolve the
   // series once, find which characters are actually ON this page, and hand MT
@@ -367,6 +429,7 @@ export async function translatePage({ url, headers, target, source = 'ja', title
     glossary = await seriesGlossary(title).catch(() => null);
     if (glossary) hits = detectNames(rawTexts, glossary.names);
   }
+  checkActive();
   const srcTexts = applyNames(rawTexts, hits);
 
   // Cache key includes the substitutions so toggling the glossary re-translates.
@@ -374,12 +437,13 @@ export async function translatePage({ url, headers, target, source = 'ja', title
   let textsP = mtCache.get(key);
   if (!textsP) {
     textsP = translateBatch(srcTexts, target, source);
-    mtCache.set(key, textsP);
-    textsP.catch(() => mtCache.delete(key));
+    remember(mtCache, key, textsP);
+    textsP.catch(() => { if (mtCache.get(key) === textsP) mtCache.delete(key); });
   }
   const texts = await textsP;
+  checkActive();
   const ai = aiConfig();
-  if (onUpdate) onUpdate({ blocks, texts, progress: ai ? { stage: 'refine' } : null });
+  update({ blocks, texts, progress: ai ? { stage: 'refine' } : null });
   if (!ai) return { blocks, texts };
 
   // Refinement tier: show the fast MT immediately (above), then swap in the
@@ -393,21 +457,22 @@ export async function translatePage({ url, headers, target, source = 'ja', title
       const context = ai.fandom ? glossaryContext(glossary, hits) : '';
       return refineBatch(srcTexts, texts, target, { ...ai, context });
     })();
-    refineCache.set(rKey, refinedP);
-    refinedP.catch(() => refineCache.delete(rKey));
+    remember(refineCache, rKey, refinedP);
+    refinedP.catch(() => { if (refineCache.get(rKey) === refinedP) refineCache.delete(rKey); });
   }
   try {
     const refined = await refinedP;
     if (refined) {
-      if (onUpdate) onUpdate({ blocks, texts: refined, progress: null });
+      update({ blocks, texts: refined, progress: null });
       return { blocks, texts: refined };
     }
   } catch (e) {
+    checkActive();
     if (!refineFailToasted) {
       refineFailToasted = true;
       status(`AI refinement failed — using fast translation (${(e && e.message) || e})`);
     }
   }
-  if (onUpdate) onUpdate({ blocks, texts, progress: null });
+  update({ blocks, texts, progress: null });
   return { blocks, texts };
 }

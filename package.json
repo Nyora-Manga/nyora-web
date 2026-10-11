@@ -11,6 +11,7 @@
     "check:rails": "node scripts/check-rails.mjs",
     "test": "node --test tests/*.test.mjs",
     "test:reader": "node tests/local-reader.browser.mjs",
+    "test:overlay": "node tests/translation-overlay.browser.mjs",
     "test:colorizer": "node tests/colorizer-worker.browser.mjs",
     "check:helper": "node scripts/check-helper.mjs",
     "test:desktop": "node tests/desktop-ui.browser.mjs",

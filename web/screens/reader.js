@@ -47,7 +47,7 @@ import {
 import { store, router } from '../core/store.js';
 import library from '../core/library.js';
 import tracking from '../core/tracking.js';
-import { translatePage, onTranslatorStatus } from '../core/translate/engine.js';
+import { translatePage, onTranslatorStatus, clearTranslator } from '../core/translate/engine.js';
 import { attachOverlay } from '../core/translate/overlay.js';
 import { TL_LANGS, TL_SOURCES } from '../core/translate/mt.js';
 import { colorizePage, onColorizeStatus, clearColorizeCache, colorizeModelReady, setColorizeRetention } from '../core/colorize/engine.js';
@@ -183,7 +183,19 @@ export function render(view, params) {
   // translate/colorize toggles and never auto-applies them, even if the per-manga
   // prefs are on — the overlays/colorized pages simply don't appear.
   const experimental = store.get().experimental === true;
-  let translate = experimental && gp.translate === true;
+  // A killed/reloaded tab cannot run teardown. Do not restore the same heavy
+  // workload automatically and trap that tab in a crash/reload loop.
+  let aiInterrupted = false;
+  try {
+    aiInterrupted = sessionStorage.getItem('nyora.reader.ai-active') === '1';
+    sessionStorage.removeItem('nyora.reader.ai-active');
+  } catch { /* session storage may be unavailable */ }
+  if (aiInterrupted) {
+    store.set({ reader: { translate: false, colorize: false } });
+    toast('AI paused after the page reloaded. You can turn it on again in reader settings.');
+  }
+  const limitedAiMemory = navigator.maxTouchPoints > 0 || (Number(navigator.deviceMemory) || 4) <= 4;
+  let translate = experimental && !aiInterrupted && gp.translate === true;
   let translateTo = gp.translateTo || 'en';
   let translateFrom = gp.translateFrom || 'auto'; // 'auto'|'ja'|'zh'|'ko'|'en'
   // Colorize additionally requires the ~62 MB model to ALREADY be downloaded in
@@ -192,6 +204,15 @@ export function render(view, params) {
   // `colorize: true` is left in prefs from an earlier session, and no page can
   // trigger a surprise 62 MB fetch just because Experimental got switched on.
   let colorize = false; // AI manga colorization
+  function markAiActive() {
+    document.querySelectorAll('[data-ai-toggle="translate"]').forEach(input => { input.checked = translate; });
+    document.querySelectorAll('[data-ai-toggle="colorize"]').forEach(input => { input.checked = colorize; });
+    try {
+      if (translate || colorize) sessionStorage.setItem('nyora.reader.ai-active', '1');
+      else sessionStorage.removeItem('nyora.reader.ai-active');
+    } catch { /* optional recovery hint */ }
+  }
+  markAiActive();
   let colorReady = false; // model present in the cache
   if (experimental) {
     colorizeModelReady().then((ready) => {
@@ -203,7 +224,9 @@ export function render(view, params) {
         if (gp.colorize === true) store.set({ reader: { colorize: false } });
         return;
       }
-      if (gp.colorize === true) { colorize = true; syncChrome(); beginColorizeAll(); }
+      if (gp.colorize === true && !aiInterrupted && !(limitedAiMemory && translate)) {
+        colorize = true; markAiActive(); syncChrome(); beginColorizeAll();
+      }
     }).catch(() => {});
   }
   // On phones the reader area is already narrow, so the full column width is the
@@ -278,6 +301,10 @@ export function render(view, params) {
     auto.cancel();
     resetTranslations();
     resetColorize();
+    clearTranslator();
+    onTranslatorStatus(null);
+    onColorizeStatus(null);
+    try { sessionStorage.removeItem('nyora.reader.ai-active'); } catch { /* ignore */ }
     clearColorizeCache();  // revoke the session's cached full-res colorized blob URLs
     if (local) { local.state.page = st.currentPage; local.dispose(); }
     if (scrollListener) { (scrollTarget || window).removeEventListener('scroll', scrollListener); scrollListener = null; scrollTarget = null; }
@@ -665,7 +692,7 @@ export function render(view, params) {
           tlObserver.unobserve(en.target);
           queueTranslate(en.target);
         }
-      }, { rootMargin: '75% 0px' });
+      }, { rootMargin: '0px' });
     }
     return tlObserver;
   }
@@ -713,21 +740,29 @@ export function render(view, params) {
     if (tlHandles.has(img)) return;
     const handle = attachOverlay(img);
     tlHandles.set(img, handle);
+    const source = await resolveSourceLang();
+    if (st.destroyed || !translate || tlHandles.get(img) !== handle) return;
     translatePage({
       url: img.__tlPage.url,
       headers: img.__tlPage.headers,
       target: translateTo,
-      source: await resolveSourceLang(),
+      source,
+      shouldProcess: () => !st.destroyed && translate && img.isConnected
+        && pageMetrics(img, colorizeContentRoot()).visible,
       title: (st.manga && !st.manga.__placeholder && st.manga.title) || '',
       onUpdate: ({ blocks, texts, progress }) => {
         if (st.destroyed || !translate || tlHandles.get(img) !== handle) return;
         handle.setBlocks(blocks, texts, progress);
       },
     }).catch((e) => {
-      if (tlHandles.get(img) === handle) { handle.destroy(); tlHandles.delete(img); }
-      if (!tlErrorToasted && !st.destroyed && translate) {
+      if (tlHandles.get(img) === handle) {
+        handle.destroy(); tlHandles.delete(img);
+        if (e?.name === 'AbortError' && !st.destroyed && translate && img.isConnected) observeTranslate(img);
+      }
+      if (!tlErrorToasted && !st.destroyed && translate && e?.name !== 'AbortError') {
         tlErrorToasted = true;
-        toast('Translation failed: ' + ((e && e.message) || e));
+        setTranslate(false);
+        toast('Translation paused: ' + ((e && e.message) || e));
       }
     });
   }
@@ -743,11 +778,17 @@ export function render(view, params) {
   }
 
   function setTranslate(on) {
+    if (on && colorize && limitedAiMemory) {
+      setColorize(false);
+      toast('Colorization paused to free memory for translation.');
+    }
     translate = !!on;
+    if (on) tlErrorToasted = false;
+    markAiActive();
     store.set({ reader: { translate } });
     savePrefs();
     if (translate) beginTranslateAll();
-    else resetTranslations();
+    else { resetTranslations(); clearTranslator(); }
     syncChrome(); // the overlay eye toggle appears/disappears with the feature
   }
 
@@ -780,7 +821,7 @@ export function render(view, params) {
     tlSrcPromise = null;
     store.set({ reader: { translateFrom } });
     savePrefs();
-    if (translate) { resetTranslations(); beginTranslateAll(); }
+    if (translate) { resetTranslations(); clearTranslator(); beginTranslateAll(); }
   }
 
   // ── Colorize (on-device manga colorization) ───────────────────────────────
@@ -826,19 +867,22 @@ export function render(view, params) {
   // colorized flag keeps it out of the observers), so on-screen pages are held
   // back and an evicted page is put back to its original image — ready to be
   // coloured again from cache-warm state if the reader scrolls to it.
-  setColorizeRetention({
-    isRetained: (pageUrl) => colorizedPageImages(pageUrl).some((img) => img.isConnected
-      && pageMetrics(img, colorizeContentRoot()).visible),
-    onEvicted: (pageUrl) => {
-      if (st.destroyed) return;
-      colorizedPageImages(pageUrl).forEach((img) => {
-        if (img.__colorized !== true) return;
-        img.__colorized = false;
-        if (img.__colorOrig != null) { img.src = img.__colorOrig; img.__colorOrig = null; }
-        observeColorize(img);
-      });
-    },
-  });
+  function retainColorizedPages() {
+    setColorizeRetention({
+      isRetained: (pageUrl) => colorizedPageImages(pageUrl).some((img) => img.isConnected
+        && pageMetrics(img, colorizeContentRoot()).visible),
+      onEvicted: (pageUrl) => {
+        if (st.destroyed) return;
+        colorizedPageImages(pageUrl).forEach((img) => {
+          if (img.__colorized !== true) return;
+          img.__colorized = false;
+          if (img.__colorOrig != null) { img.src = img.__colorOrig; img.__colorOrig = null; }
+          observeColorize(img);
+        });
+      },
+    });
+  }
+  retainColorizedPages();
 
   function colorizeObservers() {
     if (!colorizeNearObserver) {
@@ -849,7 +893,7 @@ export function render(view, params) {
         }
       // Grow on both axes: vertical webtoon pages and horizontal paged slides
       // can warm nearby content without sharing the visible-page priority band.
-      }, { rootMargin: '75%', threshold: 0 });
+      }, { rootMargin: limitedAiMemory ? '0px' : '75%', threshold: 0 });
     }
     if (!colorizeVisibleObserver) {
       colorizeVisibleObserver = new IntersectionObserver((entries) => {
@@ -886,7 +930,11 @@ export function render(view, params) {
         // scroll instead of being stranded on its black-and-white original.
         img.__colorized = true;
       } catch (e) {
-        if (!st.destroyed && colorize) toast('Colorize failed: ' + ((e && e.message) || e));
+        if (!st.destroyed && colorize && e?.name !== 'AbortError') {
+          setColorize(false);
+          syncChrome();
+          toast('Colorization paused: ' + ((e && e.message) || e));
+        }
       } finally {
         if (img.__colorPending === task) img.__colorPending = null;
       }
@@ -906,6 +954,7 @@ export function render(view, params) {
     });
   }
   function beginColorizeAll() {
+    retainColorizedPages();
     const imgs = $$('img.reader-page', view);
     const withPage = imgs.filter((img) => img.__tlPage);
     toast(`Colorize: watching ${withPage.length}/${imgs.length} page${imgs.length === 1 ? '' : 's'}`);
@@ -922,13 +971,18 @@ export function render(view, params) {
       .forEach(({ img, priority }) => applyColorize(img, priority));
   }
   function setColorize(on) {
+    if (on && translate && limitedAiMemory) {
+      setTranslate(false);
+      toast('Translation paused to free memory for colorization.');
+    }
     colorize = !!on;
+    markAiActive();
     colorizeStarted = false;
     store.set({ reader: { colorize } });
     if (colorize) toast('AI colorize on');
     savePrefs();
     if (colorize) beginColorizeAll();
-    else { resetColorize(); restoreColorize(); }
+    else { resetColorize(); restoreColorize(); clearColorizeCache(); }
     $$('.reader-color-toggle', view).forEach((n) => n.classList.toggle('active', colorize));
   }
 
@@ -1724,7 +1778,7 @@ export function render(view, params) {
       inlineRow('Prefetch next chapter', prefetchSwitch)
     );
 
-    const tlInput = el('input', { type: 'checkbox' });
+    const tlInput = el('input', { type: 'checkbox', 'data-ai-toggle': 'translate' });
     tlInput.checked = translate;
     tlInput.addEventListener('change', () => setTranslate(tlInput.checked));
     const tlSwitch = el('label', { class: 'switch' }, tlInput, el('span', { class: 'slider' }));
@@ -1747,7 +1801,7 @@ export function render(view, params) {
     // on first use with progress toasts (via onColorizeStatus) — the same way the
     // translation models do — so there's no separate "download first" step.
     if (experimental) {
-      const czInput = el('input', { type: 'checkbox' });
+      const czInput = el('input', { type: 'checkbox', 'data-ai-toggle': 'colorize' });
       czInput.checked = colorize;
       czInput.addEventListener('change', () => setColorize(czInput.checked));
       const hint = colorReady ? null

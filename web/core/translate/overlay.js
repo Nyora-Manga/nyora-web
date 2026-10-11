@@ -26,6 +26,7 @@ export function attachOverlay(img) {
   let texts = null;
   let natW = 1;
   let natH = 1;
+  let fittedWidth = -1;
 
   function sync() {
     if (!img.isConnected) return;
@@ -58,6 +59,7 @@ export function attachOverlay(img) {
   window.addEventListener('resize', sync);
 
   function renderBlocks() {
+    fittedWidth = -1;
     ov.replaceChildren();
     blocks.forEach((b, i) => {
       const t = texts && texts[i];
@@ -91,7 +93,12 @@ export function attachOverlay(img) {
   }
   function fitAll() {
     if (!texts) return;
-    const scale = (ov.clientWidth || 1) / natW || 1;
+    const width = ov.clientWidth;
+    if (!width || width === fittedWidth) return;
+    fittedWidth = width;
+    // Scrolling changes the overlay position, not text size. Re-running the
+    // font-size binary search on every scroll forced layout for every bubble.
+    const scale = width / natW || 1;
     const MIN = 6; // readable floor; smaller than this is clipped by overflow:hidden
     for (const d of ov.children) {
       const b = d.__block;

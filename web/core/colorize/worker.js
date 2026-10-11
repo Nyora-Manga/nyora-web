@@ -35,12 +35,16 @@ let session = null;
 let webgpu = false;
 let initPromise = null;
 let queue = Promise.resolve();
+// WorkerNavigator does not expose touch capability in every browser.
+// The main thread passes the budget; direct callers get conservative defaults.
+let constrainedMemory = true;
 
 const post = (m, t) => self.postMessage(m, t || []);
 
 self.onmessage = (ev) => {
   const m = ev.data || {};
   if (m.type === 'init') {
+    constrainedMemory = m.constrained !== false;
     ensureInit().then(() => post({ type: 'ready', backend: webgpu ? 'GPU' : 'CPU', threads: (ort && ort.env.wasm.numThreads) || 1 }))
       .catch((e) => post({ type: 'init-error', error: String((e && e.message) || e) }));
   } else if (m.type === 'ensure-model') {
@@ -103,7 +107,8 @@ async function init() {
     // Multi-thread the wasm backend when the page is cross-origin isolated (the
     // SW injects COOP/COEP, so it is). WebGPU is still tried first.
     if (self.crossOriginIsolated) {
-      ort.env.wasm.numThreads = Math.min(8, Math.max(1, (navigator.hardwareConcurrency || 4) - 1));
+      ort.env.wasm.numThreads = constrainedMemory
+        ? 1 : Math.min(4, Math.max(1, (navigator.hardwareConcurrency || 4) - 1));
     }
     const loaded = await loadColorizeModel({
       onProgress: (pct) => post({ type: 'progress', label: 'Loading colorizer model', pct }),
@@ -113,7 +118,8 @@ async function init() {
     try {
       await createModelSession(buf);
     } catch (error) {
-      if (!loaded.fromCache) throw error;
+      if (!loaded.fromCache || isMemoryFailure(error)
+        || !/protobuf|invalid.*model|model.*invalid|parse|corrupt|truncated|unexpected.*end/i.test(String(error?.message || error))) throw error;
       // A size-valid cache entry can still be unreadable to ONNX (for example a
       // browser/storage corruption). Evict it and retry the network exactly once.
       post({ type: 'progress', label: 'Repairing colorizer model cache', pct: 0 });
@@ -145,7 +151,7 @@ async function createModelSession(buf) {
     // A mixed provider list can silently succeed on WASM when no GPU adapter
     // exists. Try GPU alone so its failure reaches the explicit CPU fallback.
     try { session = await ort.InferenceSession.create(buf, { executionProviders: ['webgpu'] }); webgpu = true; }
-    catch { session = null; }
+    catch (error) { if (isMemoryFailure(error)) throw error; session = null; }
   }
   if (!session) session = await ort.InferenceSession.create(buf, { executionProviders: ['wasm'] });
 }
@@ -154,6 +160,9 @@ async function handle(id, bitmap) {
   const t0 = (typeof performance !== 'undefined') ? performance.now() : Date.now();
   const OW = bitmap.width;
   const OH = bitmap.height;
+  if (OW * OH > 8_000_000 || Math.max(OW, OH) > 16384) {
+    throw new Error('This page is too large for on-device colorization. The original is still available.');
+  }
   // Match the reference implementation's resize_pad EXACTLY (utils/utils.py):
   // portrait pages are resized to WIDTH = SIZE, landscape to HEIGHT = SIZE*1.5,
   // then padded to a multiple of 32 with white. Running this GAN far off its
@@ -163,7 +172,7 @@ async function handle(id, bitmap) {
   // CPU inference needs a smaller working set, especially on the first visit
   // before cross-origin isolation enables WASM threads. Final output still
   // uses the full-resolution original's luminance and dimensions.
-  const SIZE = webgpu ? 576 : 384;
+  const SIZE = constrainedMemory ? 256 : (webgpu ? 576 : 384);
   let vw, vh; // valid (unpadded) model region
   if (OH < OW) { vh = Math.round(SIZE * 1.5); vw = Math.ceil(OW / (OH / (SIZE * 1.5))); }
   else { vw = SIZE; vh = Math.ceil(OH / (OW / SIZE)); }
@@ -175,7 +184,7 @@ async function handle(id, bitmap) {
   // model resolution; only chroma comes from the model (luminance is taken from
   // the full-resolution original in composePageBlob), so the visible cost is
   // slightly softer colour, against a page that otherwise never colours at all.
-  const MAX_MODEL_PIXELS = webgpu ? 576 * 1536 : 384 * 1024;
+  const MAX_MODEL_PIXELS = constrainedMemory ? 256 * 768 : (webgpu ? 576 * 1536 : 384 * 1024);
   const overBudget = (vw * vh) / MAX_MODEL_PIXELS;
   if (overBudget > 1) {
     const shrink = Math.sqrt(overBudget);

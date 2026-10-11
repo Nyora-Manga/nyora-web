@@ -61,6 +61,8 @@ await build({
 // otherwise returning readers can keep an old worker from the HTTP/SW cache.
 const colorizerId = createHash('sha256')
   .update(await readFile(`${OUT}/core/colorize/worker.js`)).digest('hex').slice(0, 12);
+const translatorId = createHash('sha256')
+  .update(await readFile(`${OUT}/core/translate/tl-worker.js`)).digest('hex').slice(0, 12);
 await build({
   entryPoints: [`${SRC}/app.js`],
   outdir: OUT,
@@ -74,6 +76,7 @@ await build({
   legalComments: 'none',
   logLevel: 'info',
   define: {
+    __NYORA_TRANSLATOR_WORKER_URL__: JSON.stringify(`/core/translate/tl-worker.js?v=${translatorId}`),
     __NYORA_COLORIZER_WORKER_URL__: JSON.stringify(`/core/colorize/worker.js?v=${colorizerId}`),
   },
 });

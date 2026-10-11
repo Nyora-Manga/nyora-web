@@ -94,6 +94,16 @@ jobs:
           CHROMIUM_CHANNEL: chromium
         run: npm run test:mobile
 
+      - name: Check AI worker recovery and local reader cleanup
+        run: |
+          python3 -m http.server 8899 --bind 127.0.0.1 --directory web > /tmp/nyora-reader-test.log 2>&1 &
+          reader_server_pid=$!
+          trap 'kill "$reader_server_pid"' EXIT
+          npm run test:colorizer
+          npm run test:overlay
+          npm run test:reader
+          AI_MOBILE=1 npm run test:reader
+
       - name: Check catalogue search and crawlable series pages
         env:
           CHROMIUM_CHANNEL: chromium
