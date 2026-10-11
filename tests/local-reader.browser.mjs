@@ -20,7 +20,7 @@ try {
       terminate() { window.__aiWorkers.delete(this); super.terminate(); }
     };
     localStorage.setItem('nyora.web.onboarded.v1', '1');
-    localStorage.setItem('nyora.changelog.seen', '2.6.0');
+    localStorage.setItem('nyora.changelog.seen','2.7.0');
     const plain = new URL(location.href).searchParams.has('plain-reader');
     localStorage.setItem('nyora.prefs', JSON.stringify({ experimental: !plain,
       reader: { mode: plain ? 'PAGED' : 'WEBTOON', translate: true, colorize: plain,
