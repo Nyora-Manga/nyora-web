@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { readFile, mkdir } from 'node:fs/promises';
 import { resolve, extname } from 'node:path';
+import { markChangelogSeen } from './app-version.mjs';
 const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const project = resolve(import.meta.dirname, '..');
 const evidence = resolve(project, 'test-results/desktop-parity');
@@ -30,7 +31,8 @@ const errors=[];
 let reference;
 try {
   const context=await browser.newContext({viewport:{width:1440,height:1000},serviceWorkers:'block',reducedMotion:'reduce'});
-  await context.addInitScript(()=>{localStorage.setItem('nyora.web.onboarded.v1','1');localStorage.setItem('nyora.changelog.seen','2.7.0');localStorage.setItem('nyora.prefs',JSON.stringify({reduceMotion:true}));});
+  await context.addInitScript(()=>{localStorage.setItem('nyora.web.onboarded.v1','1');localStorage.setItem('nyora.prefs',JSON.stringify({reduceMotion:true}));});
+  await markChangelogSeen(context);
   const page=await context.newPage();page.setDefaultTimeout(8000);page.on('pageerror',e=>errors.push(e.message));
   const filters={filters:[{name:'Status',values:['ONGOING','FINISHED']},{name:'Sort',values:['POPULARITY','UPDATED']}],tags:[{key:'action',title:'Action'},{key:'drama',title:'Drama'}],tagsExclusion:true,searchWithFilters:true};
   await page.route('https://**/*', async route=>{

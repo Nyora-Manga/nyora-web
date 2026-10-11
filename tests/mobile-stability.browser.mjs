@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { chromium } from 'playwright';
+import { markChangelogSeen } from './app-version.mjs';
 const browser = await chromium.launch({headless:true});
 const base = process.env.NYORA_TEST_URL || 'http://127.0.0.1:8899';
 try {
@@ -7,7 +8,6 @@ try {
     userAgent:'Mozilla/5.0 (Linux; Android 15) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36'});
   await context.addInitScript(() => {
     localStorage.setItem('nyora.web.onboarded.v1','1');
-    localStorage.setItem('nyora.changelog.seen','2.7.0');
     localStorage.setItem('nyora.prefs',JSON.stringify({experimental:true,reader:{translate:true,colorize:true,mode:new URL(location.href).searchParams.get('mode') || 'WEBTOON'}}));
     if(new URL(location.href).searchParams.has('mode'))localStorage.removeItem('nyora.library.v1');
     sessionStorage.clear(); // Whole-browser recovery may not preserve the old AI marker.
@@ -18,6 +18,7 @@ try {
       terminate(){window.__workers.delete(this);super.terminate();}
     };
   });
+  await markChangelogSeen(context);
   const page=await context.newPage();page.setDefaultTimeout(12000);
   const errors=[], imageRequests=[], modelRequests=[]; let navigations=0;
   page.on('pageerror',e=>errors.push(e.message));

@@ -3,6 +3,7 @@
 // substituted. File decoding, reader, engines, overlays and navigation are real.
 import assert from 'node:assert/strict';
 import { buildZip } from '../web/core/zip.js';
+import { markChangelogSeen } from './app-version.mjs';
 const png = new Uint8Array(Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4//8/AAX+Av4N70a4AAAAAElFTkSuQmCC', 'base64'));
 const archiveBytes = [...new Uint8Array(await buildZip([{ name: '1.png', data: png }]).arrayBuffer())];
 const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || 'playwright');
@@ -20,7 +21,6 @@ try {
       terminate() { window.__aiWorkers.delete(this); super.terminate(); }
     };
     localStorage.setItem('nyora.web.onboarded.v1', '1');
-    localStorage.setItem('nyora.changelog.seen','2.7.0');
     const plain = new URL(location.href).searchParams.has('plain-reader');
     localStorage.setItem('nyora.prefs', JSON.stringify({ experimental: !plain,
       reader: { mode: plain ? 'PAGED' : 'WEBTOON', translate: true, colorize: plain,
@@ -41,6 +41,7 @@ try {
       }
     } });
   }, { archiveBytes });
+  await markChangelogSeen(context);
   const page = await context.newPage();
   page.setDefaultTimeout(10000);
   const errors = [], helperReads = [];
