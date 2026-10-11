@@ -15,9 +15,39 @@ import { el, icon, modal } from './ui.js';
 const SEEN_KEY = 'nyora.changelog.seen';
 
 // Bump this with every user-visible release, newest entry first in CHANGELOG.
-export const APP_VERSION = '2.6.0';
+export const APP_VERSION = '2.7.0';
 
 export const CHANGELOG = [
+  {
+    version: '2.7.0',
+    date: 'October 2026',
+    entries: [
+      {
+        icon: 'globe',
+        title: 'Translate into any language',
+        text: 'In-image translation now offers every language Google Translate '
+          + 'supports — 133 in all, including Japanese, Traditional Chinese, Arabic, '
+          + 'Hebrew, Thai and Hindi — from Japanese, Chinese, Korean or English pages. '
+          + 'Right-to-left languages are lettered right-to-left, and you can type a '
+          + 'letter to jump through the language list.',
+      },
+      {
+        icon: 'book',
+        title: 'English pages translate again',
+        text: 'Translating from English used to come back empty: speech bubbles were '
+          + 'mistaken for scanlation watermarks and dropped. Only bare site addresses '
+          + 'are filtered on English pages now.',
+      },
+      {
+        icon: 'checkCircle',
+        title: 'Cleaner translations in every language',
+        text: 'Sound effects, stutters, all-caps lettering and set phrases like '
+          + 'しまった！ now translate correctly into every target language, not just '
+          + 'English. Lines a batch request skipped are retried on their own, and '
+          + 'Chinese text no longer picks up stray spaces between lines.',
+      },
+    ],
+  },
   {
     version: '2.6.0',
     date: 'July 2026',

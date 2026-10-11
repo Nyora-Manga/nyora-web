@@ -1,9 +1,9 @@
 {
   "name": "nyora-web",
-  "version": "2.0.0",
+  "version": "2.7.0",
   "private": true,
   "type": "module",
-  "description": "Nyora Web \u2014 production build (bundles web/ into dist/ for Cloudflare Pages).",
+  "description": "Nyora Web — production build (bundles web/ into dist/ for Cloudflare Pages).",
   "scripts": {
     "build": "node build.mjs && node scripts/build-series.mjs",
     "fetch:ort": "node scripts/fetch-ort.mjs",
