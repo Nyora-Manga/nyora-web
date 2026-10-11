@@ -13,6 +13,7 @@
 // Caches mirror Android's ConcurrentHashMaps: in-memory only, keyed by page
 // URL (OCR result) and page URL + target language (translated texts).
 
+import { runSharedInference } from '../ai-scheduler.js';
 import { api } from '../api.js';
 import { store } from '../store.js';
 import { translateBatch, refineBatch } from './mt.js';
@@ -27,11 +28,17 @@ let stopWorker = null;
 let generation = 0;
 let ocrQueue = Promise.resolve();
 let fetchController = new AbortController();
-const CACHE_LIMIT = 24;
+const CACHE_LIMIT = 3;
 
 function remember(cache, key, value) {
   cache.set(key, value);
   while (cache.size > CACHE_LIMIT) cache.delete(cache.keys().next().value);
+}
+
+function releaseTranslatorWorker() {
+  if (stopWorker) stopWorker(new DOMException('Translation worker released', 'AbortError'));
+  stopWorker = null;
+  readyPromise = null;
 }
 
 export function clearTranslator() {
@@ -374,11 +381,12 @@ function runPage(bitmap, lang, onProgress) {
 // it picks the OCR engine in the worker and the MT source language. onUpdate
 // streams Android's state machine: detected boxes with OCR progress counts,
 // then a 'translate' stage, then the final translated texts (progress:null).
-export async function translatePage({ url, headers, target, source = 'ja', title, onUpdate, shouldProcess }) {
+export async function translatePage({ url, headers, target, source = 'ja', title, onUpdate, shouldProcess, signal: pageSignal }) {
   const runGeneration = generation;
-  const signal = fetchController.signal;
+  const signal = pageSignal ? AbortSignal.any([fetchController.signal, pageSignal]) : fetchController.signal;
   const checkActive = () => {
     signal.throwIfAborted();
+    if (shouldProcess && !shouldProcess()) throw new DOMException('Page left the reader window', 'AbortError');
     if (generation !== runGeneration) throw new DOMException('Translation stopped', 'AbortError');
   };
   const update = (value) => { checkActive(); if (onUpdate) onUpdate(value); };
@@ -388,7 +396,7 @@ export async function translatePage({ url, headers, target, source = 'ja', title
   if (!blocksP) {
     // Queue BEFORE decoding: a worker-side queue alone retains every bitmap
     // posted while OCR is busy. Fast scrolling used to fill that queue with pages.
-    blocksP = ocrQueue.then(async () => {
+    blocksP = ocrQueue.then(() => runSharedInference('translate', releaseTranslatorWorker, async () => {
       checkActive();
       if (shouldProcess && !shouldProcess()) throw new DOMException('Page left the viewport', 'AbortError');
       await ensureWorker();
@@ -405,7 +413,7 @@ export async function translatePage({ url, headers, target, source = 'ja', title
           });
         }
       });
-    });
+    }, { signal, shouldProcess }));
     ocrQueue = blocksP.catch(() => {});
     remember(ocrCache, ocrKey, blocksP);
     blocksP.catch(() => { if (ocrCache.get(ocrKey) === blocksP) ocrCache.delete(ocrKey); });

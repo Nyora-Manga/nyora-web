@@ -22,7 +22,7 @@ async function engine(kind) {
   }
   const context = vm.createContext({
     Worker, AbortController, DOMException, Error, Blob, URL, setTimeout, clearTimeout,
-    navigator: {}, api: { imageUrl: url=>url }, store:{get:()=>({})},
+    runSharedInference: (_kind, _release, task) => task(), AbortSignal, navigator: {}, api: { imageUrl: url=>url }, store:{get:()=>({})},
     translateBatch:async()=>[], refineBatch:async()=>[],
     colorizeModelCached:async()=>true, loadColorizeModel:async()=>{},
     fetch: async (url, {signal}={}) => {

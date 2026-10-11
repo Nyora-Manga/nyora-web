@@ -3,6 +3,7 @@
 // the translator), hands it to the colorize worker, and returns an object URL
 // of the coloured page. Results are cached per page url for the session.
 
+import { runSharedInference } from '../ai-scheduler.js';
 import { api } from '../api.js';
 import { colorizeModelCached, loadColorizeModel } from './model.js';
 
@@ -41,13 +42,8 @@ let pageSequence = 0;
 let generation = 0;
 let fetchController = new AbortController();
 
-// Blob URLs are much smaller than raw RGBA pages, but keeping an entire webtoon
-// chapter alive still grows without bound. Use a small LRU on low-memory/mobile
-// devices and a slightly larger one on desktop. The floor has to stay above the
-// number of pages a reader can have coloured on screen at once, or the cache
-// would spend its time evicting work it is about to be asked for again.
-const deviceMemory = typeof navigator !== 'undefined' ? Number(navigator.deviceMemory) || 4 : 4;
-const RESULT_CACHE_LIMIT = deviceMemory <= 4 ? 6 : 12;
+// Match the reader window: retain at most three completed colour results.
+const RESULT_CACHE_LIMIT = 3;
 
 // Revoking an object URL breaks any <img> still pointing at it, and only the
 // consumer knows which results are on screen. `isRetained` vetoes eviction for
@@ -262,19 +258,26 @@ function nextPageJob() {
   return pageQueue.splice(bestIndex, 1)[0];
 }
 
+function releaseColorizerWorker() {
+  readyPromise = null;
+  discardWorker(new DOMException('Colorizer worker released', 'AbortError'));
+}
+
 async function pumpPageQueue() {
   if (pageQueueRunning || pageQueue.length === 0) return;
   const job = nextPageJob();
   queuedPages.delete(job.url);
   pageQueueRunning = true;
-  const signal = fetchController.signal;
+  const signal = job.signal ? AbortSignal.any([fetchController.signal, job.signal]) : fetchController.signal;
   try {
-    signal.throwIfAborted();
-    await ensureWorkerModelResident();
-    signal.throwIfAborted();
-    const bitmap = await fetchBitmap(job.url, job.headers, signal);
-    if (signal.aborted) { bitmap.close(); signal.throwIfAborted(); }
-    job.resolve(await runPage(bitmap));
+    job.resolve(await runSharedInference('colorize', releaseColorizerWorker, async () => {
+      signal.throwIfAborted();
+      await ensureWorkerModelResident();
+      signal.throwIfAborted();
+      const bitmap = await fetchBitmap(job.url, job.headers, signal);
+      if (signal.aborted) { bitmap.close(); signal.throwIfAborted(); }
+      return runPage(bitmap);
+    }, { signal, shouldProcess: () => !job.measure || job.measure() >= 0 }));
   } catch (error) {
     job.reject(error);
   } finally {
@@ -285,10 +288,11 @@ async function pumpPageQueue() {
 
 // Serialize the whole fetch → bitmap → inference path while allowing a page
 // that becomes visible to jump ahead of queued prefetch work.
-function enqueuePage(url, headers, priority, measure) {
+function enqueuePage(url, headers, priority, measure, signal) {
   const job = {
     url,
     headers,
+    signal,
     priority: Number.isFinite(priority) ? priority : 0,
     measure: typeof measure === 'function' ? measure : null,
     sequence: pageSequence++,
@@ -349,9 +353,13 @@ function trimResultCache(exceptKey) {
 // Colorize one page → object URL of the coloured image (cached per url).
 // `priority` is promotable while queued; viewport pages use a much higher band
 // than nearby prefetch pages.
-export async function colorizePage(url, headers, { priority = 0, measure } = {}) {
+export async function colorizePage(url, headers, { priority = 0, measure, signal } = {}) {
   priority = Number(priority) || 0;
   let entry = cache.get(url);
+  if (entry?.signal?.aborted) {
+    if (entry.url) URL.revokeObjectURL(entry.url);
+    cache.delete(url); entry = null;
+  }
   if (entry) {
     entry.priority = Math.max(entry.priority, priority);
     promoteQueuedPage(url, entry.priority, measure);
@@ -361,12 +369,12 @@ export async function colorizePage(url, headers, { priority = 0, measure } = {})
     return entry.promise;
   }
 
-  entry = { promise: null, url: null, priority };
+  entry = { promise: null, url: null, priority, signal };
   entry.promise = (async () => {
     const runGeneration = generation;
     // Never immediately replay the same memory-heavy page after device loss.
     // Let the reader pause the feature and leave the original image readable.
-    const res = await enqueuePage(url, headers, entry.priority, measure);
+    const res = await enqueuePage(url, headers, entry.priority, measure, signal);
     if (runGeneration !== generation) throw new DOMException('Colorizer stopped', 'AbortError');
     if (!(res.blob instanceof Blob) || !res.blob.size) {
       throw new Error('colorizer returned an empty page');
@@ -374,8 +382,17 @@ export async function colorizePage(url, headers, { priority = 0, measure } = {})
     return URL.createObjectURL(res.blob);
   })();
   cache.set(url, entry);
+  if (signal) {
+    const evict = () => {
+      if (cache.get(url) === entry) cache.delete(url);
+      if (entry.url) URL.revokeObjectURL(entry.url);
+    };
+    signal.addEventListener('abort', evict, { once: true });
+    if (signal.aborted) evict();
+  }
   entry.promise.then((objectUrl) => {
     entry.url = objectUrl;
+    if (signal?.aborted) { URL.revokeObjectURL(objectUrl); return; }
     trimResultCache(url);
   }, () => {
     if (cache.get(url) === entry) cache.delete(url);

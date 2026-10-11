@@ -84,19 +84,8 @@ try {
   await page.getByRole('dialog').waitFor({ state: 'detached' });
   await page.waitForFunction(() => document.querySelector('img.reader-page')?.__colorized === true);
   assert.notEqual(await page.locator('img.reader-page').first().getAttribute('src'), original);
-  if (phone) {
-    assert.equal(await page.evaluate(() => window.__aiWorkers.size), 1, 'Phone never keeps both model workers resident');
-    assert.equal(await page.locator('.tl-overlay').count(), 0);
-    if (await page.locator('.reader-view.controls-hidden').count()) await page.locator('img.reader-page').first().click({position:{x:250,y:250}});
-    await page.locator('.reader-bar.top').getByRole('button', { name: 'Settings', exact: true }).click();
-    await page.getByText('Translate pages (beta)', { exact: true }).locator('..').locator('.switch').click();
-    assert.equal(await page.locator('[data-ai-toggle="colorize"]').isChecked(), false);
-    await page.getByRole('dialog').getByRole('button', { name: 'Done', exact: true }).click();
-    await page.getByRole('dialog').waitFor({state:'detached'});
-    await page.locator('.tl-block').filter({ hasText: 'I read books.' }).first().waitFor();
-    assert.equal(await page.evaluate(() => window.__aiWorkers.size), 1);
-    assert.equal(await page.locator('img.reader-page').first().getAttribute('src'), original);
-  }
+  assert(await page.evaluate(() => window.__aiWorkers.size) <= 1, 'AI models take turns');
+  assert(await page.locator('.tl-overlay').count() > 0, 'Translation stays visible on a colorized page');
   if (await page.locator('.reader-view.controls-hidden').count()) await page.locator('img.reader-page').first().click({ position: { x: 250, y: 250 } });
   await page.locator('.reader-bar.top').getByRole('button', { name: 'Back to files', exact: true }).click();
   await page.locator('.local-body .row-item').filter({ hasText: 'Local test book' }).waitFor();

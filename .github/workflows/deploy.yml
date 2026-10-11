@@ -103,6 +103,7 @@ jobs:
           npm run test:overlay
           npm run test:reader
           AI_MOBILE=1 npm run test:reader
+          npm run test:mobile-stability
 
       - name: Check catalogue search and crawlable series pages
         env:

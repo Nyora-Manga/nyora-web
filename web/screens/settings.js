@@ -377,10 +377,15 @@ function expModelStorageRow() {
     try {
       const cache = await caches.open('nyora-tl-models');
       const keys = await cache.keys();
-      let bytes = 0;
-      for (const req of keys) { const res = await cache.match(req); if (res) bytes += (await res.blob()).size; }
+      let bytes = 0, measured = 0;
+      // Counting downloads must never read hundreds of MB of model bodies.
+      for (const req of keys) {
+        const res = await cache.match(req);
+        const size = Number(res?.headers.get('content-length'));
+        if (size > 0) { bytes += size; measured++; }
+      }
       usage.textContent = keys.length
-        ? `${keys.length} file${keys.length === 1 ? '' : 's'} · ${(bytes / 1024 / 1024).toFixed(0)} MB`
+        ? `${keys.length} file${keys.length === 1 ? '' : 's'}${measured === keys.length ? ` · ${(bytes / 1024 / 1024).toFixed(0)} MB` : ' downloaded'}`
         : 'No models downloaded yet';
     } catch { usage.textContent = 'Unavailable'; }
   })();

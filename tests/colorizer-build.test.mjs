@@ -13,6 +13,7 @@ test('AI worker updates version their requests and update the app and service wo
   const dir = await mkdtemp(join(tmpdir(), 'nyora-colorizer-build-'));
   try {
     for (const path of ['web/boot', 'web/core/colorize', 'web/core/translate', 'web/vendor/ort']) await mkdir(join(dir, path), { recursive: true });
+    await cp(join(root, 'web/core/ai-scheduler.js'), join(dir, 'web/core/ai-scheduler.js'));
     await cp(join(root, 'build.mjs'), join(dir, 'build.mjs'));
     await symlink(join(root, 'node_modules'), join(dir, 'node_modules'), 'dir');
     await cp(join(root, 'web/core/colorize/engine.js'), join(dir, 'web/core/colorize/engine.js'));

@@ -38,6 +38,7 @@ import {chaptersForBranch, nearestSlide} from '../desktop/reader-parity.js';
 // is a CSS `filter` applied to every .reader-page, edited live in the settings
 // modal and stored in the per-manga prefs.
 
+import { createPageWindow } from './reader/page-window.js';
 import { api } from '../core/api.js';
 import {
   el, $, $$, proxyImage, applyImage, toast, spinner, icon, btn, iconBtn,
@@ -224,7 +225,7 @@ export function render(view, params) {
         if (gp.colorize === true) store.set({ reader: { colorize: false } });
         return;
       }
-      if (gp.colorize === true && !aiInterrupted && !(limitedAiMemory && translate)) {
+      if (gp.colorize === true && !aiInterrupted) {
         colorize = true; markAiActive(); syncChrome(); beginColorizeAll();
       }
     }).catch(() => {});
@@ -294,6 +295,7 @@ export function render(view, params) {
 
   function teardown() {
     st.destroyed = true;
+    pageWindow?.clear();
     document.removeEventListener('keydown', onKey);
     wake.dispose();
     presentation.dispose();
@@ -378,7 +380,7 @@ export function render(view, params) {
         toast('Loading chapter…');
         const data = await readPages(ch.url);
         pages = data.pages || [];
-        pagesCache.set(ch.url, pages);
+        cachePages(ch.url, pages);
       }
       if (st.destroyed) return;
       if (!pages.length) { toast('That chapter has no pages.'); return; }
@@ -554,7 +556,7 @@ export function render(view, params) {
       const data = await (pagesPromise || readPages(st.chapterUrl));
       if (st.destroyed) return;
       st.pages = data.pages || [];
-      pagesCache.set(st.chapterUrl, st.pages);
+      cachePages(st.chapterUrl, st.pages);
       // Resume to the requested page (clamped) — renderReader positions to it.
       st.currentPage = Math.max(0, Math.min(st.pages.length - 1, Number(startPage) || 0));
       renderReader();
@@ -665,13 +667,22 @@ export function render(view, params) {
   // Chapter pages cache — prefetched chapters swap in instantly.
   const pagesCache = new Map(); // chapterUrl → pages[]
 
+  function cachePages(url, pages) {
+    pagesCache.delete(url);
+    pagesCache.set(url, pages);
+    while (pagesCache.size > 3) pagesCache.delete(pagesCache.keys().next().value);
+  }
+
   function maybePrefetch() {
     if (!prefetch) return;
     const next = st.index + nextDelta();
     if (next < 0 || next >= st.chapters.length) return;
     const url = st.chapters[next].url;
     if (pagesCache.has(url)) return;
-    readPages(url).then((d) => pagesCache.set(url, d.pages || [])).catch(() => {});
+    readPages(url).then((d) => {
+      if (st.destroyed) return;
+      cachePages(url, d.pages || []);
+    }).catch(() => {});
   }
 
   // ── in-image AI translation ───────────────────────────────────────────────
@@ -747,8 +758,8 @@ export function render(view, params) {
       headers: img.__tlPage.headers,
       target: translateTo,
       source,
-      shouldProcess: () => !st.destroyed && translate && img.isConnected
-        && pageMetrics(img, colorizeContentRoot()).visible,
+      signal: img.__aiController.signal,
+      shouldProcess: () => !st.destroyed && translate && img.isConnected,
       title: (st.manga && !st.manga.__placeholder && st.manga.title) || '',
       onUpdate: ({ blocks, texts, progress }) => {
         if (st.destroyed || !translate || tlHandles.get(img) !== handle) return;
@@ -778,10 +789,6 @@ export function render(view, params) {
   }
 
   function setTranslate(on) {
-    if (on && colorize && limitedAiMemory) {
-      setColorize(false);
-      toast('Colorization paused to free memory for translation.');
-    }
     translate = !!on;
     if (on) tlErrorToasted = false;
     markAiActive();
@@ -914,14 +921,14 @@ export function render(view, params) {
     if (img.__colorPending) {
       // Calling again does not duplicate work; it promotes the existing queue
       // entry when this page moved from the near band into the viewport.
-      colorizePage(img.__tlPage.url, img.__tlPage.headers, { priority, measure }).catch(() => {});
+      colorizePage(img.__tlPage.url, img.__tlPage.headers, { priority, measure, signal: img.__aiController.signal }).catch(() => {});
       return img.__colorPending;
     }
     if (!colorizeStarted) { colorizeStarted = true; toast('Colorizing visible page… loading model into memory'); }
 
     const task = (async () => {
       try {
-        const url = await colorizePage(img.__tlPage.url, img.__tlPage.headers, { priority, measure });
+        const url = await colorizePage(img.__tlPage.url, img.__tlPage.headers, { priority, measure, signal: img.__aiController.signal });
         if (st.destroyed || !colorize || !img.isConnected) return;
         if (img.__colorOrig == null) img.__colorOrig = img.getAttribute('src') || '';
         img.src = url;
@@ -971,10 +978,6 @@ export function render(view, params) {
       .forEach(({ img, priority }) => applyColorize(img, priority));
   }
   function setColorize(on) {
-    if (on && translate && limitedAiMemory) {
-      setTranslate(false);
-      toast('Translation paused to free memory for colorization.');
-    }
     colorize = !!on;
     markAiActive();
     colorizeStarted = false;
@@ -1047,6 +1050,7 @@ export function render(view, params) {
     recordHistory(st.currentPage);
     checkBookmark();
     if (mode === 'WEBTOON') {
+      eagerWebtoon(st.currentPage);
       if (scrollIntoView) {
         const img = $(`[data-page="${st.currentPage}"]`, view);
         if (img) img.scrollIntoView({ behavior: scrollIntoView === 'instant' ? 'auto' : 'smooth', block: 'start' });
@@ -1092,7 +1096,23 @@ export function render(view, params) {
   // ── DOM helpers ────────────────────────────────────────────────────────────
   const filterStr = () => buildFilter(st.grade);
 
+  const pageWindow = createPageWindow({
+    createImage: (p, i) => loadedPageImg(p, i),
+    onRelease(img) {
+      img.__aiController?.abort();
+      tlObserver?.unobserve(img);
+      colorizeNearObserver?.unobserve(img);
+      colorizeVisibleObserver?.unobserve(img);
+      tlHandles.get(img)?.destroy();
+      tlHandles.delete(img);
+    },
+  });
+
   function pageImg(p, i) {
+    return pageWindow ? pageWindow.slot(p, i) : loadedPageImg(p, i);
+  }
+
+  function loadedPageImg(p, i) {
     const img = el('img', {
       class: 'reader-page',
       loading: 'lazy',
@@ -1100,6 +1120,7 @@ export function render(view, params) {
       alt: `Page ${i + 1}`,
       'data-page': String(i),
     });
+    img.__aiController = new AbortController();
     // Derive a source-domain Referer (like Android) for the proxy fallback —
     // many CDNs gate page images on it. Page-supplied headers win.
     const dom = st.manga && st.manga.source && st.manga.source.domain;
@@ -1113,7 +1134,7 @@ export function render(view, params) {
         img.style.aspectRatio = `${img.naturalWidth} / ${img.naturalHeight}`;
       }
     }, { once: true });
-    applyImage(img, p.url, headers, () => { img.replaceWith(brokenPage(p, i)); });
+    applyImage(img, p.url, headers, () => { if (img.isConnected) img.replaceWith(brokenPage(p, i)); });
     img.__tlPage = { url: p.url, headers };
     observeTranslate(img);
     observeColorize(img);
@@ -1144,7 +1165,7 @@ export function render(view, params) {
         icon('close'), `Page ${i + 1} failed to load`),
       btn('Reload', {
         variant: 'ghost', class: 'btn-sm', icon: 'refresh',
-        onClick: () => node.replaceWith(pageImg(bustPage(p), i)),
+        onClick: () => { node.replaceWith(pageImg(bustPage(p), i)); pageWindow?.update(view, st.currentPage); },
       }),
     );
     return node;
@@ -1310,6 +1331,7 @@ export function render(view, params) {
   function renderReader() {
     // A running loop must not outlive the DOM it scrolls (mode/chapter change).
     auto.cancel();
+    pageWindow?.clear();
     resetTranslations();   // overlays/observer die with the old DOM
     resetColorize();       // observer dies with the old imgs (cache survives)
     zoomReset = null;   // the previous render's zoom controller is gone
@@ -1422,8 +1444,8 @@ export function render(view, params) {
         let best = 0; let bestDist = Infinity;
         reader.querySelectorAll('[data-page]').forEach((node) => {
           const r = node.getBoundingClientRect();
-          const c = r.top + r.height / 2;
-          const d = Math.abs(c - mid);
+          // A long strip containing the viewport centre is the current page.
+          const d = Math.max(r.top - mid, mid - r.bottom, 0);
           if (d < bestDist) { bestDist = d; best = Number(node.dataset.page); }
         });
         if (best !== st.currentPage) {
@@ -1531,6 +1553,7 @@ export function render(view, params) {
 
   // Eager-load the current page + a forward window so a swipe never lands on blank.
   function preloadAround(i) {
+    if (pageWindow) { pageWindow.update(view, i); return; }
     const track = $('.reader-paged-track', view);
     if (!track) return;
     for (let j = i - 1; j <= i + 3; j++) {
@@ -1542,6 +1565,7 @@ export function render(view, params) {
   // Webtoon look-ahead: promote a window of upcoming pages from lazy → eager so
   // fast scrolling doesn't outrun native lazy-loading and land on blanks.
   function eagerWebtoon(center) {
+    if (pageWindow) { pageWindow.update(view, center); return; }
     const reader = $('.reader.webtoon', view);
     if (!reader) return;
     const from = Math.max(0, center - 1);
@@ -1837,7 +1861,8 @@ export function render(view, params) {
     renderChips();
     colorSection.appendChild(el('div', { class: 'field', style: { marginBottom: '0' } }, el('label', null, 'Presets'), chips));
     // Translate settings only appear when experimental features are enabled.
-    const body = el('div', null, layoutSection, experimental ? tlSection : null, colorSection);
+    const body = el('div', null, layoutSection, experimental ? tlSection : null, colorSection,
+      experimental ? el('p', { class: 'hint' }, 'AI works within three pages at a time. Translation and colorization can be used together; models take turns to reduce memory use.') : null);
     modal({
       title: 'Reader Settings',
       body,
