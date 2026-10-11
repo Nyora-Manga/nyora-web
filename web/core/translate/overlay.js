@@ -74,6 +74,7 @@ export function attachOverlay(img) {
         // Soft edge in place of Android's BlurMaskFilter.
         d.style.boxShadow = `0 0 6px 4px ${b.bg}`;
         d.style.color = textColorFor(b.bg);
+        d.dir = 'auto'; // any target may be RTL (Arabic, Hebrew, Persian, Urdu…)
         d.textContent = t;
       }
       d.__block = b;

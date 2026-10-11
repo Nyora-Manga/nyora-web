@@ -858,7 +858,13 @@ async function handlePage(id, bitmap, lang) {
     // ZERO of 333 Japanese blocks above the threshold — the two populations do
     // not overlap at all. (A mixed-script watermark like "OKTOON 국내에서…" sits
     // at 0.33 and still gets through; this rule is deliberately the safe half.)
+    //
+    // NOT on English pages: there every speech bubble is Latin, so the script test
+    // would discard the whole page. Only a bare site address ("RawLazy.Si",
+    // "mangasite.com/...") reads as branding there.
+    const SITE = /^[\s\W]*(?:https?:\/\/)?(?:www\.)?[a-z0-9-]+(?:\.[a-z0-9-]+)*\.(?:com|net|org|info|xyz|site|online|top|club|io|me|co|cc|to|se|si|ru|us|gg|tv|li|ws|la|ac|vip|fun|link)(?:\/\S*)?[\s\W]*$/i;
     const isWatermark = (t) => {
+      if (lang === 'en') return SITE.test(String(t).trim());
       const letters = String(t).replace(/[\s\d.,!?…、。！？·:;\-'"()[\]{}$\\/~%&*+=]/gu, '');
       if (letters.length < 2) return false;
       const latin = (letters.match(/[A-Za-z]/g) || []).length;
@@ -903,7 +909,9 @@ async function handlePage(id, bitmap, lang) {
         blocks.push({ ...r, text, conf });
       });
     } else {
-      const joiner = (PADDLE[lang] && PADDLE[lang].joiner) || ' ';
+      // ?? not ||: Chinese's joiner is '' (no spaces between lines), and || turned
+      // it into ' ' — "你在这里 做什么？".
+      const joiner = (PADDLE[lang] && PADDLE[lang].joiner) ?? ' ';
       for (const r of rects) {
         let text = '';
         const crop = cropOf(r);

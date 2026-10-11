@@ -419,6 +419,18 @@ export function menuSelect(options, value, onChange, opts = {}) {
       } else if (e.key === 'Enter' || e.key === ' ') {
         e.preventDefault();
         if (idx >= 0) items[idx].click();
+      } else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        // Type-ahead, like a native <select>: long lists (130+ translation
+        // languages) jump to the next label starting with the typed letter.
+        const ch = e.key.toLowerCase();
+        const at = (i) => norm[(idx + 1 + i) % norm.length];
+        for (let i = 0; i < norm.length; i++) {
+          if (String(at(i).label).toLowerCase().startsWith(ch)) {
+            e.preventDefault();
+            items[(idx + 1 + i) % norm.length].focus();
+            break;
+          }
+        }
       }
     });
     const r = trigger.getBoundingClientRect();

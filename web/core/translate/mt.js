@@ -6,12 +6,46 @@
 
 const DELIM = '\n\n\n|||\n\n\n';
 
-// Target languages offered in the reader settings (Google translate codes).
+// Target languages offered in the reader settings: every language the gtx
+// endpoint translates into (Google translate codes). The OCR'd source (ja/zh/
+// ko/en) can go to any of them. English first as the default, then by name.
 export const TL_LANGS = [
-  ['en', 'English'], ['es', 'Spanish'], ['pt', 'Portuguese'], ['fr', 'French'],
-  ['de', 'German'], ['it', 'Italian'], ['ru', 'Russian'], ['id', 'Indonesian'],
-  ['ar', 'Arabic'], ['tr', 'Turkish'], ['pl', 'Polish'], ['vi', 'Vietnamese'],
-  ['th', 'Thai'], ['hi', 'Hindi'], ['ko', 'Korean'], ['zh-CN', 'Chinese'],
+  ['en', 'English'],
+  ['af', 'Afrikaans'], ['sq', 'Albanian'], ['am', 'Amharic'], ['ar', 'Arabic'],
+  ['hy', 'Armenian'], ['as', 'Assamese'], ['ay', 'Aymara'], ['az', 'Azerbaijani'],
+  ['bm', 'Bambara'], ['eu', 'Basque'], ['be', 'Belarusian'], ['bn', 'Bengali'],
+  ['bho', 'Bhojpuri'], ['bs', 'Bosnian'], ['bg', 'Bulgarian'], ['ca', 'Catalan'],
+  ['ceb', 'Cebuano'], ['ny', 'Chichewa'], ['zh-CN', 'Chinese (Simplified)'],
+  ['zh-TW', 'Chinese (Traditional)'], ['co', 'Corsican'], ['hr', 'Croatian'],
+  ['cs', 'Czech'], ['da', 'Danish'], ['dv', 'Dhivehi'], ['doi', 'Dogri'],
+  ['nl', 'Dutch'], ['eo', 'Esperanto'], ['et', 'Estonian'], ['ee', 'Ewe'],
+  ['tl', 'Filipino'], ['fi', 'Finnish'], ['fr', 'French'], ['fy', 'Frisian'],
+  ['gl', 'Galician'], ['ka', 'Georgian'], ['de', 'German'], ['el', 'Greek'],
+  ['gn', 'Guarani'], ['gu', 'Gujarati'], ['ht', 'Haitian Creole'], ['ha', 'Hausa'],
+  ['haw', 'Hawaiian'], ['iw', 'Hebrew'], ['hi', 'Hindi'], ['hmn', 'Hmong'],
+  ['hu', 'Hungarian'], ['is', 'Icelandic'], ['ig', 'Igbo'], ['ilo', 'Ilocano'],
+  ['id', 'Indonesian'], ['ga', 'Irish'], ['it', 'Italian'], ['ja', 'Japanese'],
+  ['jw', 'Javanese'], ['kn', 'Kannada'], ['kk', 'Kazakh'], ['km', 'Khmer'],
+  ['rw', 'Kinyarwanda'], ['gom', 'Konkani'], ['ko', 'Korean'], ['kri', 'Krio'],
+  ['ku', 'Kurdish (Kurmanji)'], ['ckb', 'Kurdish (Sorani)'], ['ky', 'Kyrgyz'],
+  ['lo', 'Lao'], ['la', 'Latin'], ['lv', 'Latvian'], ['ln', 'Lingala'],
+  ['lt', 'Lithuanian'], ['lg', 'Luganda'], ['lb', 'Luxembourgish'],
+  ['mk', 'Macedonian'], ['mai', 'Maithili'], ['mg', 'Malagasy'], ['ms', 'Malay'],
+  ['ml', 'Malayalam'], ['mt', 'Maltese'], ['mi', 'Maori'], ['mr', 'Marathi'],
+  ['mni-Mtei', 'Meiteilon (Manipuri)'], ['lus', 'Mizo'], ['mn', 'Mongolian'],
+  ['my', 'Myanmar (Burmese)'], ['ne', 'Nepali'], ['no', 'Norwegian'],
+  ['or', 'Odia'], ['om', 'Oromo'], ['ps', 'Pashto'], ['fa', 'Persian'],
+  ['pl', 'Polish'], ['pt', 'Portuguese'], ['pa', 'Punjabi'], ['qu', 'Quechua'],
+  ['ro', 'Romanian'], ['ru', 'Russian'], ['sm', 'Samoan'], ['sa', 'Sanskrit'],
+  ['gd', 'Scots Gaelic'], ['nso', 'Sepedi'], ['sr', 'Serbian'], ['st', 'Sesotho'],
+  ['sn', 'Shona'], ['sd', 'Sindhi'], ['si', 'Sinhala'], ['sk', 'Slovak'],
+  ['sl', 'Slovenian'], ['so', 'Somali'], ['es', 'Spanish'], ['su', 'Sundanese'],
+  ['sw', 'Swahili'], ['sv', 'Swedish'], ['tg', 'Tajik'], ['ta', 'Tamil'],
+  ['tt', 'Tatar'], ['te', 'Telugu'], ['th', 'Thai'], ['ti', 'Tigrinya'],
+  ['ts', 'Tsonga'], ['tr', 'Turkish'], ['tk', 'Turkmen'], ['ak', 'Twi'],
+  ['uk', 'Ukrainian'], ['ur', 'Urdu'], ['ug', 'Uyghur'], ['uz', 'Uzbek'],
+  ['vi', 'Vietnamese'], ['cy', 'Welsh'], ['xh', 'Xhosa'], ['yi', 'Yiddish'],
+  ['yo', 'Yoruba'], ['zu', 'Zulu'],
 ];
 
 // Source (page) languages the OCR engines support. 'auto' resolves from the
@@ -128,6 +162,7 @@ function asciiPunct(s) {
 
 function fixPunct(s) {
   return s
+    .replace(/[\u200b-\u200d\ufeff]/g, '') // gtx sprinkles zero-width spaces ("ONU ​​TANIYORUM")
     .replace(/([!?])(\s+[!?])+/g, (m) => m.replace(/\s+/g, '')) // "! ! !" → "!!!"
     .replace(/…/g, '...')
     .replace(/\.{4,}/g, '...')
@@ -314,8 +349,42 @@ function applyHold(en, hold) {
 }
 
 const STUTTER = /^(.)[、,]\s*(?=\1)/;
+// English letters it as "W-WAIT!" / "I-I KNOW". Sent as-is, gtx returns the
+// whole bubble untranslated for many targets (Tamil, Kannada, Urdu, …).
+const STUTTER_LATIN = /^([A-Za-z])-(?=\1)/i;
 function stripStutter(t) {
-  return STUTTER.test(t) ? { text: t.replace(STUTTER, ''), stutter: true } : { text: t, stutter: false };
+  if (STUTTER.test(t)) return { text: t.replace(STUTTER, ''), stutter: true };
+  if (STUTTER_LATIN.test(t)) return { text: t.replace(STUTTER_LATIN, ''), stutter: true };
+  return { text: t, stutter: false };
+}
+
+// English manga is lettered in capitals, and gtx treats an all-caps line as an
+// acronym for some targets: "LET'S GO!" comes back unchanged in Uyghur and
+// Meitei, while "Let's go!" translates. Send sentence case; the caller restores
+// the capitals on the result.
+const ALL_CAPS = (t) => /[A-Z]{2}/.test(t) && !/[a-z]/.test(t);
+function sentenceCase(t) {
+  return t.toLowerCase()
+    .replace(/(^|[.!?…]\s+)(\p{L})/gu, (_, pre, ch) => pre + ch.toUpperCase())
+    .replace(/\bi\b/g, 'I');
+}
+
+// Targets not written in Latin script. Latin letters in their output mean gtx
+// passed text through untranslated (or, from fixSfx, swapped in romaji).
+const NON_LATIN = new Set(['am', 'ar', 'hy', 'as', 'be', 'bn', 'bho', 'bg', 'zh-CN', 'zh-TW',
+  'dv', 'doi', 'ka', 'el', 'gu', 'iw', 'hi', 'ja', 'kn', 'kk', 'km', 'gom', 'ko', 'ckb', 'ky',
+  'lo', 'mk', 'mai', 'ml', 'mr', 'mni-Mtei', 'mn', 'my', 'ne', 'or', 'ps', 'fa', 'pa', 'ru',
+  'sa', 'sr', 'sd', 'si', 'tg', 'ta', 'tt', 'te', 'th', 'ti', 'uk', 'ur', 'ug', 'yi']);
+
+// A segment the batch request failed to translate: echoed back unchanged, or
+// Latin text where the target has its own script. Batching occasionally does
+// this to one segment (zh→kk returned English for 等一下, en→ilo echoed the
+// line) even though the same text alone translates correctly.
+function looksUntranslated(out, sent, target) {
+  const o = String(out || '').trim();
+  if (!o) return true;
+  if (o.toLowerCase() === String(sent).trim().toLowerCase()) return true;
+  return NON_LATIN.has(target) && /[A-Za-z]{3,}/.test(o) && !/[A-Za-z]{3,}/.test(sent);
 }
 
 // Letterers break a word across a dramatic pause — 帰らな…くて…は… is one word,
@@ -456,11 +525,14 @@ function restoreHonorifics(en, src, lang) {
 }
 
 // gtx leaves subject-less fragments lowercase (俺たちは仲間だろ → "we are friends").
-function capitalize(s) { return s ? s[0].toUpperCase() + s.slice(1) : s; }
+// First LETTER, past any leading ¿¡«"… — Spanish "¿qué…" must become "¿Qué…".
+function capitalize(s) { return s ? s.replace(/^(\P{L}*)(\p{L})/u, (_, pre, ch) => pre + ch.toUpperCase()) : s; }
 
-function polish(en, src, stutter, lang) {
+function polish(en, src, stutter, lang, target) {
   let out = fixPunct(String(en || ''));
-  out = fixSfx(out, src);
+  // Romaji is only a sensible SFX fallback in a Latin-script target; in Arabic
+  // or Thai it would drop "Dokidoki" into the middle of the page.
+  if (!NON_LATIN.has(target)) out = fixSfx(out, src);
   out = restoreHonorifics(out, src, lang);
   out = clampRuns(out, src);
   if (stutter) out = restoreStutter(out);
@@ -499,15 +571,17 @@ export async function translateBatch(texts, target, source = 'auto') {
   const lang = source;                       // before the gtx code mapping
   source = GTX_SOURCE[source] || source || 'auto';
 
-  // Answer known interjections locally and keep them out of the request; the
-  // lexicon is English-only, so it applies to the en target alone.
+  // Answer known interjections locally and keep them out of the request. The
+  // lexicon is English; for any other target its English meaning is what gets
+  // translated, since gtx misreads the Japanese the same way into every
+  // language (しまった！ → French "C'est parti!", Arabic "it's gone").
   const prepared = texts.map((raw) => {
     const t = String(raw || '').trim();
     const bare = t.replace(/[！？!?。．.…、,\s]+$/g, '');
-    const hit = target === 'en' ? LEXICON.get(bare) : null;
+    const hit = LEXICON.get(bare); // kana keys: only Japanese text can match
     // Carry the source's own punctuation across, but as ASCII — the lexicon
     // bypasses gtx, which is what would normally fold ！？ down for us.
-    if (hit) return { direct: fixPunct(hit + asciiPunct(t.slice(bare.length))), src: t };
+    if (hit) return { direct: fixPunct(hit + asciiPunct(t.slice(bare.length))), src: t, lexicon: target !== 'en' };
     const { text: unstuttered, stutter } = stripStutter(t);
     const { text, hold } = stripHold(unstuttered);
     // After stripStutter, so a leading "え、え…" keeps its stutter handling and
@@ -515,7 +589,9 @@ export async function translateBatch(texts, target, source = 'auto') {
     // Per-line, NOT batch-wide: if this line writes the name bare, the author
     // dropped the honorific on purpose and it must stay dropped. Collecting
     // them batch-wide leaked 「ナハトさん」's -san onto 「天才だナハト…！」.
-    return { send: joinSplitWords(text), src: t, stutter, hold, names: findNamedHonorifics([t], lang) };
+    const caps = lang === 'en' && ALL_CAPS(text);
+    return { send: joinSplitWords(caps ? sentenceCase(text) : text), src: t, stutter, hold, caps,
+      names: findNamedHonorifics([t], lang) };
   });
 
   const pending = prepared.filter((p) => p.send !== undefined);
@@ -526,16 +602,34 @@ export async function translateBatch(texts, target, source = 'auto') {
   const names = target === 'en' ? findNamedHonorifics(texts, lang) : new Map();
   const nameList = [...names.keys()];
 
-  const got = await translateRun(pending.map((p) => p.send).concat(nameList), target, source);
+  const lexical = prepared.filter((p) => p.lexicon);
+  const [got, viaEnglish] = await Promise.all([
+    translateRun(pending.map((p) => p.send).concat(nameList), target, source),
+    translateRun(lexical.map((p) => p.direct), target, 'en'),
+  ]);
+  lexical.forEach((p, i) => { if (viaEnglish[i]) p.direct = fixPunct(viaEnglish[i]); });
   pending.forEach((p, i) => { p.out = got[i]; });
+  // Re-ask gtx for any segment the batch left untranslated, one at a time.
+  if (source !== target) {
+    await Promise.all(pending.map(async (p) => {
+      if (!looksUntranslated(p.out, p.send, target)) return;
+      const alone = await gtx(p.send, target, source).then((r) => r.trim()).catch(() => '');
+      if (alone && !looksUntranslated(alone, p.send, target)) p.out = alone;
+    }));
+  }
   const englishName = new Map();
   nameList.forEach((jp, i) => { englishName.set(jp, got[pending.length + i]); });
 
   return prepared.map((p) => {
     if (p.direct !== undefined) return p.direct;
-    let out = applyHold(polish(p.out, p.src, p.stutter, lang), p.hold);
+    let out = applyHold(polish(p.out, p.src, p.stutter, lang, target), p.hold);
     for (const [jp, suffix] of (p.names || [])) {
       out = reattachHonorific(out, englishName.get(jp), suffix);
+    }
+    // Keep the source's lettering style: an all-caps bubble stays all caps in
+    // any target script that has case (no-op for the rest).
+    if (p.caps) {
+      try { out = out.toLocaleUpperCase(target); } catch { out = out.toUpperCase(); }
     }
     return out;
   });
