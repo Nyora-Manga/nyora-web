@@ -10,6 +10,7 @@ import { requireSourceId, sourceId } from './source-identity.js';
 import * as sourcePreferences from './source-preferences.js';
 import { migrateWebSources, sourceMigrationPending } from './source-migration.js';
 import { CircuitBreaker, decorrelatedJitter, sleep } from './net.js';
+import { CLOUDFLARE_SOURCES } from './cloudflare-sources.js';
 
 // ---- low-level helpers -------------------------------------------------
 
@@ -353,7 +354,10 @@ async function fetchCatalog() {
   }
   // The helper owns runtime support, broken-source and browser-solver filtering.
   migrateWebSources(library, list);
-  _catalogCache = list.filter((e) => !e.isBroken);
+  // Sources behind Cloudflare need a real browser to pass the challenge, which
+  // only the desktop app has. Hide them on web instead of offering sources that
+  // fail on every request.
+  _catalogCache = list.filter((e) => !e.isBroken && !CLOUDFLARE_SOURCES.has(e.id.toLowerCase()));
   _nsfwIds = new Set(_catalogCache.filter(isNsfwSource).map((e) => e.id));
   return _catalogCache;
 }

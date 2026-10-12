@@ -77,6 +77,9 @@ jobs:
           NYORA_PUBLISHED_SERIES_DIR: /tmp/nyora-published-series
         run: npm run refresh:series -- --published
 
+      - name: Refresh the Cloudflare source list hidden on web
+        run: npm run refresh:cloudflare
+
       - name: Build — bundle web/ into dist/
         run: |
           npm run build

@@ -6,6 +6,7 @@
   "description": "Nyora Web — production build (bundles web/ into dist/ for Cloudflare Pages).",
   "scripts": {
     "build": "node build.mjs && node scripts/build-series.mjs",
+    "refresh:cloudflare": "node scripts/refresh-cloudflare-sources.mjs",
     "fetch:ort": "node scripts/fetch-ort.mjs",
     "prerender:discover": "node scripts/prerender-discover.mjs",
     "check:rails": "node scripts/check-rails.mjs",

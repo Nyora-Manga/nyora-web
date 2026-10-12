@@ -238,3 +238,12 @@ test('history privacy skips unknown source ratings but still records known safe 
   library.recordHistory({ manga: { id: 'safe', source: { name: 'data:mangadex' } }, sourceNsfw: false, chapterId: 'ch1', page: 0 });
   assert.equal(library.exportData().history.safe.page, 0);
 });
+
+test('sources behind Cloudflare are hidden on web while others stay listed', async () => {
+  const { CLOUDFLARE_SOURCES } = await import('../web/core/cloudflare-sources.js');
+  assert.ok(CLOUDFLARE_SOURCES.size > 100, 'generated Cloudflare list is populated');
+  assert.ok(CLOUDFLARE_SOURCES.has('data:komikzoid'));
+  catalogue = [{ id: 'data:mangadex', name: 'MangaDex' }, { id: 'data:komikzoid', name: 'KomikzoId' }, { id: 'data:sektekomik', name: 'SekteKomik' }];
+  assert.deepEqual((await api.catalog()).entries.map((s) => s.id), ['data:mangadex']);
+  assert.deepEqual((await api.listSources()).sources.map((s) => s.id), ['data:mangadex']);
+});
